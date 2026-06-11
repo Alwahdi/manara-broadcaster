@@ -22,13 +22,14 @@ const HLS_IDLE = new Map();    // id -> { lastHit, idleTimer }
 const METRICS = new Map();     // id -> detailed transfer/viewer counters
 const HLS_RESOURCE_CACHE = new Map(); // key -> { expiresAt, value, promise }
 
-const UA = { 'User-Agent': 'VLC/3.0.18 LibVLC/3.0.18' };
+const UA = { 'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20' };
 const IDLE_MS = 5000;
 const HLS_VIEWER_TTL_MS = 25000;
 const RATE_WINDOW_MS = 30000;
 const HLS_PLAYLIST_CACHE_MS = 1200;
 const HLS_SEGMENT_CACHE_MS = 2 * 60 * 1000;
 const HLS_CACHE_MAX = 900;
+const MAX_REDIRECTS = 5;
 
 function libFor(u) { return u.startsWith('https') ? https : http; }
 
@@ -197,7 +198,12 @@ function tsState(id) {
   return s;
 }
 
-function startTsUpstream(channel, s, policy = {}) {
+function redirectUrl(targetUrl, location) {
+  try { return new URL(location, targetUrl).toString(); }
+  catch { return ''; }
+}
+
+function startTsUpstream(channel, s, policy = {}, targetUrl = channel.url, redirects = 0) {
   if (s.upstreamReq) return;
   const blocked = limitExceeded(channel, policy);
   if (blocked) {
@@ -208,11 +214,17 @@ function startTsUpstream(channel, s, policy = {}) {
   const m = metrics(channel.id, 'ts');
   m.upstreamRequests += 1;
   m.upstreamOpen = true;
-  const u = new URL(channel.url);
+  const u = new URL(targetUrl);
   console.log('[IPTV][TS] open upstream', channel.id, u.host);
-  const req = libFor(channel.url).get(channel.url, { headers: upstreamHeaders(channel) }, (up) => {
+  const req = libFor(targetUrl).get(targetUrl, { headers: upstreamHeaders(channel) }, (up) => {
+    if ([301, 302, 303, 307, 308].includes(up.statusCode || 0) && up.headers.location && redirects < MAX_REDIRECTS) {
+      const nextUrl = redirectUrl(targetUrl, up.headers.location);
+      try { up.resume(); } catch {}
+      s.upstreamReq = null; s.upstreamRes = null;
+      if (nextUrl) return startTsUpstream(channel, s, policy, nextUrl, redirects + 1);
+    }
     if (up.statusCode && up.statusCode >= 400) {
-      const message = explainHttp(up.statusCode, channel.url);
+      const message = explainHttp(up.statusCode, targetUrl);
       markError(channel.id, message, up.statusCode);
       console.error('[IPTV][TS] upstream HTTP', channel.id, message);
       for (const c of s.clients) sendIptvError(c, 502, message);
@@ -243,8 +255,8 @@ function startTsUpstream(channel, s, policy = {}) {
   });
   req.on('error', (e) => {
     const message = e.message === 'timeout'
-      ? `Timed out while connecting to the IPTV provider. Check the URL or provider availability: ${channel.url}`
-      : `Could not connect to the IPTV provider: ${e.message}. URL: ${channel.url}`;
+      ? `Timed out while connecting to the IPTV provider. Check the URL or provider availability: ${targetUrl}`
+      : `Could not connect to the IPTV provider: ${e.message}. URL: ${targetUrl}`;
     console.error('[IPTV][TS] upstream error', channel.id, message);
     markError(channel.id, message);
     for (const c of s.clients) sendIptvError(c, 502, message);
@@ -295,9 +307,19 @@ function serveTs(channel, req, res, policy = {}) {
 }
 
 // ---- HLS proxy ----
-function fetchUpstream(targetUrl, headers = UA) {
+function fetchUpstream(targetUrl, headers = UA, redirects = 0) {
   return new Promise((resolve, reject) => {
-    const req = libFor(targetUrl).get(targetUrl, { headers }, (up) => resolve(up));
+    const req = libFor(targetUrl).get(targetUrl, { headers }, (up) => {
+      if ([301, 302, 303, 307, 308].includes(up.statusCode || 0) && up.headers.location && redirects < MAX_REDIRECTS) {
+        const nextUrl = redirectUrl(targetUrl, up.headers.location);
+        try { up.resume(); } catch {}
+        if (nextUrl) {
+          fetchUpstream(nextUrl, headers, redirects + 1).then(resolve, reject);
+          return;
+        }
+      }
+      resolve(up);
+    });
     req.on('error', reject);
     req.setTimeout(15000, () => req.destroy(new Error('timeout')));
   });
