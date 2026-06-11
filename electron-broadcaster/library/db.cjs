@@ -353,6 +353,89 @@ function getMedia(id) {
     LEFT JOIN watch_progress wp ON wp.media_id = m.id
     WHERE m.id = ?`).get(id);
 }
+function updateMedia(id, patch = {}) {
+  const cur = getMedia(id);
+  if (!cur) return null;
+  const clean = {
+    title: String(patch.title ?? cur.title ?? '').trim() || cur.title,
+    kind: ['movie', 'episode', 'audio'].includes(patch.kind) ? patch.kind : cur.kind,
+    year: patch.year === '' || patch.year == null ? null : Number(patch.year) || null,
+    season: patch.season === '' || patch.season == null ? null : Number(patch.season) || null,
+    episode: patch.episode === '' || patch.episode == null ? null : Number(patch.episode) || null,
+    poster_url: patch.poster_url ?? cur.poster_url ?? null,
+    backdrop_url: patch.backdrop_url ?? cur.backdrop_url ?? null,
+    overview: patch.overview ?? cur.overview ?? null,
+    rating: patch.rating === '' || patch.rating == null ? null : Number(patch.rating) || null,
+  };
+  if (!_db) {
+    _mediaFallback.media_items = _mediaFallback.media_items.map((item) => String(item.id) === String(id)
+      ? { ...item, ...clean, scanned_at: Date.now() }
+      : item);
+    saveMediaFallback();
+    return getMedia(id);
+  }
+  db().prepare(`UPDATE media_items SET kind=?, title=?, year=?, season=?, episode=?,
+    poster_url=?, backdrop_url=?, overview=?, rating=?, scanned_at=? WHERE id=?`).run(
+    clean.kind, clean.title, clean.year, clean.season, clean.episode,
+    clean.poster_url, clean.backdrop_url, clean.overview, clean.rating, Date.now(), id);
+  return getMedia(id);
+}
+function removeMedia(id, { deleteFile = false } = {}) {
+  const item = getMedia(id);
+  if (!item) return false;
+  if (deleteFile) {
+    try { if (fs.existsSync(item.path)) fs.unlinkSync(item.path); } catch (e) { throw new Error(`Could not delete media file: ${e.message}`); }
+  }
+  if (!_db) {
+    _mediaFallback.media_items = _mediaFallback.media_items.filter((row) => String(row.id) !== String(id));
+    _mediaFallback.subtitles = _mediaFallback.subtitles.filter((sub) => String(sub.media_id) !== String(id));
+    delete _mediaFallback.watch_progress[String(id)];
+    saveMediaFallback();
+    return true;
+  }
+  db().prepare('DELETE FROM subtitles WHERE media_id = ?').run(id);
+  db().prepare('DELETE FROM watch_progress WHERE media_id = ?').run(id);
+  db().prepare('DELETE FROM media_items WHERE id = ?').run(id);
+  return true;
+}
+function mediaStats() {
+  const items = listMedia({ limit: 100000 });
+  const logs = listAccessLogs(600).filter((log) => log.targetType === 'media');
+  const byMedia = new Map();
+  for (const item of items) {
+    byMedia.set(String(item.id), {
+      id: item.id,
+      title: item.title,
+      kind: item.kind,
+      plays: 0,
+      bytes: 0,
+      lastAt: 0,
+      size: Number(item.size) || 0,
+      position: Number(item.position) || 0,
+      duration: Number(item.wp_duration) || 0,
+    });
+  }
+  for (const log of logs) {
+    const key = String(log.targetId || '');
+    if (!byMedia.has(key)) continue;
+    const row = byMedia.get(key);
+    if (log.action === 'media') row.plays += 1;
+    row.bytes += Number(log.bytes) || 0;
+    row.lastAt = Math.max(row.lastAt, Number(log.at) || 0);
+  }
+  const totalSize = items.reduce((sum, item) => sum + (Number(item.size) || 0), 0);
+  const byKind = items.reduce((acc, item) => {
+    acc[item.kind || 'unknown'] = (acc[item.kind || 'unknown'] || 0) + 1;
+    return acc;
+  }, {});
+  return {
+    total: items.length,
+    totalSize,
+    byKind,
+    top: Array.from(byMedia.values()).sort((a, b) => (b.plays - a.plays) || (b.bytes - a.bytes)).slice(0, 20),
+    recent: logs.slice(0, 80),
+  };
+}
 function deleteMissing(existingPaths) {
   if (!_db) {
     const keep = new Set(existingPaths || []);
@@ -714,7 +797,7 @@ function diagnostics() {
 module.exports = {
   init, diagnostics, reloadChannelsFromDisk,
   listPaths, addPath, removePath,
-  upsertMedia, listMedia, getMedia, deleteMissing,
+  upsertMedia, listMedia, getMedia, updateMedia, removeMedia, mediaStats, deleteMissing,
   setProgress, addSubtitle, listSubtitles, getSubtitle,
   listIptv, getIptv, addIptv, updateIptv, removeIptv,
   listBroadcastChannels, upsertBroadcastChannel, setBroadcastChannels, removeBroadcastChannel,

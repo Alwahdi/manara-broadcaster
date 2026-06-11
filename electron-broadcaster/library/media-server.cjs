@@ -226,6 +226,8 @@ function adminPage(options = {}) {
   const sessions = db.listSessions();
   const blocks = db.listBlocks();
   const logs = db.listAccessLogs(80);
+  const mediaStats = db.mediaStats();
+  const mediaItems = db.listMedia({ limit: 120 }).map((item) => ({ ...item, titleText: mediaTitle(item) }));
   const sessionRows = sessions.map((s) => `
     <tr>
       <td class="url">${escapeHtml(s.ip)}</td>
@@ -251,6 +253,38 @@ function adminPage(options = {}) {
       <td>${formatBytes(l.bytes)}</td>
       <td>${escapeHtml(l.status)}</td>
     </tr>`).join('');
+  const topMediaRows = mediaStats.top.map((m) => `
+    <tr>
+      <td>${escapeHtml(m.title)}</td>
+      <td>${escapeHtml(m.kind)}</td>
+      <td>${Number(m.plays || 0)}</td>
+      <td>${formatBytes(m.bytes)}</td>
+      <td>${m.lastAt ? new Date(m.lastAt).toLocaleString() : '-'}</td>
+    </tr>`).join('');
+  const mediaRows = mediaItems.map((item) => `
+    <tr>
+      <td>${escapeHtml(item.titleText)}</td>
+      <td>${escapeHtml(item.kind || '')}</td>
+      <td>${formatBytes(item.size)}</td>
+      <td>${formatDuration(item.wp_duration || item.duration)}</td>
+      <td class="url">${escapeHtml(path.basename(item.path || ''))}</td>
+      <td>
+        <button data-edit-media="${item.id}">Edit</button>
+        <button data-delete-media="${item.id}">Remove</button>
+      </td>
+    </tr>`).join('');
+  const mediaPayload = jsonForScript(mediaItems.map((item) => ({
+    id: item.id,
+    title: item.title || '',
+    kind: item.kind || 'movie',
+    year: item.year || '',
+    season: item.season || '',
+    episode: item.episode || '',
+    poster_url: item.poster_url || '',
+    backdrop_url: item.backdrop_url || '',
+    overview: item.overview || '',
+    rating: item.rating || '',
+  })));
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -273,11 +307,27 @@ td,th{border-bottom:1px solid rgba(255,255,255,.1);padding:8px;text-align:left;v
 .url{word-break:break-all;color:#bfdbfe}
 .msg{color:#86efac;font-size:13px;margin-top:8px}
 .muted{color:#94a3b8;font-size:12px}
+.statcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:10px 0 12px}.statcard{border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.18);border-radius:8px;padding:12px}.statcard b{display:block;font-size:22px}.statcard span{font-size:12px;color:#94a3b8}
 @media (max-width:900px){.grid{grid-template-columns:1fr}table{display:block;overflow:auto}}
+@media (max-width:700px){.statcards{grid-template-columns:1fr 1fr}}
 </style>
 </head>
 <body><main>
 <h1>Manara LAN Admin</h1>
+<script id="mediaAdminPayload" type="application/json">${mediaPayload}</script>
+<section>
+  <h2>Media Command Center</h2>
+  <div class="statcards">
+    <div class="statcard"><b>${mediaStats.total}</b><span>Total media</span></div>
+    <div class="statcard"><b>${formatBytes(mediaStats.totalSize)}</b><span>Library size</span></div>
+    <div class="statcard"><b>${mediaStats.byKind.movie || 0}</b><span>Movies</span></div>
+    <div class="statcard"><b>${mediaStats.byKind.episode || 0}</b><span>Episodes</span></div>
+  </div>
+  <h3>Top watched</h3>
+  <table><thead><tr><th>Title</th><th>Kind</th><th>Plays</th><th>Transferred</th><th>Last view</th></tr></thead><tbody>${topMediaRows || '<tr><td colspan="5">No media views yet.</td></tr>'}</tbody></table>
+  <h3 style="margin-top:18px">Media inventory</h3>
+  <table><thead><tr><th>Title</th><th>Kind</th><th>Size</th><th>Duration</th><th>File</th><th>Actions</th></tr></thead><tbody>${mediaRows || '<tr><td colspan="6">No media found. Add folders and scan from the desktop app.</td></tr>'}</tbody></table>
+</section>
 <section>
   <h2>Active LAN Viewers</h2>
   <table><thead><tr><th>IP</th><th>Watching</th><th>Transferred</th><th>Requests</th><th>Device</th><th>Action</th></tr></thead><tbody>${sessionRows || '<tr><td colspan="6">No viewers yet.</td></tr>'}</tbody></table>
@@ -367,6 +417,31 @@ document.getElementById('saveBroadcast').onclick = async () => {
   await api('/api/admin/broadcast', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ channels }) });
   msg.textContent = 'Saved.';
 };
+const mediaAdmin = JSON.parse(document.getElementById('mediaAdminPayload').textContent || '[]');
+document.querySelectorAll('[data-edit-media]').forEach((b) => b.onclick = async () => {
+  const item = mediaAdmin.find((row) => String(row.id) === String(b.dataset.editMedia));
+  if (!item) return;
+  const title = prompt('Title', item.title || '');
+  if (title == null) return;
+  const kind = prompt('Kind: movie, episode, audio', item.kind || 'movie');
+  if (kind == null) return;
+  const year = prompt('Year', item.year || '');
+  if (year == null) return;
+  const overview = prompt('Overview', item.overview || '');
+  if (overview == null) return;
+  await api('/api/admin/media/' + item.id, {
+    method:'PUT',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ ...item, title, kind, year, overview })
+  });
+  location.reload();
+});
+document.querySelectorAll('[data-delete-media]').forEach((b) => b.onclick = async () => {
+  const removeFile = confirm('Remove this item from the library? Press OK to remove only from the library list. The file stays on disk.');
+  if (!removeFile) return;
+  await api('/api/admin/media/' + b.dataset.deleteMedia, { method:'DELETE' });
+  location.reload();
+});
 </script>
 </main></body></html>`;
 }
@@ -671,6 +746,8 @@ function createHandler(options = {}) {
         broadcast: db.listBroadcastChannels(),
         iptv: db.listIptv(),
         cloudIptv: safeCloudIptvList(),
+        media: db.listMedia({ limit: 500 }),
+        mediaStats: db.mediaStats(),
         sessions: db.listSessions(),
         blocks: db.listBlocks(),
         logs: db.listAccessLogs(200),
@@ -734,6 +811,27 @@ function createHandler(options = {}) {
         const body = await parseJsonBody(req);
         return sendJson(res, 200, { message: db.setBlockedMessage(body.message) });
       } catch (e) { return sendJson(res, 500, { error: e.message }); }
+    }
+    adminMatch = /^\/api\/admin\/media\/(\d+)$/.exec(u.pathname);
+    if (adminMatch && req.method === 'PUT') {
+      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      try {
+        const body = await parseJsonBody(req);
+        const media = db.updateMedia(parseInt(adminMatch[1], 10), body);
+        if (!media) return sendJson(res, 404, { error: 'not found' });
+        return sendJson(res, 200, { media });
+      } catch (e) { return sendJson(res, 500, { error: e.message }); }
+    }
+    if (adminMatch && req.method === 'DELETE') {
+      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      try {
+        db.removeMedia(parseInt(adminMatch[1], 10), { deleteFile: u.query.deleteFile === '1' });
+        return sendJson(res, 200, { ok: true });
+      } catch (e) { return sendJson(res, 500, { error: e.message }); }
+    }
+    if (u.pathname === '/api/admin/media-stats') {
+      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      return sendJson(res, 200, db.mediaStats());
     }
     m = /^\/api\/media\/(\d+)\/progress$/.exec(u.pathname);
     if (m && req.method === 'POST') {
