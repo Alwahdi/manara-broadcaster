@@ -1,7 +1,7 @@
 {
   "name": "manara-broadcaster",
   "productName": "Manara",
-  "version": "2.5.4",
+  "version": "2.5.5",
   "description": "Manara — Local LAN broadcaster + media library. Zero-internet streaming for hotel/hospital/cafe networks.",
   "main": "main.cjs",
   "author": {
@@ -21,7 +21,7 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "electron": "38",
+    "electron": "^39.8.5",
     "electron-builder": "^26.8.1"
   },
   "build": {

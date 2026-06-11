@@ -1,7 +1,7 @@
 {
   "name": "manara-broadcaster",
   "productName": "Manara",
-  "version": "2.5.4",
+  "version": "2.5.5",
   "description": "Manara — Local LAN broadcaster + media library. Zero-internet streaming for hotel/hospital/cafe networks.",
   "main": "main.cjs",
   "author": {
@@ -16,13 +16,14 @@
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
+    "@sentry/electron": "^7.13.0",
     "better-sqlite3": "^12.10.0",
     "electron-store": "^11.0.2",
     "electron-updater": "^6.8.3",
-    "ws": "^8.18.0"
+    "ws": "^8.21.0"
   },
   "devDependencies": {
-    "electron": "38",
+    "electron": "^39.8.5",
     "electron-builder": "^26.8.1"
   },
   "build": {

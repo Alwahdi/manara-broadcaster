@@ -12,7 +12,7 @@ const SUPABASE_URL = process.env.MANARA_SUPABASE_URL || 'https://yvfyvanvkjrgapu
 const SUPABASE_ANON_KEY = process.env.MANARA_SUPABASE_ANON_KEY ||
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl2Znl2YW52a2pyZ2FwdWZhdG5uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MzU3OTcsImV4cCI6MjA5NDAxMTc5N30.yx8R7ZpkUWj52cEfaNNtU0uaUrw_QS9lNRNAg-sUsPo';
 const SUPABASE_PUBLIC_REST = SUPABASE_URL +
-  '/rest/v1/cloud_iptv_channels?select=id,name,url,logo_url,category,headers,is_active,sort_order&is_active=eq.true&order=sort_order.asc';
+  '/rest/v1/cloud_iptv_channels?select=id,name,url,logo_url,category,headers,transfer_limit_bytes,is_active,sort_order&is_active=eq.true&order=sort_order.asc';
 const REFRESH_MS = 60 * 60 * 1000; // 1h
 let runtimeConfig = {};
 try { runtimeConfig = require('./cloud-runtime.cjs'); } catch {}
@@ -70,6 +70,7 @@ function normalizeRows(rows) {
     logo: r.logo || r.logo_url || '',
     category: r.category || '',
     headers: r.headers || {},
+    transferLimitBytes: Math.max(0, Number(r.transferLimitBytes ?? r.transfer_limit_bytes) || 0),
   })).filter((r) => r.id && r.name && r.url);
 }
 
@@ -78,7 +79,7 @@ async function fetchFromNeon() {
   const { neon } = await import('@neondatabase/serverless');
   const sql = neon(neonDatabaseUrl);
   const rows = await sql`
-    select id, name, url, logo_url, category, headers
+    select id, name, url, logo_url, category, headers, transfer_limit_bytes
     from cloud_iptv_channels
     where is_active = true
     order by sort_order asc, name asc
@@ -164,6 +165,7 @@ function list() {
     url: c.url,
     logo: c.logo || '',
     category: c.category || '',
+    transferLimitBytes: Math.max(0, Number(c.transferLimitBytes) || 0),
     enabled: 1,
     source: 'cloud',
   }));

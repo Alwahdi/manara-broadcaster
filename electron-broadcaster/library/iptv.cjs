@@ -20,11 +20,15 @@ const { URL } = require('url');
 const TS_CHANNELS = new Map(); // id -> { clients:Set<res>, upstreamReq, idleTimer, contentType }
 const HLS_IDLE = new Map();    // id -> { lastHit, idleTimer }
 const METRICS = new Map();     // id -> detailed transfer/viewer counters
+const HLS_RESOURCE_CACHE = new Map(); // key -> { expiresAt, value, promise }
 
 const UA = { 'User-Agent': 'VLC/3.0.18 LibVLC/3.0.18' };
 const IDLE_MS = 5000;
 const HLS_VIEWER_TTL_MS = 25000;
 const RATE_WINDOW_MS = 30000;
+const HLS_PLAYLIST_CACHE_MS = 1200;
+const HLS_SEGMENT_CACHE_MS = 2 * 60 * 1000;
+const HLS_CACHE_MAX = 900;
 
 function libFor(u) { return u.startsWith('https') ? https : http; }
 
@@ -305,6 +309,61 @@ async function readAll(stream) {
   return Buffer.concat(chunks);
 }
 
+function pruneHlsCache() {
+  const now = Date.now();
+  for (const [key, entry] of HLS_RESOURCE_CACHE) {
+    if (!entry.promise && entry.expiresAt <= now) HLS_RESOURCE_CACHE.delete(key);
+  }
+  while (HLS_RESOURCE_CACHE.size > HLS_CACHE_MAX) {
+    const first = HLS_RESOURCE_CACHE.keys().next().value;
+    if (!first) break;
+    HLS_RESOURCE_CACHE.delete(first);
+  }
+}
+
+async function fetchCachedHlsResource(channel, targetUrl, headers, ttlMs) {
+  pruneHlsCache();
+  const rangeKey = headers?.Range || headers?.range || '';
+  const key = `${channel.id}|${rangeKey}|${targetUrl}`;
+  const now = Date.now();
+  const existing = HLS_RESOURCE_CACHE.get(key);
+  if (existing?.value && existing.expiresAt > now) {
+    return { ...existing.value, fromCache: true };
+  }
+  if (existing?.promise) {
+    const value = await existing.promise;
+    return { ...value, fromCache: true };
+  }
+  const m = metrics(channel.id, 'hls');
+  m.upstreamRequests += 1;
+  m.upstreamOpen = true;
+  const promise = (async () => {
+    const up = await fetchUpstream(targetUrl, headers);
+    const body = up.statusCode && up.statusCode >= 400 ? Buffer.alloc(0) : await readAll(up);
+    if (up.statusCode && up.statusCode >= 400) {
+      try { up.resume(); } catch {}
+    }
+    return {
+      statusCode: up.statusCode || 200,
+      headers: up.headers || {},
+      body,
+    };
+  })();
+  HLS_RESOURCE_CACHE.set(key, { expiresAt: now + ttlMs, promise });
+  try {
+    const value = await promise;
+    if (value.statusCode >= 400) {
+      HLS_RESOURCE_CACHE.delete(key);
+      return { ...value, fromCache: false };
+    }
+    HLS_RESOURCE_CACHE.set(key, { expiresAt: Date.now() + ttlMs, value });
+    return { ...value, fromCache: false };
+  } catch (e) {
+    HLS_RESOURCE_CACHE.delete(key);
+    throw e;
+  }
+}
+
 function touchHls(id) {
   const s = HLS_IDLE.get(id) || { lastHit: 0, idleTimer: null };
   s.lastHit = Date.now();
@@ -351,20 +410,17 @@ async function serveHlsPlaylist(channel, playlistUrl, baseProxyUrl, req, res, po
     touchHls(channel.id);
     touchHlsViewer(channel, req);
     const m = metrics(channel.id, 'hls');
-    m.upstreamRequests += 1;
     m.playlistRequests += 1;
-    m.upstreamOpen = true;
-    const up = await fetchUpstream(playlistUrl, upstreamHeaders(channel));
+    const up = await fetchCachedHlsResource(channel, playlistUrl, upstreamHeaders(channel), HLS_PLAYLIST_CACHE_MS);
     if (up.statusCode && up.statusCode >= 400) {
       const message = explainHttp(up.statusCode, playlistUrl);
       markError(channel.id, message, up.statusCode);
       sendIptvError(res, 502, message);
-      try { up.resume(); } catch {}
       return;
     }
-    const body = (await readAll(up)).toString('utf8');
+    const body = up.body.toString('utf8');
     const rewritten = rewritePlaylist(body, playlistUrl, baseProxyUrl);
-    addBytes(channel.id, Buffer.byteLength(body), Buffer.byteLength(rewritten));
+    addBytes(channel.id, up.fromCache ? 0 : Buffer.byteLength(body), Buffer.byteLength(rewritten));
     const blockedNow = limitExceeded(channel, policy);
     if (blockedNow) {
       markError(channel.id, blockedNow.message, 429);
@@ -399,23 +455,21 @@ async function serveHlsSegment(channel, segUrl, baseProxyUrl, req, res, policy =
     touchHls(channel.id);
     touchHlsViewer(channel, req);
     const m = metrics(channel.id, 'hls');
-    m.upstreamRequests += 1;
     m.segmentRequests += 1;
-    m.upstreamOpen = true;
     const extra = req.headers.range ? { Range: req.headers.range } : {};
-    const up = await fetchUpstream(segUrl, upstreamHeaders(channel, extra));
+    const ttl = isHls(segUrl) ? HLS_PLAYLIST_CACHE_MS : HLS_SEGMENT_CACHE_MS;
+    const up = await fetchCachedHlsResource(channel, segUrl, upstreamHeaders(channel, extra), ttl);
     if (up.statusCode && up.statusCode >= 400) {
       const message = explainHttp(up.statusCode, segUrl);
       markError(channel.id, message, up.statusCode);
       sendIptvError(res, 502, message);
-      try { up.resume(); } catch {}
       return;
     }
     const contentType = up.headers['content-type'] || '';
-    const body = await readAll(up);
+    const body = up.body;
     if (isPlaylistResponse(segUrl, contentType, body)) {
       const rewritten = rewritePlaylist(body.toString('utf8'), segUrl, baseProxyUrl);
-      addBytes(channel.id, body.length, Buffer.byteLength(rewritten));
+      addBytes(channel.id, up.fromCache ? 0 : body.length, Buffer.byteLength(rewritten));
       const blockedNow = limitExceeded(channel, policy);
       if (blockedNow) {
         markError(channel.id, blockedNow.message, 429);
@@ -431,7 +485,7 @@ async function serveHlsSegment(channel, segUrl, baseProxyUrl, req, res, policy =
       res.end(rewritten);
       return;
     }
-    addBytes(channel.id, body.length, body.length);
+    addBytes(channel.id, up.fromCache ? 0 : body.length, body.length);
     const blockedNow = limitExceeded(channel, policy);
     if (blockedNow) {
       markError(channel.id, blockedNow.message, 429);

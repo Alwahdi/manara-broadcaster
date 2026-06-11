@@ -7,6 +7,7 @@ create table if not exists cloud_iptv_channels (
   logo_url text,
   category text,
   headers jsonb not null default '{}'::jsonb,
+  transfer_limit_bytes bigint not null default 0,
   is_active boolean not null default true,
   sort_order integer not null default 100,
   created_at timestamptz not null default now(),

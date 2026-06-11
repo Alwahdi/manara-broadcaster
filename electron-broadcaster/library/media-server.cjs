@@ -276,7 +276,7 @@ function createHandler(options = {}) {
         let ch = null;
         if (rawId.startsWith('cloud-')) {
           const cc = cloudIptv.getById(rawId.slice('cloud-'.length));
-          if (cc) ch = { id: rawId, url: cc.url, name: cc.name, enabled: 1, headers: cc.headers || {} };
+          if (cc) ch = { id: rawId, url: cc.url, name: cc.name, enabled: 1, headers: cc.headers || {}, transferLimitBytes: cc.transferLimitBytes || 0 };
         } else {
           ch = db.getIptv(parseInt(rawId, 10));
         }

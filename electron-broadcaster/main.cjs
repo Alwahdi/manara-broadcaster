@@ -18,6 +18,35 @@ const libraryServer = require('./library/media-server.cjs');
 const iptv = require('./library/iptv.cjs');
 const cloudIptv = require('./library/cloud-iptv.cjs');
 const deviceState = require('./library/device-state.cjs');
+let runtimeConfig = {};
+try { runtimeConfig = require('./library/cloud-runtime.cjs'); } catch {}
+
+function initSentry() {
+  const dsn = process.env.SENTRY_DSN || runtimeConfig.sentryDsn || '';
+  if (!dsn) return;
+  try {
+    const Sentry = require('@sentry/electron/main');
+    Sentry.init({
+      dsn,
+      release: `manara-broadcaster@${app.getVersion()}`,
+      environment: app.isPackaged ? 'production' : 'development',
+      tracesSampleRate: 0.05,
+    });
+    process.on('uncaughtException', (error) => {
+      Sentry.captureException(error);
+      console.error('[Manara] uncaught exception:', error);
+    });
+    process.on('unhandledRejection', (reason) => {
+      Sentry.captureException(reason instanceof Error ? reason : new Error(String(reason)));
+      console.error('[Manara] unhandled rejection:', reason);
+    });
+    console.log('[Manara] Sentry error tracking enabled');
+  } catch (e) {
+    console.warn('[Manara] Sentry init failed:', e?.message || e);
+  }
+}
+
+initSentry();
 
 // Force a single stable app-data directory across ZIP/installer/autostart/update
 // launches. This is the real source of truth for all local data.
