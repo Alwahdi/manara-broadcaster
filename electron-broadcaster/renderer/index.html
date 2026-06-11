@@ -226,6 +226,29 @@
       </div>
     </div>
 
+    <div class="card" id="platformCard">
+      <div class="card-title">اشتراك المنصة وتفعيل السيرفر</div>
+      <p class="muted small">سجّل هذا السيرفر باسم الشبكة أو النشاط التجاري. بعد الموافقة من مالك المنصة سيتم تفعيل القنوات و IPTV والمكتبة حسب الخطة.</p>
+      <div id="platformStatusBox" class="hint" style="margin:8px 0">جارٍ قراءة حالة الاشتراك…</div>
+      <div class="form-grid">
+        <label class="field"><span>اسم الشبكة / النشاط</span><input id="platformTenantName" type="text" maxlength="120" placeholder="مثال: فندق المنارة" /></label>
+        <label class="field"><span>البريد الإلكتروني</span><input id="platformContactEmail" type="email" maxlength="160" placeholder="owner@example.com" /></label>
+        <label class="field"><span>رقم الهاتف</span><input id="platformContactPhone" type="tel" maxlength="40" placeholder="+967…" /></label>
+        <label class="field"><span>قناة التحديثات</span>
+          <select id="platformChannel">
+            <option value="stable">مستقر</option>
+            <option value="beta">تجريبي</option>
+          </select>
+        </label>
+      </div>
+      <div id="platformFeatures" class="feature-grid"></div>
+      <div class="muted small" id="platformFingerprintRow" style="margin-top:6px"></div>
+      <div class="buttons end">
+        <button class="btn ghost" id="refreshPlatformBtn">إعادة التحقق</button>
+        <button class="btn primary" id="requestPlatformActivationBtn">طلب التفعيل / تحديث البيانات</button>
+      </div>
+    </div>
+
     <div class="card" id="licenseCard">
       <div class="card-title">الترخيص</div>
       <p class="muted small">أدخل مفتاح الترخيص الذي زوّدك به فريق Manara. يتم ربط المفتاح بهذا الجهاز عند أول تفعيل.</p>

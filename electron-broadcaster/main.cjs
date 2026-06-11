@@ -18,6 +18,7 @@ const libraryServer = require('./library/media-server.cjs');
 const iptv = require('./library/iptv.cjs');
 const cloudIptv = require('./library/cloud-iptv.cjs');
 const deviceState = require('./library/device-state.cjs');
+const platform = require('./library/platform.cjs');
 let runtimeConfig = {};
 try { runtimeConfig = require('./library/cloud-runtime.cjs'); } catch {}
 
@@ -131,6 +132,10 @@ function defaultSettings() {
     adminUsername: 'admin',
     adminPassword: 'admin',
     neonDatabaseUrl: '',
+    platformTenantName: '',
+    platformContactEmail: '',
+    platformContactPhone: '',
+    platformChannel: 'stable',
     iptvGlobalLimitBytes: 0,
     channels: [],
     localIptvChannels: [],
@@ -358,6 +363,21 @@ function mediaServerOptions() {
     }),
     onChannelsChanged: () => refreshSettingsChannelMirror('lan-admin'),
   };
+}
+
+function appPlatformInfo() {
+  return {
+    appVersion: app.getVersion(),
+    channel: settings.platformChannel || 'stable',
+  };
+}
+
+async function refreshPlatformStatus() {
+  const s = await platform.refresh(appPlatformInfo());
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('platform-status', s);
+  }
+  return s;
 }
 
 function createMediaHandler() {
@@ -600,6 +620,30 @@ ipcMain.handle('license-activate', async (_e, key) => {
 });
 ipcMain.handle('license-hardware-id', () => getHardwareId());
 
+// ---------- Platform subscription IPC ----------
+ipcMain.handle('platform-status', async () => platform.status());
+ipcMain.handle('platform-refresh', async () => refreshPlatformStatus());
+ipcMain.handle('platform-request-activation', async (_e, payload) => {
+  const clean = payload && typeof payload === 'object' ? payload : {};
+  settings = {
+    ...settings,
+    platformTenantName: String(clean.tenantName || clean.organizationName || '').trim(),
+    platformContactEmail: String(clean.contactEmail || clean.email || '').trim().toLowerCase(),
+    platformContactPhone: String(clean.contactPhone || clean.phone || '').trim(),
+    platformChannel: String(clean.channel || settings.platformChannel || 'stable').trim() || 'stable',
+  };
+  saveSettingsAndBackup('platform-activation-request');
+  const status = await platform.requestActivation({
+    tenantName: settings.platformTenantName,
+    contactEmail: settings.platformContactEmail,
+    contactPhone: settings.platformContactPhone,
+  }, appPlatformInfo());
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('platform-status', status);
+  }
+  return status;
+});
+
 // ---------- Auto-update IPC ----------
 let updateState = { state: 'idle' };
 function broadcastUpdate(s) {
@@ -787,6 +831,15 @@ app.whenReady().then(() => {
     }).catch((e) => console.error('[Manara] initial cloud-iptv fetch failed:', e.message));
     cloudIptv.startAutoRefresh(() => settings.licenseKey || '');
   } catch (e) { console.error('[Manara] cloud iptv init failed:', e.message); }
+
+  // Platform activation/subscription status. This is owner-controlled from Neon
+  // and intentionally does not expose the database URL in the customer UI.
+  try {
+    platform.setCachePath(path.join(app.getPath('userData'), 'platform-cache.json'));
+    platform.setNeonDatabaseUrl(settings.neonDatabaseUrl || '');
+    refreshPlatformStatus().catch((e) => console.warn('[Manara] platform refresh skipped:', e.message));
+    setInterval(() => { refreshPlatformStatus().catch(() => {}); }, 60 * 60 * 1000);
+  } catch (e) { console.error('[Manara] platform init failed:', e.message); }
 
   // Check for updates on launch + every 6h (only when packaged)
   if (app.isPackaged && settings.autoCheckUpdates !== false) {

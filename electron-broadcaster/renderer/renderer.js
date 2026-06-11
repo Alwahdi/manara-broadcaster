@@ -100,6 +100,10 @@ function hydrateSettingsForm() {
   if ($('adminUsername')) $('adminUsername').value = settings.adminUsername || 'admin';
   if ($('adminPassword')) $('adminPassword').value = settings.adminPassword || 'admin';
   if ($('iptvGlobalLimitMb')) $('iptvGlobalLimitMb').value = bytesToWholeMb(settings.iptvGlobalLimitBytes || 0);
+  if ($('platformTenantName')) $('platformTenantName').value = settings.platformTenantName || '';
+  if ($('platformContactEmail')) $('platformContactEmail').value = settings.platformContactEmail || '';
+  if ($('platformContactPhone')) $('platformContactPhone').value = settings.platformContactPhone || '';
+  if ($('platformChannel')) $('platformChannel').value = settings.platformChannel || 'stable';
   renderAdminLinks();
 }
 
@@ -540,9 +544,97 @@ function renderShare() {
 
   // ===== License =====
   initLicense();
+  // ===== Platform subscription =====
+  initPlatform();
   // ===== Auto-update =====
   initUpdates();
 })();
+
+// ================= Platform subscription =================
+const PLATFORM_FEATURE_LABELS = {
+  channels: 'القنوات',
+  iptv: 'IPTV',
+  media: 'المكتبة',
+  webAdmin: 'إدارة الويب',
+  analytics: 'التقارير',
+  branding: 'التخصيص',
+};
+
+function fmtPlatformStatus(s) {
+  if (!s) return 'جارٍ قراءة حالة الاشتراك…';
+  const instance = s.instance || {};
+  const plan = instance.plan && instance.plan !== 'pending' ? ` · خطة ${instance.plan}` : '';
+  const expires = instance.subscriptionExpiresAt ? ` · ينتهي ${new Date(instance.subscriptionExpiresAt).toLocaleDateString('ar')}` : '';
+  const offline = s.online === false ? ' (آخر حالة محفوظة، لا يوجد اتصال بالمنصة)' : '';
+  switch (s.state) {
+    case 'active': return `✅ السيرفر مفعّل${plan}${expires}${offline}`;
+    case 'pending': return `⏳ طلب التفعيل مرسل. انتظر موافقة مالك المنصة${offline}`;
+    case 'expired': return `⚠️ انتهى الاشتراك${expires}${offline}`;
+    case 'suspended': return `⚠️ تم إيقاف هذا السيرفر من المنصة${offline}`;
+    case 'offline': return `تعذر الاتصال بالمنصة. السبب: ${s.error || 'غير معروف'}`;
+    case 'unregistered': return 'هذا السيرفر غير مسجل بعد. أدخل البيانات ثم أرسل طلب التفعيل.';
+    case 'cached': return `آخر حالة محفوظة: ${instance.state || instance.status || 'غير معروفة'}${offline}`;
+    default: return `حالة المنصة: ${s.state || 'غير معروفة'}${offline}`;
+  }
+}
+
+function renderPlatformFeatures(s) {
+  const root = $('platformFeatures');
+  if (!root) return;
+  const features = s?.features || s?.instance?.features || {};
+  root.innerHTML = Object.entries(PLATFORM_FEATURE_LABELS).map(([key, label]) => {
+    const enabled = !!features[key] && s?.state === 'active';
+    return `<div class="feature-pill ${enabled ? 'on' : 'off'}"><span>${label}</span><b>${enabled ? 'مفعّل' : 'غير مفعّل'}</b></div>`;
+  }).join('');
+}
+
+function renderPlatformStatus(s) {
+  const box = $('platformStatusBox');
+  if (box) {
+    const policy = s?.updatePolicy;
+    const updateLine = policy?.mandatory
+      ? `<br>تحديث إلزامي مطلوب عند توفر إصدار أعلى من ${escapeHtml(policy.minimumVersion || policy.latestVersion || 'السياسة الحالية')}.`
+      : policy?.latestVersion ? `<br>آخر إصدار في قناة ${escapeHtml(policy.channel || 'stable')}: ${escapeHtml(policy.latestVersion)}.` : '';
+    box.innerHTML = `${escapeHtml(fmtPlatformStatus(s))}${updateLine}`;
+  }
+  if ($('platformFingerprintRow')) {
+    $('platformFingerprintRow').textContent = `معرّف السيرفر: ${s?.activationId || '—'} · بصمة الجهاز: ${s?.fingerprint || '—'}`;
+  }
+  renderPlatformFeatures(s);
+}
+
+async function initPlatform() {
+  try {
+    renderPlatformStatus(await window.broadcaster.platformStatus?.());
+    window.broadcaster.onPlatformStatus?.(renderPlatformStatus);
+    $('refreshPlatformBtn')?.addEventListener('click', async () => {
+      $('platformStatusBox').textContent = 'جارٍ إعادة التحقق من المنصة…';
+      renderPlatformStatus(await window.broadcaster.platformRefresh());
+    });
+    $('requestPlatformActivationBtn')?.addEventListener('click', async () => {
+      const payload = {
+        tenantName: $('platformTenantName').value.trim(),
+        contactEmail: $('platformContactEmail').value.trim(),
+        contactPhone: $('platformContactPhone').value.trim(),
+        channel: $('platformChannel').value || 'stable',
+      };
+      if (!payload.tenantName || !payload.contactEmail) {
+        toast('اسم الشبكة والبريد الإلكتروني مطلوبان', 'err');
+        return;
+      }
+      $('platformStatusBox').textContent = 'جارٍ إرسال طلب التفعيل…';
+      try {
+        const s = await window.broadcaster.platformRequestActivation(payload);
+        renderPlatformStatus(s);
+        await loadSettings();
+        toast('تم إرسال طلب التفعيل', 'ok');
+      } catch (e) {
+        $('platformStatusBox').textContent = 'فشل إرسال طلب التفعيل: ' + (e?.message || e);
+        toast('فشل إرسال طلب التفعيل', 'err');
+      }
+    });
+  } catch (e) { console.error(e); }
+}
 
 // ================= License =================
 function fmtLicenseStatus(s) {

@@ -47,6 +47,16 @@ contextBridge.exposeInMainWorld('broadcaster', {
     return () => ipcRenderer.removeListener('license-status', h);
   },
 
+  // Platform subscription / activation
+  platformStatus: () => ipcRenderer.invoke('platform-status'),
+  platformRefresh: () => ipcRenderer.invoke('platform-refresh'),
+  platformRequestActivation: (payload) => ipcRenderer.invoke('platform-request-activation', payload),
+  onPlatformStatus: (cb) => {
+    const h = (_e, s) => cb(s);
+    ipcRenderer.on('platform-status', h);
+    return () => ipcRenderer.removeListener('platform-status', h);
+  },
+
   // Auto-update
   updateStatus: () => ipcRenderer.invoke('update-status'),
   updateCheck: () => ipcRenderer.invoke('update-check'),
