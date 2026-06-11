@@ -21,6 +21,27 @@ let runtimeConfig = {};
 try { runtimeConfig = require('./cloud-runtime.cjs'); } catch {}
 let neonDatabaseUrl = process.env.MANARA_NEON_DATABASE_URL || runtimeConfig.neonDatabaseUrl || '';
 
+const DEV_DEMO_CHANNELS = [
+  {
+    id: 'dev-apple-bipbop-16x9',
+    name: 'Apple BipBop 16:9 Demo',
+    url: 'https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_16x9/bipbop_16x9_variant.m3u8',
+    logo: '',
+    category: 'Demo',
+    headers: {},
+    transferLimitBytes: 0,
+  },
+  {
+    id: 'dev-mux-hls',
+    name: 'Mux HLS Test',
+    url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+    logo: '',
+    category: 'Demo',
+    headers: {},
+    transferLimitBytes: 0,
+  },
+];
+
 let cachePath = null;
 let cached = []; // [{id,name,url,logo,category,headers}]
 let lastFetch = 0;
@@ -96,6 +117,14 @@ function setNeonDatabaseUrl(url) {
 
 async function refresh(licenseKey) {
   const failures = [];
+  if (!neonDatabaseUrl && process.defaultApp) {
+    cached = DEV_DEMO_CHANNELS;
+    lastFetch = Date.now();
+    lastStatus = { state: 'ok', at: new Date().toISOString(), error: '', count: cached.length, source: 'dev-demo-no-neon' };
+    persist();
+    console.warn('[cloud-iptv] using dev demo IPTV channels because MANARA_NEON_DATABASE_URL is not configured');
+    return cached;
+  }
   try {
     const rows = await fetchFromNeon();
     if (Array.isArray(rows)) {

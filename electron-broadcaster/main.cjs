@@ -343,6 +343,10 @@ function notifyStorageReady() {
 
 function applyLoginItem() {
   try {
+    if (process.platform === 'darwin' && !app.isPackaged) {
+      console.log('[Manara] skipping macOS login item setup in npm start dev mode');
+      return;
+    }
     if (process.platform === 'win32' || process.platform === 'darwin') {
       app.setLoginItemSettings({
         openAtLogin: !!settings.autoStartOnBoot,

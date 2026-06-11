@@ -1,7 +1,7 @@
 {
   "name": "manara-broadcaster",
   "productName": "Manara",
-  "version": "2.5.13",
+  "version": "2.5.14",
   "description": "Manara — Local LAN broadcaster + media library. Zero-internet streaming for hotel/hospital/cafe networks.",
   "main": "main.cjs",
   "author": {
@@ -12,6 +12,7 @@
   "scripts": {
     "start": "npm run dev:runtime && electron .",
     "dev:runtime": "node scripts/write-dev-runtime.cjs",
+    "dev:repair-native": "electron-builder install-app-deps",
     "dist": "electron-builder --win --x64 --publish never",
     "release": "electron-builder --win --x64 --publish always",
     "platform": "node scripts/platform-admin.cjs",
@@ -27,7 +28,7 @@
     "ws": "^8.21.0"
   },
   "devDependencies": {
-    "electron": "^39.8.5",
+    "electron": "39.8.5",
     "electron-builder": "^26.8.1"
   },
   "build": {
