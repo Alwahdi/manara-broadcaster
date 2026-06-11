@@ -19,13 +19,114 @@ const { URL } = require('url');
 
 const TS_CHANNELS = new Map(); // id -> { clients:Set<res>, upstreamReq, idleTimer, contentType }
 const HLS_IDLE = new Map();    // id -> { lastHit, idleTimer }
+const METRICS = new Map();     // id -> detailed transfer/viewer counters
 
 const UA = { 'User-Agent': 'VLC/3.0.18 LibVLC/3.0.18' };
 const IDLE_MS = 5000;
+const HLS_VIEWER_TTL_MS = 25000;
+const RATE_WINDOW_MS = 30000;
 
 function libFor(u) { return u.startsWith('https') ? https : http; }
 
 function isHls(url) { return /\.m3u8(\?|$)/i.test(url); }
+
+function metrics(id, type = 'unknown') {
+  const key = String(id);
+  let m = METRICS.get(key);
+  if (!m) {
+    m = {
+      id: key,
+      type,
+      startedAt: Date.now(),
+      lastActivityAt: 0,
+      upstreamOpen: false,
+      activeViewers: 0,
+      peakViewers: 0,
+      totalViewerSessions: 0,
+      totalUpstreamBytes: 0,
+      totalDownstreamBytes: 0,
+      upstreamRequests: 0,
+      playlistRequests: 0,
+      segmentRequests: 0,
+      errors: 0,
+      lastError: '',
+      lastStatusCode: 0,
+      rateEvents: [],
+      hlsViewers: new Map(),
+    };
+    METRICS.set(key, m);
+  }
+  if (type && m.type === 'unknown') m.type = type;
+  return m;
+}
+
+function pruneRates(m) {
+  const cutoff = Date.now() - RATE_WINDOW_MS;
+  m.rateEvents = m.rateEvents.filter((e) => e.at >= cutoff);
+}
+
+function addBytes(id, upstreamBytes = 0, downstreamBytes = 0) {
+  const m = metrics(id);
+  const at = Date.now();
+  m.lastActivityAt = at;
+  m.totalUpstreamBytes += upstreamBytes;
+  m.totalDownstreamBytes += downstreamBytes;
+  if (upstreamBytes || downstreamBytes) m.rateEvents.push({ at, upstreamBytes, downstreamBytes });
+  pruneRates(m);
+}
+
+function markError(id, message, statusCode = 0) {
+  const m = metrics(id);
+  m.errors += 1;
+  m.lastError = String(message || '').slice(0, 500);
+  m.lastStatusCode = statusCode || 0;
+  m.lastActivityAt = Date.now();
+}
+
+function setViewers(id, count) {
+  const m = metrics(id);
+  m.activeViewers = Math.max(0, count || 0);
+  m.peakViewers = Math.max(m.peakViewers, m.activeViewers);
+}
+
+function touchHlsViewer(channel, req) {
+  const m = metrics(channel.id, 'hls');
+  const key = `${req.socket.remoteAddress || 'unknown'}|${req.headers['user-agent'] || ''}`;
+  if (!m.hlsViewers.has(key)) m.totalViewerSessions += 1;
+  m.hlsViewers.set(key, Date.now() + HLS_VIEWER_TTL_MS);
+  for (const [viewerKey, expiresAt] of m.hlsViewers) {
+    if (expiresAt < Date.now()) m.hlsViewers.delete(viewerKey);
+  }
+  setViewers(channel.id, m.hlsViewers.size);
+}
+
+function snapshotMetrics(id) {
+  const m = metrics(id);
+  pruneRates(m);
+  const upstreamWindowBytes = m.rateEvents.reduce((sum, e) => sum + e.upstreamBytes, 0);
+  const downstreamWindowBytes = m.rateEvents.reduce((sum, e) => sum + e.downstreamBytes, 0);
+  const seconds = RATE_WINDOW_MS / 1000;
+  return {
+    id: m.id,
+    type: m.type,
+    viewers: m.activeViewers,
+    peakViewers: m.peakViewers,
+    totalViewerSessions: m.totalViewerSessions,
+    upstreamOpen: !!m.upstreamOpen,
+    totalUpstreamBytes: m.totalUpstreamBytes,
+    totalDownstreamBytes: m.totalDownstreamBytes,
+    upstreamKbps: Math.round((upstreamWindowBytes * 8) / seconds / 1000),
+    downstreamKbps: Math.round((downstreamWindowBytes * 8) / seconds / 1000),
+    upstreamRequests: m.upstreamRequests,
+    playlistRequests: m.playlistRequests,
+    segmentRequests: m.segmentRequests,
+    errors: m.errors,
+    lastError: m.lastError,
+    lastStatusCode: m.lastStatusCode,
+    lastActivityAt: m.lastActivityAt,
+    uptimeMs: Date.now() - m.startedAt,
+  };
+}
 
 function upstreamHeaders(channel, extra = {}) {
   return { ...UA, ...(channel.headers || {}), ...extra };
@@ -57,6 +158,7 @@ function sendIptvError(res, statusCode, message) {
 
 // ---- TS / raw fan-out ----
 function tsState(id) {
+  metrics(id, 'ts');
   let s = TS_CHANNELS.get(id);
   if (!s) {
     s = { clients: new Set(), upstreamReq: null, upstreamRes: null, idleTimer: null, contentType: 'video/mp2t' };
@@ -67,11 +169,15 @@ function tsState(id) {
 
 function startTsUpstream(channel, s) {
   if (s.upstreamReq) return;
+  const m = metrics(channel.id, 'ts');
+  m.upstreamRequests += 1;
+  m.upstreamOpen = true;
   const u = new URL(channel.url);
   console.log('[IPTV][TS] open upstream', channel.id, u.host);
   const req = libFor(channel.url).get(channel.url, { headers: upstreamHeaders(channel) }, (up) => {
     if (up.statusCode && up.statusCode >= 400) {
       const message = explainHttp(up.statusCode, channel.url);
+      markError(channel.id, message, up.statusCode);
       console.error('[IPTV][TS] upstream HTTP', channel.id, message);
       for (const c of s.clients) sendIptvError(c, 502, message);
       try { up.resume(); } catch {}
@@ -86,6 +192,7 @@ function startTsUpstream(channel, s) {
       }
     }
     up.on('data', (chunk) => {
+      addBytes(channel.id, chunk.length, chunk.length * s.clients.size);
       for (const c of s.clients) { try { c.write(chunk); } catch {} }
     });
     up.on('end', () => stopTsUpstream(channel, s));
@@ -96,8 +203,10 @@ function startTsUpstream(channel, s) {
       ? `Timed out while connecting to the IPTV provider. Check the URL or provider availability: ${channel.url}`
       : `Could not connect to the IPTV provider: ${e.message}. URL: ${channel.url}`;
     console.error('[IPTV][TS] upstream error', channel.id, message);
+    markError(channel.id, message);
     for (const c of s.clients) sendIptvError(c, 502, message);
     s.upstreamReq = null; s.upstreamRes = null;
+    metrics(channel.id, 'ts').upstreamOpen = false;
   });
   req.setTimeout(15000, () => req.destroy(new Error('timeout')));
   s.upstreamReq = req;
@@ -109,12 +218,16 @@ function stopTsUpstream(channel, s) {
   try { s.upstreamRes && s.upstreamRes.destroy(); } catch {}
   try { s.upstreamReq && s.upstreamReq.destroy(); } catch {}
   s.upstreamReq = null; s.upstreamRes = null;
+  metrics(channel.id, 'ts').upstreamOpen = false;
 }
 
 function serveTs(channel, req, res) {
   const s = tsState(channel.id);
+  const m = metrics(channel.id, 'ts');
+  m.totalViewerSessions += 1;
   if (s.idleTimer) { clearTimeout(s.idleTimer); s.idleTimer = null; }
   s.clients.add(res);
+  setViewers(channel.id, s.clients.size);
   if (s.upstreamRes && !res.headersSent) {
     try { res.writeHead(200, { 'Content-Type': s.contentType, 'Cache-Control': 'no-cache' }); } catch {}
   }
@@ -122,6 +235,7 @@ function serveTs(channel, req, res) {
   const cleanup = () => {
     if (!s.clients.has(res)) return;
     s.clients.delete(res);
+    setViewers(channel.id, s.clients.size);
     console.log('[IPTV][TS] client left', channel.id, 'remaining=', s.clients.size);
     if (s.clients.size === 0) {
       s.idleTimer = setTimeout(() => { stopTsUpstream(channel, s); s.idleTimer = null; }, IDLE_MS);
@@ -150,7 +264,14 @@ function touchHls(id) {
   const s = HLS_IDLE.get(id) || { lastHit: 0, idleTimer: null };
   s.lastHit = Date.now();
   if (s.idleTimer) clearTimeout(s.idleTimer);
-  s.idleTimer = setTimeout(() => { console.log('[IPTV][HLS] idle, no viewer for', id); HLS_IDLE.delete(id); }, IDLE_MS * 3);
+  s.idleTimer = setTimeout(() => {
+    console.log('[IPTV][HLS] idle, no viewer for', id);
+    const m = metrics(id, 'hls');
+    m.upstreamOpen = false;
+    m.activeViewers = 0;
+    m.hlsViewers.clear();
+    HLS_IDLE.delete(id);
+  }, IDLE_MS * 3);
   HLS_IDLE.set(id, s);
 }
 
@@ -177,14 +298,22 @@ function isPlaylistResponse(targetUrl, contentType, body) {
 async function serveHlsPlaylist(channel, playlistUrl, baseProxyUrl, req, res) {
   try {
     touchHls(channel.id);
+    touchHlsViewer(channel, req);
+    const m = metrics(channel.id, 'hls');
+    m.upstreamRequests += 1;
+    m.playlistRequests += 1;
+    m.upstreamOpen = true;
     const up = await fetchUpstream(playlistUrl, upstreamHeaders(channel));
     if (up.statusCode && up.statusCode >= 400) {
-      sendIptvError(res, 502, explainHttp(up.statusCode, playlistUrl));
+      const message = explainHttp(up.statusCode, playlistUrl);
+      markError(channel.id, message, up.statusCode);
+      sendIptvError(res, 502, message);
       try { up.resume(); } catch {}
       return;
     }
     const body = (await readAll(up)).toString('utf8');
     const rewritten = rewritePlaylist(body, playlistUrl, baseProxyUrl);
+    addBytes(channel.id, Buffer.byteLength(body), Buffer.byteLength(rewritten));
     res.writeHead(200, {
       'Content-Type': 'application/vnd.apple.mpegurl',
       'Cache-Control': 'no-cache',
@@ -196,6 +325,7 @@ async function serveHlsPlaylist(channel, playlistUrl, baseProxyUrl, req, res) {
       ? `Timed out while loading the IPTV playlist. URL: ${playlistUrl}`
       : `Could not load the IPTV playlist: ${e.message}. URL: ${playlistUrl}`;
     console.error('[IPTV][HLS] playlist error', message);
+    markError(channel.id, message);
     sendIptvError(res, 502, message);
   }
 }
@@ -203,24 +333,34 @@ async function serveHlsPlaylist(channel, playlistUrl, baseProxyUrl, req, res) {
 async function serveHlsSegment(channel, segUrl, baseProxyUrl, req, res) {
   try {
     touchHls(channel.id);
+    touchHlsViewer(channel, req);
+    const m = metrics(channel.id, 'hls');
+    m.upstreamRequests += 1;
+    m.segmentRequests += 1;
+    m.upstreamOpen = true;
     const extra = req.headers.range ? { Range: req.headers.range } : {};
     const up = await fetchUpstream(segUrl, upstreamHeaders(channel, extra));
     if (up.statusCode && up.statusCode >= 400) {
-      sendIptvError(res, 502, explainHttp(up.statusCode, segUrl));
+      const message = explainHttp(up.statusCode, segUrl);
+      markError(channel.id, message, up.statusCode);
+      sendIptvError(res, 502, message);
       try { up.resume(); } catch {}
       return;
     }
     const contentType = up.headers['content-type'] || '';
     const body = await readAll(up);
     if (isPlaylistResponse(segUrl, contentType, body)) {
+      const rewritten = rewritePlaylist(body.toString('utf8'), segUrl, baseProxyUrl);
+      addBytes(channel.id, body.length, Buffer.byteLength(rewritten));
       res.writeHead(200, {
         'Content-Type': 'application/vnd.apple.mpegurl',
         'Cache-Control': 'no-cache',
         'Access-Control-Allow-Origin': '*',
       });
-      res.end(rewritePlaylist(body.toString('utf8'), segUrl, baseProxyUrl));
+      res.end(rewritten);
       return;
     }
+    addBytes(channel.id, body.length, body.length);
     const headers = {
       'Content-Type': contentType || 'video/mp2t',
       'Cache-Control': 'no-cache',
@@ -236,6 +376,7 @@ async function serveHlsSegment(channel, segUrl, baseProxyUrl, req, res) {
       ? `Timed out while loading an IPTV segment. URL: ${segUrl}`
       : `Could not load an IPTV segment: ${e.message}. URL: ${segUrl}`;
     console.error('[IPTV][HLS] segment error', message);
+    markError(channel.id, message);
     sendIptvError(res, 502, message);
   }
 }
@@ -254,11 +395,16 @@ async function handleRequest(channel, subPath, query, req, res, baseProxyUrl) {
 function status() {
   const out = {};
   for (const [id, s] of TS_CHANNELS) {
-    out[id] = { type: 'ts', viewers: s.clients.size, upstreamOpen: !!s.upstreamReq };
+    const snap = snapshotMetrics(id);
+    out[id] = { ...snap, viewers: s.clients.size, upstreamOpen: !!s.upstreamReq };
   }
   for (const [id, s] of HLS_IDLE) {
-    out[id] = out[id] || { type: 'hls', viewers: 0, upstreamOpen: false };
+    const snap = snapshotMetrics(id);
+    out[id] = out[id] || snap;
     out[id].lastHitMs = Date.now() - s.lastHit;
+  }
+  for (const [id] of METRICS) {
+    if (!out[id]) out[id] = snapshotMetrics(id);
   }
   return out;
 }

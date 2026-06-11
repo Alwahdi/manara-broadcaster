@@ -199,6 +199,15 @@
     </div>
 
     <div class="card">
+      <div class="card-title">IPTV السحابي عبر Neon</div>
+      <p class="muted small">ضع رابط Neon Postgres لقنوات IPTV السحابية. سيقرأ التطبيق القنوات المفعلة فقط من جدول cloud_iptv_channels.</p>
+      <label class="field"><span>Neon Database URL</span><input id="neonDatabaseUrl" type="password" placeholder="postgresql://..." /></label>
+      <div class="buttons end">
+        <button class="btn primary" id="saveCloudDbBtn">حفظ قاعدة السحابة</button>
+      </div>
+    </div>
+
+    <div class="card">
       <div class="card-title">مكتبة الوسائط (TMDB)</div>
       <p class="muted small">أضف مفتاح TMDB لجلب البوسترات والملخصات تلقائياً عند الفحص.</p>
       <div class="form-grid">

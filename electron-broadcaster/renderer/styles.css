@@ -67,6 +67,16 @@ h1{font-size:16px;font-weight:900;letter-spacing:-.3px}
 .channel-card .ch-name{font-size:15px;font-weight:900;line-height:1.5}
 .led.on{background:#22c55e;box-shadow:0 0 12px #22c55e}
 .led.off{background:#64748b}
+.iptv-report{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
+.iptv-report>div{background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:8px;min-width:0}
+.iptv-report strong{display:block;font-size:13px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.iptv-report span{display:block;font-size:10px;opacity:.58;margin-top:2px}
+.iptv-details{margin-top:10px;border-top:1px solid rgba(255,255,255,.08);padding-top:8px}
+.iptv-details summary{cursor:pointer;font-size:12px;font-weight:800;color:#bfdbfe}
+.iptv-detail-grid{display:grid;grid-template-columns:130px 1fr;gap:6px 10px;margin-top:8px;font-size:12px}
+.iptv-detail-grid span{opacity:.55}
+.iptv-detail-grid b{font-weight:800;overflow-wrap:anywhere}
+.error-text{color:#fca5a5}
 
 .empty-state{text-align:center;padding:60px 20px;background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.12);border-radius:22px}
 .empty-state .big-icon{font-size:60px;opacity:.6;margin-bottom:10px}

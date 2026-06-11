@@ -14,6 +14,7 @@ const SUPABASE_ANON_KEY = process.env.MANARA_SUPABASE_ANON_KEY ||
 const SUPABASE_PUBLIC_REST = SUPABASE_URL +
   '/rest/v1/cloud_iptv_channels?select=id,name,url,logo_url,category,headers,is_active,sort_order&is_active=eq.true&order=sort_order.asc';
 const REFRESH_MS = 60 * 60 * 1000; // 1h
+let neonDatabaseUrl = process.env.MANARA_NEON_DATABASE_URL || '';
 
 let cachePath = null;
 let cached = []; // [{id,name,url,logo,category,headers}]
@@ -59,21 +60,56 @@ function fetchJson(url, headers = {}) {
   });
 }
 
+function normalizeRows(rows) {
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    url: r.url,
+    logo: r.logo || r.logo_url || '',
+    category: r.category || '',
+    headers: r.headers || {},
+  })).filter((r) => r.id && r.name && r.url);
+}
+
+async function fetchFromNeon() {
+  if (!neonDatabaseUrl) return null;
+  const { neon } = await import('@neondatabase/serverless');
+  const sql = neon(neonDatabaseUrl);
+  const rows = await sql`
+    select id, name, url, logo_url, category, headers
+    from cloud_iptv_channels
+    where is_active = true
+    order by sort_order asc, name asc
+  `;
+  return normalizeRows(rows);
+}
+
+function setNeonDatabaseUrl(url) {
+  neonDatabaseUrl = String(url || '').trim() || process.env.MANARA_NEON_DATABASE_URL || '';
+}
+
 async function refresh(licenseKey) {
   const failures = [];
+  try {
+    const rows = await fetchFromNeon();
+    if (Array.isArray(rows)) {
+      cached = rows;
+      lastFetch = Date.now();
+      lastStatus = { state: 'ok', at: new Date().toISOString(), error: '', count: cached.length, source: 'neon-postgres' };
+      persist();
+      console.log('[cloud-iptv] refreshed from Neon', cached.length, 'channels');
+      return cached;
+    }
+  } catch (e) {
+    failures.push(`neon postgres: ${e.message}`);
+  }
+
   try {
     const url = CLOUD_REST + (licenseKey ? `?license_key=${encodeURIComponent(licenseKey)}` : '');
     const payload = await fetchJson(url, licenseKey ? { 'X-License-Key': licenseKey } : {});
     const rows = Array.isArray(payload) ? payload : payload.channels;
     if (Array.isArray(rows)) {
-      cached = rows.map((r) => ({
-        id: r.id,
-        name: r.name,
-        url: r.url,
-        logo: r.logo || '',
-        category: r.category || '',
-        headers: r.headers || {},
-      }));
+      cached = normalizeRows(rows);
       lastFetch = Date.now();
       lastStatus = { state: 'ok', at: new Date().toISOString(), error: '', count: cached.length, source: CLOUD_REST };
       persist();
@@ -90,14 +126,7 @@ async function refresh(licenseKey) {
       Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
     });
     if (Array.isArray(rows)) {
-      cached = rows.map((r) => ({
-        id: r.id,
-        name: r.name,
-        url: r.url,
-        logo: r.logo_url || '',
-        category: r.category || '',
-        headers: r.headers || {},
-      }));
+      cached = normalizeRows(rows);
       lastFetch = Date.now();
       lastStatus = { state: 'ok', at: new Date().toISOString(), error: '', count: cached.length, source: 'supabase-rest' };
       persist();
@@ -142,4 +171,4 @@ function getById(id) {
   return cached.find((c) => String(c.id) === String(id)) || null;
 }
 
-module.exports = { setCachePath, refresh, startAutoRefresh, list, getById, status };
+module.exports = { setCachePath, setNeonDatabaseUrl, refresh, startAutoRefresh, list, getById, status };

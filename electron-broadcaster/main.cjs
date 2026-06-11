@@ -101,6 +101,7 @@ function defaultSettings() {
     libraryPort: 8420,
     adminUsername: 'admin',
     adminPassword: 'admin',
+    neonDatabaseUrl: '',
     channels: [],
     localIptvChannels: [],
   };
@@ -346,6 +347,13 @@ function publicIptvChannels() {
 }
 
 function createAppIcon() {
+  const iconPath = path.join(__dirname, 'assets', 'icon.ico');
+  try {
+    if (fs.existsSync(iconPath)) {
+      const icon = nativeImage.createFromPath(iconPath);
+      if (!icon.isEmpty()) return icon;
+    }
+  } catch {}
   const svg = `
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
   <rect width="64" height="64" rx="14" fill="#101936"/>
@@ -470,6 +478,7 @@ ipcMain.handle('save-settings', (_e, next) => {
     }
 
     saveSettingsAndBackup('settings');
+    try { cloudIptv.setNeonDatabaseUrl(settings.neonDatabaseUrl || ''); } catch {}
     console.log('[Manara] settings saved — keys:', Object.keys(rest).join(',') || '(none)');
     applyLoginItem();
     if (serverInfo && serverInfo.setBrand) {
@@ -723,6 +732,7 @@ app.whenReady().then(() => {
   // Cloud IPTV sync (admin-managed channels) — refresh IMMEDIATELY at startup
   try {
     cloudIptv.setCachePath(path.join(app.getPath('userData'), 'cloud-iptv-cache.json'));
+    cloudIptv.setNeonDatabaseUrl(settings.neonDatabaseUrl || '');
     // fire and forget immediate fetch so channels appear right after launch
     cloudIptv.refresh(settings.licenseKey || '').then((ch) => {
       console.log('[Manara] initial cloud-iptv fetch:', (ch || []).length, 'channels');

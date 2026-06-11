@@ -99,6 +99,7 @@ function hydrateSettingsForm() {
   if ($('libraryPort')) $('libraryPort').value = settings.libraryPort || 8420;
   if ($('adminUsername')) $('adminUsername').value = settings.adminUsername || 'admin';
   if ($('adminPassword')) $('adminPassword').value = settings.adminPassword || 'admin';
+  if ($('neonDatabaseUrl')) $('neonDatabaseUrl').value = settings.neonDatabaseUrl || '';
   renderAdminLinks();
 }
 
@@ -141,6 +142,7 @@ $('saveSettingsBtn').onclick = async () => {
     libraryPort: Number($('libraryPort')?.value) || 8420,
     adminUsername: $('adminUsername')?.value.trim() || 'admin',
     adminPassword: $('adminPassword')?.value || 'admin',
+    neonDatabaseUrl: $('neonDatabaseUrl')?.value.trim() || '',
   });
   toast('تم حفظ الإعدادات', 'ok');
 };
@@ -150,6 +152,12 @@ $('saveAdminBtn')?.addEventListener('click', async () => {
     adminPassword: $('adminPassword').value || 'admin',
   });
   toast('تم حفظ بيانات الإدارة', 'ok');
+});
+$('saveCloudDbBtn')?.addEventListener('click', async () => {
+  await persistSettings({ neonDatabaseUrl: $('neonDatabaseUrl').value.trim() });
+  await window.broadcaster.cloudIptvRefresh?.();
+  await refreshIptvList();
+  toast('تم حفظ قاعدة IPTV السحابية وتحديث القنوات', 'ok');
 });
 $('restartServerBtn').onclick = async () => {
   const port = Number($('port').value) || 8080;
@@ -778,9 +786,29 @@ async function refreshIptvList() {
         </div>
         <div style="display:flex;gap:6px;align-items:center">
           <span class="led ${st.upstreamOpen ? 'on' : 'off'}"></span>
-          <span class="muted small">${st.viewers || 0} مشاهد · ${st.upstreamOpen ? 'متّصل' : 'عند الطلب'}</span>
+          <span class="muted small">${st.viewers || 0} مشاهد الآن · ${st.upstreamOpen ? 'متّصل' : 'عند الطلب'}</span>
         </div>
       </div>
+      <div class="iptv-report">
+        <div><strong>${st.viewers || 0}</strong><span>نشط الآن</span></div>
+        <div><strong>${st.peakViewers || 0}</strong><span>أعلى مشاهدة</span></div>
+        <div><strong>${formatKbps(st.upstreamKbps)}</strong><span>سحب إنترنت</span></div>
+        <div><strong>${formatKbps(st.downstreamKbps)}</strong><span>توزيع LAN</span></div>
+        <div><strong>${formatBytes(st.totalUpstreamBytes)}</strong><span>إجمالي الإنترنت</span></div>
+        <div><strong>${formatBytes(st.totalDownstreamBytes)}</strong><span>إجمالي LAN</span></div>
+      </div>
+      <details class="iptv-details">
+        <summary>تقرير مفصل</summary>
+        <div class="iptv-detail-grid">
+          <span>النوع</span><b>${escapeHtml(st.type || (/\.m3u8/i.test(ch.url) ? 'hls' : 'ts'))}</b>
+          <span>جلسات المشاهدة</span><b>${st.totalViewerSessions || 0}</b>
+          <span>طلبات المصدر</span><b>${st.upstreamRequests || 0}</b>
+          <span>طلبات Playlist</span><b>${st.playlistRequests || 0}</b>
+          <span>طلبات Segments</span><b>${st.segmentRequests || 0}</b>
+          <span>الأخطاء</span><b>${st.errors || 0}</b>
+          ${st.lastError ? `<span>آخر خطأ</span><b class="error-text">${escapeHtml(st.lastError)}</b>` : ''}
+        </div>
+      </details>
       <div class="ch-actions" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn primary" data-act="play" ${isEnabled ? '' : 'disabled'}>تشغيل</button>
         <button class="btn ghost" data-act="copy">📋 نسخ رابط LAN</button>
@@ -808,6 +836,19 @@ async function refreshIptvList() {
 }
 
 function escapeHtml(s) { return String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+function formatBytes(bytes) {
+  const n = Number(bytes) || 0;
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+function formatKbps(kbps) {
+  const n = Number(kbps) || 0;
+  return n >= 1000 ? `${(n / 1000).toFixed(2)} Mbps` : `${n} kbps`;
+}
 
 let _hls = null;
 async function readProxyError(url) {
