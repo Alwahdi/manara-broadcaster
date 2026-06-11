@@ -1,0 +1,37 @@
+name: Release Windows App
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build and publish Windows release
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: electron-broadcaster
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: electron-broadcaster/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Publish release artifacts
+        run: npm run release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

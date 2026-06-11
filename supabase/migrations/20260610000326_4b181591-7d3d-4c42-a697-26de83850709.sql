@@ -1,0 +1,2 @@
+REVOKE EXECUTE ON FUNCTION public.sync_cloud_iptv_public_channel() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.get_cloud_iptv_channels(text) FROM PUBLIC, anon, authenticated, service_role;

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<title>البث المحلي</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;800;900&display=swap" rel="stylesheet" />
+<style>
+  :root { --accent:#3b82f6; --accent2:#8b5cf6; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{min-height:100%;font-family:'Cairo',system-ui,sans-serif;background:#070b1e;color:#e8eaf6;-webkit-font-smoothing:antialiased}
+  body{background:radial-gradient(1200px 600px at 80% -10%, color-mix(in oklab, var(--accent) 22%, transparent) 0%, transparent 60%),
+                  radial-gradient(900px 500px at -10% 110%, color-mix(in oklab, var(--accent2) 22%, transparent) 0%, transparent 60%),
+                  #070b1e;min-height:100dvh}
+  .wrap{max-width:1100px;margin:0 auto;padding:28px 18px 80px}
+  header.hero{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:22px;background:rgba(255,255,255,.04);backdrop-filter:blur(22px) saturate(180%);border:1px solid rgba(255,255,255,.08)}
+  .logo{width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 0 30px color-mix(in oklab, var(--accent) 55%, transparent);display:grid;place-items:center;color:#fff;font-weight:900;font-size:20px;letter-spacing:-1px}
+  .brand h1{font-size:18px;font-weight:900;letter-spacing:-.3px}
+  .brand p{font-size:12px;opacity:.65;font-weight:600;margin-top:2px}
+  .live-pill{margin-right:auto;display:inline-flex;align-items:center;gap:8px;padding:8px 14px;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);color:#fca5a5;border-radius:99px;font-size:12px;font-weight:800}
+  .live-pill .dot{width:8px;height:8px;border-radius:50%;background:#ef4444;box-shadow:0 0 10px #ef4444;animation:pulse 1.4s infinite}
+  @keyframes pulse{50%{opacity:.4}}
+
+  .title-row{margin:28px 4px 14px;display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+  .title-row h2{font-size:24px;font-weight:900;letter-spacing:-.4px}
+  .title-row span{font-size:12px;opacity:.6;font-weight:700}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+  .card{position:relative;border-radius:20px;overflow:hidden;background:rgba(255,255,255,.04);backdrop-filter:blur(22px) saturate(180%);border:1px solid rgba(255,255,255,.1);transition:.18s;cursor:pointer;display:flex;flex-direction:column;text-decoration:none;color:inherit}
+  .card:hover{transform:translateY(-3px);border-color:color-mix(in oklab, var(--accent) 45%, transparent);box-shadow:0 24px 60px -20px color-mix(in oklab, var(--accent) 40%, transparent)}
+  .thumb{aspect-ratio:16/9;background:linear-gradient(135deg, color-mix(in oklab, var(--accent) 30%, #0b1130), color-mix(in oklab, var(--accent2) 30%, #0b1130));display:grid;place-items:center;font-size:54px;position:relative}
+  .thumb .live-tag{position:absolute;top:10px;right:10px;background:#ef4444;color:#fff;font-size:10px;font-weight:900;letter-spacing:.5px;padding:4px 8px;border-radius:6px;display:flex;align-items:center;gap:5px}
+  .thumb .live-tag .dot{width:6px;height:6px;background:#fff;border-radius:50%;animation:pulse 1.4s infinite}
+  .thumb .off-tag{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.55);color:#fff;font-size:10px;font-weight:800;padding:4px 8px;border-radius:6px}
+  .thumb .v-tag{position:absolute;bottom:10px;left:10px;background:rgba(0,0,0,.55);color:#fff;font-size:11px;font-weight:800;padding:4px 8px;border-radius:6px;display:flex;align-items:center;gap:4px}
+  .body{padding:14px 14px 16px}
+  .body h3{font-size:16px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px}
+  .body p{font-size:12px;opacity:.65;line-height:1.6;font-weight:500;min-height:1.2em}
+
+  .empty{margin-top:40px;text-align:center;padding:50px 20px;background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.12);border-radius:24px}
+  .empty .big{font-size:60px;margin-bottom:10px;opacity:.7}
+  .empty h2{font-size:18px;margin-bottom:6px}
+  .empty p{opacity:.65;font-size:13px;line-height:1.7}
+
+  footer{margin-top:30px;text-align:center;font-size:11px;opacity:.5;font-weight:700;letter-spacing:.4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <div class="logo" id="logoBox">T</div>
+    <div class="brand">
+      <h1 id="brandName">TeraNet</h1>
+      <p id="brandTagline">بث محلي عبر شبكة Wi-Fi</p>
+    </div>
+    <span class="live-pill"><span class="dot"></span> البث المحلي</span>
+  </header>
+
+  <div class="title-row">
+    <h2>القنوات المتاحة</h2>
+    <span id="count">— قناة</span>
+  </div>
+
+  <div id="grid" class="grid"></div>
+  <div id="empty" class="empty" style="display:none">
+    <div class="big">📡</div>
+    <h2>لا توجد قنوات حالياً</h2>
+    <p>سيتم عرض القنوات هنا عندما يبدأ البث من جهاز الأدمن.<br/>تأكد أنك متصل بنفس شبكة Wi-Fi.</p>
+  </div>
+
+  <footer id="footerName">— مدعوم محلياً، بدون استهلاك إنترنت —</footer>
+</div>
+
+<script>
+async function load() {
+  try {
+    const r = await fetch('/api/channels', { cache: 'no-store' });
+    const data = await r.json();
+    const brand = data.brand || {};
+    document.documentElement.style.setProperty('--accent', brand.accent || '#3b82f6');
+    document.documentElement.style.setProperty('--accent2', brand.accent2 || '#8b5cf6');
+    document.getElementById('brandName').textContent = brand.brandName || 'TeraNet';
+    document.getElementById('brandTagline').textContent = brand.brandTagline || '';
+    document.getElementById('logoBox').textContent = (brand.brandName || 'T').trim().charAt(0).toUpperCase();
+    document.title = (brand.brandName || 'TeraNet') + ' — البث المحلي';
+    document.getElementById('footerName').textContent = '— ' + (brand.brandName || 'TeraNet') + ' • مدعوم محلياً، بدون استهلاك إنترنت —';
+
+    const chs = data.channels || [];
+    document.getElementById('count').textContent = chs.length + ' قناة';
+    const grid = document.getElementById('grid');
+    const empty = document.getElementById('empty');
+    grid.innerHTML = '';
+    if (!chs.length) { empty.style.display = 'block'; return; }
+    empty.style.display = 'none';
+    for (const c of chs) {
+      const a = document.createElement('a');
+      a.className = 'card';
+      const isIptv = c.type === 'iptv';
+      a.href = isIptv
+        ? '/iptv-player?id=' + encodeURIComponent(c.id) + '&name=' + encodeURIComponent(c.name || 'IPTV')
+        : '/watch?ch=' + encodeURIComponent(c.id);
+      const liveTag = isIptv
+        ? '<span class="live-tag"><span class="dot"></span>IPTV</span>'
+        : (c.live ? '<span class="live-tag"><span class="dot"></span>LIVE</span>' : '<span class="off-tag">غير متاحة الآن</span>');
+      const vTag = c.live && !isIptv ? '<span class="v-tag">👁 ' + (c.viewers||0) + '</span>' : (isIptv ? '<span class="v-tag">عند الطلب</span>' : '');
+      a.innerHTML = `
+        <div class="thumb">📺${liveTag}${vTag}</div>
+        <div class="body"><h3>${escapeHtml(c.name)}</h3><p>${escapeHtml(c.description || '')}</p></div>
+      `;
+      grid.appendChild(a);
+    }
+  } catch (e) { console.error(e); }
+}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+load();
+setInterval(load, 3000);
+</script>
+</body>
+</html>

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<title>IPTV</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#070b1e;color:#eef2ff}
+  body{display:grid;place-items:center;padding:18px;background:radial-gradient(900px 480px at 80% -10%,rgba(37,99,235,.25),transparent 60%),#070b1e}
+  main{width:min(1080px,100%);border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);border-radius:12px;overflow:hidden}
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.1)}
+  h1{font-size:16px;font-weight:800}
+  a{color:#bfdbfe;text-decoration:none;font-size:13px}
+  video{display:block;width:100%;max-height:72vh;background:#000}
+  .info{padding:14px 16px;font-size:13px;line-height:1.7;color:#cbd5e1}
+  .error{margin-top:8px;padding:12px;border:1px solid rgba(248,113,113,.4);background:rgba(127,29,29,.22);border-radius:8px;color:#fecaca;display:none;text-align:right}
+  code{direction:ltr;unicode-bidi:bidi-override;word-break:break-all;color:#bfdbfe}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 id="title">IPTV</h1>
+    <a href="/">العودة للقنوات</a>
+  </header>
+  <video id="video" controls autoplay playsinline></video>
+  <div class="info">
+    يعمل هذا البث عبر خادم Manara المحلي. يتم سحب مصدر IPTV عند الطلب فقط.
+    <div id="url"></div>
+    <div id="error" class="error"></div>
+  </div>
+</main>
+<script src="/hls.min.js"></script>
+<script>
+const params = new URLSearchParams(location.search);
+const id = params.get('id') || '';
+const name = params.get('name') || 'IPTV';
+const streamUrl = '/iptv/' + encodeURIComponent(id);
+const video = document.getElementById('video');
+const errorBox = document.getElementById('error');
+document.getElementById('title').textContent = name;
+document.title = name + ' - IPTV';
+document.getElementById('url').innerHTML = '<code>' + location.origin + streamUrl + '</code>';
+
+function showError(message) {
+  errorBox.style.display = 'block';
+  errorBox.textContent = message || 'تعذر تشغيل IPTV.';
+}
+
+async function readProxyError(url) {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+    const r = await fetch(url, { cache:'no-store', headers:{ Range:'bytes=0-0' }, signal:controller.signal });
+    clearTimeout(timer);
+    const header = r.headers.get('x-manara-error');
+    if (header) return decodeURIComponent(header);
+    if (!r.ok) return await r.text() || ('HTTP ' + r.status);
+  } catch {}
+  return '';
+}
+
+if (!id) {
+  showError('لم يتم تحديد قناة IPTV.');
+} else if (window.Hls && Hls.isSupported()) {
+  const hls = new Hls({ lowLatencyMode:true, manifestLoadingTimeOut:15000, levelLoadingTimeOut:15000, fragLoadingTimeOut:20000 });
+  hls.attachMedia(video);
+  hls.on(Hls.Events.MEDIA_ATTACHED, () => hls.loadSource(streamUrl));
+  hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+  hls.on(Hls.Events.ERROR, async (_event, data) => {
+    if (!data.fatal) return;
+    const failedUrl = data?.context?.url || data?.frag?.url || streamUrl;
+    const proxyMessage = await readProxyError(failedUrl);
+    showError(proxyMessage || 'تعذر تشغيل IPTV. المصدر قد يكون متوقفاً أو غير مدعوم على هذا الجهاز.');
+    if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+      try { hls.recoverMediaError(); } catch {}
+    }
+  });
+} else {
+  video.src = streamUrl;
+  video.onerror = async () => showError(await readProxyError(streamUrl) || 'صيغة IPTV غير مدعومة على هذا المتصفح.');
+  video.play().catch(() => {});
+}
+</script>
+</body>
+</html>

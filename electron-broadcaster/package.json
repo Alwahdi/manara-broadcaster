@@ -1,0 +1,76 @@
+{
+  "name": "manara-broadcaster",
+  "productName": "Manara",
+  "version": "2.5.0",
+  "description": "Manara — Local LAN broadcaster + media library. Zero-internet streaming for hotel/hospital/cafe networks.",
+  "main": "main.cjs",
+  "author": {
+    "name": "Manara",
+    "email": "support@manara.app"
+  },
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win zip --x64 --publish never",
+    "release": "electron-builder --win zip --x64 --publish always"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.10.0",
+    "electron-store": "^11.0.2",
+    "electron-updater": "^6.8.3",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "electron": "38",
+    "electron-builder": "^26.8.1"
+  },
+  "build": {
+    "appId": "app.manara.broadcaster",
+    "productName": "Manara",
+    "asar": true,
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**"
+    ],
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "library/**/*",
+      "licensing/**/*",
+      "renderer/**/*",
+      "server/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Manara-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Manara"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Alwahdi",
+      "repo": "manara-broadcaster",
+      "releaseType": "release"
+    }
+  }
+}
