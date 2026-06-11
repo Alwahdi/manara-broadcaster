@@ -68,7 +68,7 @@ function startSignalingServer({ port = 8080, mediaHandler = null, getIptvChannel
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true })); return;
     }
-    if (mediaHandler && /^(\/iptv\/|\/admin(?:\?|$)|\/api\/admin\/|\/media\/|\/sub\/)/.test(url)) {
+    if (mediaHandler && /^(\/iptv\/|\/admin(?:\?|$)|\/api\/admin\/|\/library(?:\?|$)|\/api\/library(?:\?|$)|\/media\/|\/sub\/)/.test(url)) {
       return mediaHandler(req, res);
     }
     res.writeHead(404); res.end('Not Found');

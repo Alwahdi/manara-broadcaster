@@ -134,13 +134,15 @@ function saveChannelsFile() {
 
 // ---------- Media library (sqlite preferred, JSON fallback) ----------
 let _mediaFallbackPath = null;
-let _mediaFallback = { media_items: [], library_paths: [] };
+let _mediaFallback = { media_items: [], library_paths: [], watch_progress: {}, subtitles: [] };
 function loadMediaFallback(dbPath) {
   _mediaFallbackPath = dbPath + '.media.json';
   try {
     if (fs.existsSync(_mediaFallbackPath)) {
       _mediaFallback = { ..._mediaFallback, ...JSON.parse(fs.readFileSync(_mediaFallbackPath, 'utf8')) };
     }
+    if (!_mediaFallback.watch_progress || typeof _mediaFallback.watch_progress !== 'object') _mediaFallback.watch_progress = {};
+    if (!Array.isArray(_mediaFallback.subtitles)) _mediaFallback.subtitles = [];
   } catch (e) { console.error('[Manara] media fallback read failed:', e.message); }
 }
 function saveMediaFallback() {
@@ -158,6 +160,7 @@ function init(dbPath, seed = {}) {
   // Channels file lives next to the db, but is independent of sqlite.
   _channelsPath = path.join(path.dirname(dbPath), 'manara-channels.json');
   loadChannelsFile(seed);
+  loadAdminState(path.dirname(dbPath));
 
   if (!Database) {
     loadMediaFallback(dbPath);
@@ -253,7 +256,50 @@ function removePath(id) {
 
 // ---- media ----
 function upsertMedia(item) {
-  if (!_db) return null;
+  if (!_db) {
+    const now = Date.now();
+    const existing = _mediaFallback.media_items.find((r) => r.path === item.path);
+    if (existing) {
+      Object.assign(existing, {
+        kind: item.kind,
+        title: item.title,
+        year: item.year ?? null,
+        season: item.season ?? null,
+        episode: item.episode ?? null,
+        tmdb_id: item.tmdb_id ?? null,
+        poster_url: item.poster_url ?? null,
+        backdrop_url: item.backdrop_url ?? null,
+        overview: item.overview ?? null,
+        rating: item.rating ?? null,
+        duration: item.duration ?? null,
+        size: item.size ?? null,
+        scanned_at: now,
+      });
+      saveMediaFallback();
+      return existing.id;
+    }
+    const id = (_mediaFallback.media_items.reduce((m, r) => Math.max(m, Number(r.id) || 0), 0)) + 1;
+    _mediaFallback.media_items.push({
+      id,
+      path: item.path,
+      kind: item.kind,
+      title: item.title,
+      year: item.year ?? null,
+      season: item.season ?? null,
+      episode: item.episode ?? null,
+      tmdb_id: item.tmdb_id ?? null,
+      poster_url: item.poster_url ?? null,
+      backdrop_url: item.backdrop_url ?? null,
+      overview: item.overview ?? null,
+      rating: item.rating ?? null,
+      duration: item.duration ?? null,
+      size: item.size ?? null,
+      added_at: now,
+      scanned_at: now,
+    });
+    saveMediaFallback();
+    return id;
+  }
   const now = Date.now();
   const existing = db().prepare('SELECT id, added_at FROM media_items WHERE path = ?').get(item.path);
   if (existing) {
@@ -274,7 +320,18 @@ function upsertMedia(item) {
   return r.lastInsertRowid;
 }
 function listMedia({ kind, q, limit = 200 } = {}) {
-  if (!_db) return [];
+  if (!_db) {
+    const query = String(q || '').trim().toLowerCase();
+    return _mediaFallback.media_items
+      .filter((item) => !kind || item.kind === kind)
+      .filter((item) => !query || String(item.title || '').toLowerCase().includes(query))
+      .sort((a, b) => Number(b.added_at || 0) - Number(a.added_at || 0))
+      .slice(0, Math.max(1, Number(limit) || 200))
+      .map((item) => {
+        const progress = _mediaFallback.watch_progress[String(item.id)] || {};
+        return { ...item, position: progress.position || 0, wp_duration: progress.duration || 0 };
+      });
+  }
   let sql = `SELECT m.*, wp.position, wp.duration AS wp_duration FROM media_items m
              LEFT JOIN watch_progress wp ON wp.media_id = m.id WHERE 1=1`;
   const params = [];
@@ -284,24 +341,219 @@ function listMedia({ kind, q, limit = 200 } = {}) {
   params.push(limit);
   return db().prepare(sql).all(...params);
 }
-function getMedia(id) { return _db ? db().prepare('SELECT * FROM media_items WHERE id = ?').get(id) : null; }
+function getMedia(id) {
+  if (!_db) return _mediaFallback.media_items.find((r) => String(r.id) === String(id)) || null;
+  return db().prepare('SELECT * FROM media_items WHERE id = ?').get(id);
+}
 function deleteMissing(existingPaths) {
-  if (!_db || !existingPaths.length) return;
+  if (!_db) {
+    const keep = new Set(existingPaths || []);
+    _mediaFallback.media_items = _mediaFallback.media_items.filter((item) => keep.has(item.path));
+    const mediaIds = new Set(_mediaFallback.media_items.map((item) => String(item.id)));
+    _mediaFallback.subtitles = _mediaFallback.subtitles.filter((sub) => mediaIds.has(String(sub.media_id)));
+    for (const key of Object.keys(_mediaFallback.watch_progress)) {
+      if (!mediaIds.has(String(key))) delete _mediaFallback.watch_progress[key];
+    }
+    saveMediaFallback();
+    return;
+  }
+  if (!existingPaths.length) return;
   const placeholders = existingPaths.map(() => '?').join(',');
   db().prepare(`DELETE FROM media_items WHERE path NOT IN (${placeholders})`).run(...existingPaths);
 }
 function setProgress(mediaId, position, duration) {
-  if (!_db) return;
+  if (!_db) {
+    _mediaFallback.watch_progress[String(mediaId)] = {
+      media_id: Number(mediaId),
+      position: Number(position) || 0,
+      duration: Number(duration) || 0,
+      updated_at: Date.now(),
+    };
+    saveMediaFallback();
+    return;
+  }
   db().prepare(`INSERT INTO watch_progress (media_id, position, duration, updated_at) VALUES (?,?,?,?)
     ON CONFLICT(media_id) DO UPDATE SET position=excluded.position, duration=excluded.duration, updated_at=excluded.updated_at`)
     .run(mediaId, position, duration, Date.now());
 }
 function addSubtitle(mediaId, lang, p, label) {
-  if (!_db) return;
+  if (!_db) {
+    const exists = _mediaFallback.subtitles.find((sub) => String(sub.media_id) === String(mediaId) && sub.path === p);
+    if (exists) return;
+    const id = (_mediaFallback.subtitles.reduce((m, r) => Math.max(m, Number(r.id) || 0), 0)) + 1;
+    _mediaFallback.subtitles.push({ id, media_id: Number(mediaId), lang, path: p, label: label || null });
+    saveMediaFallback();
+    return;
+  }
   db().prepare('INSERT INTO subtitles (media_id, lang, path, label) VALUES (?,?,?,?)').run(mediaId, lang, p, label || null);
 }
-function listSubtitles(mediaId) { return _db ? db().prepare('SELECT * FROM subtitles WHERE media_id = ?').all(mediaId) : []; }
-function getSubtitle(id) { return _db ? db().prepare('SELECT * FROM subtitles WHERE id = ?').get(id) : null; }
+function listSubtitles(mediaId) {
+  if (!_db) return _mediaFallback.subtitles.filter((sub) => String(sub.media_id) === String(mediaId));
+  return db().prepare('SELECT * FROM subtitles WHERE media_id = ?').all(mediaId);
+}
+function getSubtitle(id) {
+  if (!_db) return _mediaFallback.subtitles.find((sub) => String(sub.id) === String(id)) || null;
+  return db().prepare('SELECT * FROM subtitles WHERE id = ?').get(id);
+}
+
+// ---- LAN admin state (sessions, blocklist, access logs) ----
+let _adminStatePath = null;
+let _adminState = {
+  sessions: {},
+  blocks: [],
+  logs: [],
+  blockedMessage: 'Stream is not available right now.',
+};
+
+function normalizeAdminState(raw = {}) {
+  return {
+    sessions: raw.sessions && typeof raw.sessions === 'object' ? raw.sessions : {},
+    blocks: Array.isArray(raw.blocks) ? raw.blocks : [],
+    logs: Array.isArray(raw.logs) ? raw.logs.slice(-600) : [],
+    blockedMessage: String(raw.blockedMessage || 'Stream is not available right now.').slice(0, 300),
+  };
+}
+
+function loadAdminState(baseDir) {
+  _adminStatePath = path.join(baseDir, 'manara-admin-state.json');
+  try {
+    if (fs.existsSync(_adminStatePath)) {
+      _adminState = normalizeAdminState(JSON.parse(fs.readFileSync(_adminStatePath, 'utf8')));
+    }
+  } catch (e) {
+    console.error('[Manara] admin state read failed:', e.message);
+  }
+}
+
+function saveAdminState() {
+  if (!_adminStatePath) return;
+  try {
+    fs.mkdirSync(path.dirname(_adminStatePath), { recursive: true });
+    const tmp = _adminStatePath + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(_adminState, null, 2));
+    fs.renameSync(tmp, _adminStatePath);
+  } catch (e) {
+    console.error('[Manara] admin state write failed:', e.message);
+  }
+}
+
+function cleanSessionKey(value) {
+  return String(value || '').trim().slice(0, 160) || 'unknown';
+}
+
+function addAccessLog(entry = {}) {
+  const row = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+    at: Date.now(),
+    ip: cleanSessionKey(entry.ip),
+    userAgent: String(entry.userAgent || '').slice(0, 300),
+    action: String(entry.action || 'request').slice(0, 60),
+    targetType: String(entry.targetType || '').slice(0, 40),
+    targetId: String(entry.targetId || '').slice(0, 120),
+    targetName: String(entry.targetName || '').slice(0, 180),
+    bytes: Math.max(0, Number(entry.bytes) || 0),
+    status: Number(entry.status) || 200,
+    message: String(entry.message || '').slice(0, 240),
+  };
+  _adminState.logs.push(row);
+  _adminState.logs = _adminState.logs.slice(-600);
+  saveAdminState();
+  return row;
+}
+
+function touchSession({ ip, userAgent, path: requestPath, targetType, targetId, targetName } = {}) {
+  const key = cleanSessionKey(ip);
+  const now = Date.now();
+  const session = _adminState.sessions[key] || {
+    ip: key,
+    userAgent: '',
+    firstSeenAt: now,
+    lastSeenAt: now,
+    requests: 0,
+    bytes: 0,
+    targets: {},
+  };
+  session.userAgent = String(userAgent || session.userAgent || '').slice(0, 300);
+  session.path = String(requestPath || session.path || '').slice(0, 220);
+  session.targetType = String(targetType || session.targetType || '').slice(0, 40);
+  session.targetId = String(targetId || session.targetId || '').slice(0, 120);
+  session.targetName = String(targetName || session.targetName || '').slice(0, 180);
+  session.requests = Number(session.requests || 0) + 1;
+  session.lastSeenAt = now;
+  if (targetId) {
+    const targetKey = `${targetType || 'stream'}:${targetId}`;
+    session.targets[targetKey] = (Number(session.targets[targetKey]) || 0) + 1;
+  }
+  _adminState.sessions[key] = session;
+  saveAdminState();
+  return session;
+}
+
+function addSessionBytes(ip, bytes) {
+  const key = cleanSessionKey(ip);
+  const session = _adminState.sessions[key];
+  if (!session) return;
+  session.bytes = Number(session.bytes || 0) + Math.max(0, Number(bytes) || 0);
+  session.lastSeenAt = Date.now();
+  saveAdminState();
+}
+
+function listSessions() {
+  return Object.values(_adminState.sessions)
+    .sort((a, b) => Number(b.lastSeenAt || 0) - Number(a.lastSeenAt || 0))
+    .slice(0, 200);
+}
+
+function listAccessLogs(limit = 200) {
+  return _adminState.logs.slice(-Math.max(1, Number(limit) || 200)).reverse();
+}
+
+function listBlocks() {
+  return _adminState.blocks.slice().sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+}
+
+function addBlock({ type = 'ip', identifier, reason = '' } = {}) {
+  const cleanType = ['ip', 'userAgent'].includes(type) ? type : 'ip';
+  const cleanIdentifier = cleanSessionKey(identifier);
+  const existing = _adminState.blocks.find((b) => b.type === cleanType && b.identifier === cleanIdentifier);
+  if (existing) return existing;
+  const row = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+    type: cleanType,
+    identifier: cleanIdentifier,
+    reason: String(reason || '').slice(0, 220),
+    createdAt: Date.now(),
+  };
+  _adminState.blocks.push(row);
+  saveAdminState();
+  return row;
+}
+
+function removeBlock(id) {
+  const before = _adminState.blocks.length;
+  _adminState.blocks = _adminState.blocks.filter((b) => String(b.id) !== String(id));
+  if (_adminState.blocks.length !== before) saveAdminState();
+}
+
+function isBlocked({ ip, userAgent } = {}) {
+  const cleanIp = cleanSessionKey(ip);
+  const ua = String(userAgent || '');
+  return _adminState.blocks.find((b) => {
+    if (b.type === 'ip') return b.identifier === cleanIp;
+    if (b.type === 'userAgent') return ua.includes(b.identifier);
+    return false;
+  }) || null;
+}
+
+function blockedMessage() {
+  return _adminState.blockedMessage || 'Stream is not available right now.';
+}
+
+function setBlockedMessage(message) {
+  _adminState.blockedMessage = String(message || 'Stream is not available right now.').slice(0, 300);
+  saveAdminState();
+  return _adminState.blockedMessage;
+}
 
 // ---- iptv channels (JSON-backed, robust) ----
 function listIptv() {
@@ -447,6 +699,7 @@ function diagnostics() {
     lastChannelSaveError: _lastChannelSaveError,
     sqliteAvailable: !!_db,
     mediaFallbackPath: _mediaFallbackPath,
+    adminStatePath: _adminStatePath,
   };
 }
 
@@ -457,5 +710,7 @@ module.exports = {
   setProgress, addSubtitle, listSubtitles, getSubtitle,
   listIptv, getIptv, addIptv, updateIptv, removeIptv,
   listBroadcastChannels, upsertBroadcastChannel, setBroadcastChannels, removeBroadcastChannel,
+  touchSession, addSessionBytes, addAccessLog, listSessions, listAccessLogs,
+  listBlocks, addBlock, removeBlock, isBlocked, blockedMessage, setBlockedMessage,
   replaceAllChannels, exportChannels,
 };
