@@ -7,6 +7,7 @@ const tmdb = require('./tmdb.cjs');
 const VIDEO_EXT = new Set(['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v', '.ts', '.flv', '.wmv']);
 const AUDIO_EXT = new Set(['.mp3', '.m4a', '.wav', '.flac', '.ogg', '.aac', '.wma', '.opus']);
 const SUB_EXT = new Set(['.srt', '.vtt', '.ass']);
+const URL_FILE = 'url.txt';
 
 // Parse filename like: "Movie Name (2021).mkv" or "Show.S01E03.Title.mkv"
 function parseName(filename) {
@@ -44,6 +45,14 @@ function walk(dir, out = []) {
   return out;
 }
 
+function readUrlFile(file) {
+  try {
+    const raw = fs.readFileSync(file, 'utf8').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const url = raw.find((line) => /^https?:\/\//i.test(line));
+    return url || null;
+  } catch { return null; }
+}
+
 async function scanAll({ tmdbKey, tmdbLang = 'ar' } = {}, onProgress) {
   const paths = db.listPaths();
   const seenMedia = [];
@@ -53,22 +62,31 @@ async function scanAll({ tmdbKey, tmdbLang = 'ar' } = {}, onProgress) {
     const files = walk(lp.path);
     for (const f of files) {
       const ext = path.extname(f).toLowerCase();
+      if (path.basename(f).toLowerCase() === URL_FILE) {
+        const remoteUrl = readUrlFile(f);
+        if (remoteUrl) allFiles.push({ file: f, remoteUrl, libKind: lp.kind, mediaKind: 'video', root: lp.path });
+        continue;
+      }
       if (VIDEO_EXT.has(ext) || AUDIO_EXT.has(ext)) allFiles.push({ file: f, libKind: lp.kind, mediaKind: AUDIO_EXT.has(ext) ? 'audio' : 'video' });
     }
   }
   total = allFiles.length;
-  for (const { file, libKind, mediaKind } of allFiles) {
+  for (const { file, remoteUrl, libKind, mediaKind, root } of allFiles) {
     try {
       const stat = fs.statSync(file);
       const meta = parseName(path.basename(file));
+      const relDir = path.dirname(path.relative(root || paths.find((p) => file.startsWith(p.path))?.path || path.dirname(file), file));
       const item = {
-        path: file,
+        path: remoteUrl || file,
         kind: mediaKind === 'audio' ? 'audio' : (meta.kind === 'episode' ? 'episode' : (libKind === 'tv' ? 'episode' : 'movie')),
         title: meta.title,
         year: meta.year || null,
         season: meta.season || null,
         episode: meta.episode || null,
-        size: stat.size,
+        size: remoteUrl ? 0 : stat.size,
+        section: relDir && relDir !== '.' ? relDir.split(path.sep)[0] : '',
+        folder: relDir && relDir !== '.' ? relDir : '',
+        remote_url: remoteUrl || null,
       };
       // TMDB lookup
       if (tmdbKey) {
@@ -92,7 +110,7 @@ async function scanAll({ tmdbKey, tmdbLang = 'ar' } = {}, onProgress) {
           try { db.addSubtitle(id, 'auto', subPath, path.basename(subPath)); } catch {}
         }
       }
-      seenMedia.push(file);
+      seenMedia.push(remoteUrl || file);
     } catch (e) { /* skip bad file */ }
     done++;
     if (onProgress) onProgress({ done, total });

@@ -193,6 +193,9 @@ function init(dbPath, seed = {}) {
       rating REAL,
       duration INTEGER,
       size INTEGER,
+      section TEXT,
+      folder TEXT,
+      remote_url TEXT,
       added_at INTEGER NOT NULL,
       scanned_at INTEGER NOT NULL
     );
@@ -213,6 +216,13 @@ function init(dbPath, seed = {}) {
     );
     CREATE INDEX IF NOT EXISTS idx_subs_media ON subtitles(media_id);
     `);
+    for (const ddl of [
+      'ALTER TABLE media_items ADD COLUMN section TEXT',
+      'ALTER TABLE media_items ADD COLUMN folder TEXT',
+      'ALTER TABLE media_items ADD COLUMN remote_url TEXT',
+    ]) {
+      try { _db.exec(ddl); } catch {}
+    }
     console.log('[Manara] sqlite media library ready at', dbPath);
     return _db;
   } catch (e) {
@@ -273,6 +283,9 @@ function upsertMedia(item) {
         rating: item.rating ?? null,
         duration: item.duration ?? null,
         size: item.size ?? null,
+        section: item.section ?? existing.section ?? null,
+        folder: item.folder ?? existing.folder ?? null,
+        remote_url: item.remote_url ?? existing.remote_url ?? null,
         scanned_at: now,
       });
       saveMediaFallback();
@@ -294,6 +307,9 @@ function upsertMedia(item) {
       rating: item.rating ?? null,
       duration: item.duration ?? null,
       size: item.size ?? null,
+      section: item.section ?? null,
+      folder: item.folder ?? null,
+      remote_url: item.remote_url ?? null,
       added_at: now,
       scanned_at: now,
     });
@@ -304,19 +320,22 @@ function upsertMedia(item) {
   const existing = db().prepare('SELECT id, added_at FROM media_items WHERE path = ?').get(item.path);
   if (existing) {
     db().prepare(`UPDATE media_items SET kind=?, title=?, year=?, season=?, episode=?, tmdb_id=?,
-      poster_url=?, backdrop_url=?, overview=?, rating=?, duration=?, size=?, scanned_at=? WHERE id=?`).run(
+      poster_url=?, backdrop_url=?, overview=?, rating=?, duration=?, size=?,
+      section=?, folder=?, remote_url=?, scanned_at=? WHERE id=?`).run(
       item.kind, item.title, item.year ?? null, item.season ?? null, item.episode ?? null,
       item.tmdb_id ?? null, item.poster_url ?? null, item.backdrop_url ?? null,
       item.overview ?? null, item.rating ?? null, item.duration ?? null, item.size ?? null,
+      item.section ?? null, item.folder ?? null, item.remote_url ?? null,
       now, existing.id);
     return existing.id;
   }
   const r = db().prepare(`INSERT INTO media_items
-    (path, kind, title, year, season, episode, tmdb_id, poster_url, backdrop_url, overview, rating, duration, size, added_at, scanned_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    (path, kind, title, year, season, episode, tmdb_id, poster_url, backdrop_url, overview, rating, duration, size, section, folder, remote_url, added_at, scanned_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     item.path, item.kind, item.title, item.year ?? null, item.season ?? null, item.episode ?? null,
     item.tmdb_id ?? null, item.poster_url ?? null, item.backdrop_url ?? null,
-    item.overview ?? null, item.rating ?? null, item.duration ?? null, item.size ?? null, now, now);
+    item.overview ?? null, item.rating ?? null, item.duration ?? null, item.size ?? null,
+    item.section ?? null, item.folder ?? null, item.remote_url ?? null, now, now);
   return r.lastInsertRowid;
 }
 function listMedia({ kind, q, limit = 200 } = {}) {
@@ -401,6 +420,7 @@ function removeMedia(id, { deleteFile = false } = {}) {
 function mediaStats() {
   const items = listMedia({ limit: 100000 });
   const logs = listAccessLogs(600).filter((log) => log.targetType === 'media');
+  const viewers = listViewers();
   const byMedia = new Map();
   for (const item of items) {
     byMedia.set(String(item.id), {
@@ -432,6 +452,23 @@ function mediaStats() {
     total: items.length,
     totalSize,
     byKind,
+    uniqueDevices: new Set(logs.map((log) => log.ip).filter(Boolean)).size,
+    daily: Object.values(logs.reduce((acc, log) => {
+      const day = new Date(log.at || Date.now()).toISOString().slice(0, 10);
+      acc[day] = acc[day] || { day, views: 0, bytes: 0, devices: new Set() };
+      if (log.action === 'media') acc[day].views += 1;
+      acc[day].bytes += Number(log.bytes) || 0;
+      if (log.ip) acc[day].devices.add(log.ip);
+      return acc;
+    }, {})).map((row) => ({ day: row.day, views: row.views, bytes: row.bytes, uniqueDevices: row.devices.size }))
+      .sort((a, b) => a.day.localeCompare(b.day)),
+    completionRate: (() => {
+      const history = viewers.flatMap((viewer) => viewer.history || []);
+      const watched = history.filter((row) => Number(row.duration) > 0);
+      if (!watched.length) return 0;
+      const completed = watched.filter((row) => row.completed || (Number(row.position) / Number(row.duration)) >= 0.85).length;
+      return Math.round((completed / watched.length) * 100);
+    })(),
     top: Array.from(byMedia.values()).sort((a, b) => (b.plays - a.plays) || (b.bytes - a.bytes)).slice(0, 20),
     recent: logs.slice(0, 80),
   };
@@ -491,17 +528,31 @@ function getSubtitle(id) {
 let _adminStatePath = null;
 let _adminState = {
   sessions: {},
+  viewers: {},
   blocks: [],
   logs: [],
   blockedMessage: 'Stream is not available right now.',
+  mediaTheme: {
+    brandName: 'Manara Media',
+    tagline: 'مكتبة وسائط محلية على نفس الشبكة',
+    logoUrl: '',
+    accent: '#3b82f6',
+    accent2: '#14b8a6',
+    direction: 'rtl',
+  },
 };
 
 function normalizeAdminState(raw = {}) {
   return {
     sessions: raw.sessions && typeof raw.sessions === 'object' ? raw.sessions : {},
+    viewers: raw.viewers && typeof raw.viewers === 'object' ? raw.viewers : {},
     blocks: Array.isArray(raw.blocks) ? raw.blocks : [],
     logs: Array.isArray(raw.logs) ? raw.logs.slice(-600) : [],
     blockedMessage: String(raw.blockedMessage || 'Stream is not available right now.').slice(0, 300),
+    mediaTheme: {
+      ..._adminState.mediaTheme,
+      ...(raw.mediaTheme && typeof raw.mediaTheme === 'object' ? raw.mediaTheme : {}),
+    },
   };
 }
 
@@ -550,6 +601,78 @@ function addAccessLog(entry = {}) {
   _adminState.logs = _adminState.logs.slice(-600);
   saveAdminState();
   return row;
+}
+
+function viewerState(viewerId) {
+  const id = cleanSessionKey(viewerId);
+  if (!_adminState.viewers[id]) {
+    _adminState.viewers[id] = {
+      id,
+      favorites: [],
+      watchLater: [],
+      history: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    saveAdminState();
+  }
+  return _adminState.viewers[id];
+}
+
+function updateViewerList(viewerId, listName, mediaId, active) {
+  const state = viewerState(viewerId);
+  const key = String(mediaId);
+  const list = Array.isArray(state[listName]) ? state[listName] : [];
+  const idx = list.indexOf(key);
+  if (active && idx < 0) list.push(key);
+  if (!active && idx >= 0) list.splice(idx, 1);
+  state[listName] = list.slice(-1000);
+  state.updatedAt = Date.now();
+  saveAdminState();
+  return state;
+}
+
+function recordViewerHistory(viewerId, mediaId, patch = {}) {
+  const state = viewerState(viewerId);
+  const key = String(mediaId);
+  const rest = (state.history || []).filter((row) => String(row.mediaId) !== key);
+  const position = Math.max(0, Number(patch.position) || 0);
+  const duration = Math.max(0, Number(patch.duration) || 0);
+  rest.unshift({
+    mediaId: key,
+    position,
+    duration,
+    completed: !!patch.completed || (duration > 0 && position / duration >= 0.85),
+    updatedAt: Date.now(),
+  });
+  state.history = rest.slice(0, 500);
+  state.updatedAt = Date.now();
+  saveAdminState();
+  return state;
+}
+
+function listViewers() {
+  return Object.values(_adminState.viewers)
+    .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))
+    .slice(0, 500);
+}
+
+function mediaTheme() {
+  return { ..._adminState.mediaTheme };
+}
+
+function setMediaTheme(patch = {}) {
+  _adminState.mediaTheme = {
+    ..._adminState.mediaTheme,
+    brandName: String(patch.brandName ?? _adminState.mediaTheme.brandName).slice(0, 80),
+    tagline: String(patch.tagline ?? _adminState.mediaTheme.tagline).slice(0, 180),
+    logoUrl: String(patch.logoUrl ?? _adminState.mediaTheme.logoUrl).slice(0, 500),
+    accent: /^#[0-9a-fA-F]{6}$/.test(String(patch.accent || '')) ? patch.accent : _adminState.mediaTheme.accent,
+    accent2: /^#[0-9a-fA-F]{6}$/.test(String(patch.accent2 || '')) ? patch.accent2 : _adminState.mediaTheme.accent2,
+    direction: patch.direction === 'ltr' ? 'ltr' : 'rtl',
+  };
+  saveAdminState();
+  return mediaTheme();
 }
 
 function touchSession({ ip, userAgent, path: requestPath, targetType, targetId, targetName } = {}) {
@@ -802,6 +925,8 @@ module.exports = {
   listIptv, getIptv, addIptv, updateIptv, removeIptv,
   listBroadcastChannels, upsertBroadcastChannel, setBroadcastChannels, removeBroadcastChannel,
   touchSession, addSessionBytes, addAccessLog, listSessions, listAccessLogs,
+  viewerState, updateViewerList, recordViewerHistory, listViewers,
+  mediaTheme, setMediaTheme,
   listBlocks, addBlock, removeBlock, isBlocked, blockedMessage, setBlockedMessage,
   replaceAllChannels, exportChannels,
 };

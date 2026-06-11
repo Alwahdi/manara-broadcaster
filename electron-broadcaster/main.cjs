@@ -352,6 +352,10 @@ function mediaServerOptions() {
     getIptvPolicy: () => ({
       iptvGlobalLimitBytes: Number(settings.iptvGlobalLimitBytes) || 0,
     }),
+    getLibraryConfig: () => ({
+      tmdbKey: settings.tmdbKey || '',
+      tmdbLang: settings.tmdbLang || 'ar',
+    }),
     onChannelsChanged: () => refreshSettingsChannelMirror('lan-admin'),
   };
 }

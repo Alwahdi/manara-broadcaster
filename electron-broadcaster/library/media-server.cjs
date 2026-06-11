@@ -3,9 +3,11 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
+const { Readable } = require('stream');
 const db = require('./db.cjs');
 const iptv = require('./iptv.cjs');
 const cloudIptv = require('./cloud-iptv.cjs');
+const scanner = require('./scanner.cjs');
 
 const MIME = {
   '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mkv': 'video/x-matroska',
@@ -49,7 +51,7 @@ function readBody(req) {
     let body = '';
     req.on('data', (chunk) => {
       body += chunk;
-      if (body.length > 1024 * 1024) req.destroy(new Error('body too large'));
+      if (body.length > 300 * 1024 * 1024) req.destroy(new Error('body too large'));
     });
     req.on('end', () => resolve(body));
     req.on('error', reject);
@@ -60,21 +62,52 @@ function parseJsonBody(req) {
   return readBody(req).then((body) => body ? JSON.parse(body) : {});
 }
 
+function parseCookies(req) {
+  return String(req.headers.cookie || '').split(';').reduce((acc, part) => {
+    const i = part.indexOf('=');
+    if (i > -1) acc[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    return acc;
+  }, {});
+}
+
+function randomId(prefix = 'id') {
+  return prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+}
+
+function getViewerId(req, res) {
+  const cookies = parseCookies(req);
+  const existing = cookies.manara_viewer;
+  if (existing) return existing;
+  const id = randomId('viewer');
+  res.setHeader('Set-Cookie', `manara_viewer=${encodeURIComponent(id)}; Path=/; SameSite=Lax; Max-Age=31536000`);
+  return id;
+}
+
 function requireAdmin(req, res, getAdminAuth) {
   const auth = typeof getAdminAuth === 'function' ? getAdminAuth() : {};
   const username = auth.username || 'admin';
   const password = auth.password || 'admin';
   const header = req.headers.authorization || '';
   const token = header.startsWith('Basic ') ? header.slice(6) : '';
+  const cookieToken = parseCookies(req).manara_admin || '';
   let provided = '';
   try { provided = Buffer.from(token, 'base64').toString('utf8'); } catch {}
-  if (provided === `${username}:${password}`) return true;
+  if (provided === `${username}:${password}` || cookieToken === Buffer.from(`${username}:${password}`).toString('base64')) return true;
+  if (String(req.headers.accept || '').includes('text/html')) {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end(adminLoginPage());
+    return false;
+  }
   res.writeHead(401, {
     'WWW-Authenticate': 'Basic realm="Manara LAN Admin"',
     'Content-Type': 'text/plain; charset=utf-8',
   });
   res.end('Authentication required');
   return false;
+}
+
+function adminLoginPage(error = '') {
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Manara Admin Login</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#080d1f;color:#eef2ff;font-family:system-ui,-apple-system,Segoe UI,sans-serif}.card{width:min(420px,92vw);border:1px solid rgba(255,255,255,.12);background:#101936;border-radius:10px;padding:22px}input{width:100%;box-sizing:border-box;margin:8px 0 12px;padding:11px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:#111936;color:#fff}button{width:100%;padding:11px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-weight:900}.err{color:#fca5a5}</style></head><body><form class="card" method="post" action="/admin/login"><h1>Manara Admin</h1>${error ? `<p class="err">${escapeHtml(error)}</p>` : ''}<label>Username<input name="username" autocomplete="username"></label><label>Password<input name="password" type="password" autocomplete="current-password"></label><button>Sign in</button></form></body></html>`;
 }
 
 function formatBytes(bytes) {
@@ -113,6 +146,52 @@ function listLibraryItems(query = {}) {
     kind: query.kind || '',
     limit: Math.min(2000, Math.max(1, Number(query.limit) || 800)),
   });
+}
+
+function librarySections(items = listLibraryItems({ limit: 5000 })) {
+  const sections = new Map();
+  for (const item of items) {
+    const section = item.section || (item.kind === 'episode' ? 'Series' : item.kind === 'audio' ? 'Audio' : 'Movies');
+    const folder = item.folder || section;
+    if (!sections.has(section)) sections.set(section, { name: section, count: 0, folders: new Map() });
+    const sec = sections.get(section);
+    sec.count += 1;
+    sec.folders.set(folder, (sec.folders.get(folder) || 0) + 1);
+  }
+  return Array.from(sections.values()).map((sec) => ({
+    name: sec.name,
+    count: sec.count,
+    folders: Array.from(sec.folders.entries()).map(([name, count]) => ({ name, count })),
+  }));
+}
+
+function srtToVtt(text) {
+  return 'WEBVTT\n\n' + String(text || '')
+    .replace(/^\uFEFF/, '')
+    .replace(/\r/g, '')
+    .replace(/(\d\d:\d\d:\d\d),(\d{3})/g, '$1.$2')
+    .replace(/^\d+\n/gm, '');
+}
+
+function csvEscape(value) {
+  const s = String(value ?? '');
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function reportCsv(rows) {
+  const header = ['time', 'action', 'ip', 'targetType', 'targetId', 'targetName', 'bytes', 'status'];
+  return [header.join(',')].concat(rows.map((row) => header.map((key) => csvEscape(key === 'time' ? new Date(row.at).toISOString() : row[key])).join(','))).join('\n');
+}
+
+function healthDiagnostics() {
+  const items = db.listMedia({ limit: 100000 });
+  const subs = items.flatMap((item) => db.listSubtitles(item.id).map((sub) => ({ ...sub, mediaTitle: item.title })));
+  return {
+    generatedAt: Date.now(),
+    missingFiles: items.filter((item) => !item.remote_url && !fs.existsSync(item.path)).map((item) => ({ id: item.id, title: item.title, path: item.path })),
+    unsupportedFormats: items.filter((item) => mediaType(item) === 'unsupported').map((item) => ({ id: item.id, title: item.title, path: item.path })),
+    brokenSubtitles: subs.filter((sub) => !fs.existsSync(sub.path)).map((sub) => ({ id: sub.id, mediaId: sub.media_id, title: sub.mediaTitle, path: sub.path })),
+  };
 }
 
 function clientIp(req) {
@@ -227,6 +306,9 @@ function adminPage(options = {}) {
   const blocks = db.listBlocks();
   const logs = db.listAccessLogs(80);
   const mediaStats = db.mediaStats();
+  const mediaTheme = db.mediaTheme();
+  const health = healthDiagnostics();
+  const libraryPaths = db.listPaths();
   const mediaItems = db.listMedia({ limit: 120 }).map((item) => ({ ...item, titleText: mediaTitle(item) }));
   const sessionRows = sessions.map((s) => `
     <tr>
@@ -273,6 +355,8 @@ function adminPage(options = {}) {
         <button data-delete-media="${item.id}">Remove</button>
       </td>
     </tr>`).join('');
+  const pathRows = libraryPaths.map((p) => `
+    <tr><td class="url">${escapeHtml(p.path)}</td><td>${escapeHtml(p.kind)}</td><td>${p.locked ? 'Locked' : `<button data-path-del="${p.id}">Remove</button>`}</td></tr>`).join('');
   const mediaPayload = jsonForScript(mediaItems.map((item) => ({
     id: item.id,
     title: item.title || '',
@@ -321,8 +405,39 @@ td,th{border-bottom:1px solid rgba(255,255,255,.1);padding:8px;text-align:left;v
     <div class="statcard"><b>${mediaStats.total}</b><span>Total media</span></div>
     <div class="statcard"><b>${formatBytes(mediaStats.totalSize)}</b><span>Library size</span></div>
     <div class="statcard"><b>${mediaStats.byKind.movie || 0}</b><span>Movies</span></div>
-    <div class="statcard"><b>${mediaStats.byKind.episode || 0}</b><span>Episodes</span></div>
+    <div class="statcard"><b>${mediaStats.uniqueDevices || 0}</b><span>Unique devices</span></div>
   </div>
+  <div class="statcards">
+    <div class="statcard"><b>${mediaStats.byKind.episode || 0}</b><span>Episodes</span></div>
+    <div class="statcard"><b>${mediaStats.byKind.audio || 0}</b><span>Audio</span></div>
+    <div class="statcard"><b>${mediaStats.completionRate || 0}%</b><span>Completion rate</span></div>
+    <div class="statcard"><b>${health.missingFiles.length + health.unsupportedFormats.length + health.brokenSubtitles.length}</b><span>Health issues</span></div>
+  </div>
+  <h3>Library paths and scanner</h3>
+  <form id="pathForm">
+    <label>Folder path on this computer</label><input name="path" required placeholder="C:\\Media\\Movies or /Users/name/Movies">
+    <label>Kind</label><select name="kind"><option value="movies">Movies</option><option value="tv">TV / Series</option><option value="audio">Audio</option></select>
+    <button>Add path</button><button type="button" id="scanNowBtn">Scan now</button>
+  </form>
+  <table><thead><tr><th>Path</th><th>Kind</th><th>Action</th></tr></thead><tbody>${pathRows || '<tr><td colspan="3">No library paths yet.</td></tr>'}</tbody></table>
+  <h3>Theme</h3>
+  <form id="themeForm" class="grid">
+    <label>Brand name<input name="brandName" value="${escapeHtml(mediaTheme.brandName)}"></label>
+    <label>Tagline<input name="tagline" value="${escapeHtml(mediaTheme.tagline)}"></label>
+    <label>Logo URL<input name="logoUrl" value="${escapeHtml(mediaTheme.logoUrl)}"></label>
+    <label>Direction<select name="direction"><option value="rtl" ${mediaTheme.direction === 'rtl' ? 'selected' : ''}>Arabic / RTL</option><option value="ltr" ${mediaTheme.direction === 'ltr' ? 'selected' : ''}>English / LTR</option></select></label>
+    <label>Accent<input name="accent" type="color" value="${escapeHtml(mediaTheme.accent)}"></label>
+    <label>Accent 2<input name="accent2" type="color" value="${escapeHtml(mediaTheme.accent2)}"></label>
+    <div><button>Save theme</button></div>
+  </form>
+  <h3>Upload / import media</h3>
+  <form id="uploadForm">
+    <label>Import file into the local library storage</label><input id="uploadFile" type="file" accept="video/*,audio/*,.mkv,.srt,.vtt">
+    <label>Kind</label><select name="kind"><option value="movie">Movie</option><option value="episode">Episode</option><option value="audio">Audio</option></select>
+    <button>Upload</button>
+  </form>
+  <p class="muted">Reports: <a href="/api/admin/reports/views.csv">CSV</a> · <a href="/api/admin/reports/views.json">JSON</a> · <a href="/api/admin/health">Health diagnostics</a></p>
+  <p class="muted">Health: ${health.missingFiles.length} missing files, ${health.unsupportedFormats.length} unsupported formats, ${health.brokenSubtitles.length} broken subtitles.</p>
   <h3>Top watched</h3>
   <table><thead><tr><th>Title</th><th>Kind</th><th>Plays</th><th>Transferred</th><th>Last view</th></tr></thead><tbody>${topMediaRows || '<tr><td colspan="5">No media views yet.</td></tr>'}</tbody></table>
   <h3 style="margin-top:18px">Media inventory</h3>
@@ -417,6 +532,35 @@ document.getElementById('saveBroadcast').onclick = async () => {
   await api('/api/admin/broadcast', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ channels }) });
   msg.textContent = 'Saved.';
 };
+document.getElementById('pathForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  await api('/api/admin/library-paths', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(Object.fromEntries(new FormData(e.target).entries())) });
+  location.reload();
+});
+document.querySelectorAll('[data-path-del]').forEach((b) => b.onclick = async () => {
+  await api('/api/admin/library-paths/' + b.dataset.pathDel, { method:'DELETE' });
+  location.reload();
+});
+document.getElementById('scanNowBtn').onclick = async () => {
+  msg.textContent = 'Scanning...';
+  const r = await api('/api/admin/scan', { method:'POST' });
+  msg.textContent = r.ok ? 'Scan complete: ' + r.done + ' item(s)' : (r.error || 'Scan failed');
+};
+document.getElementById('themeForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  await api('/api/admin/media-theme', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(Object.fromEntries(new FormData(e.target).entries())) });
+  location.reload();
+});
+document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const file = document.getElementById('uploadFile').files[0];
+  if (!file) return;
+  const data = Object.fromEntries(new FormData(e.target).entries());
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = ''; for (let i=0;i<bytes.length;i++) binary += String.fromCharCode(bytes[i]);
+  await api('/api/admin/upload', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ name:file.name, kind:data.kind, base64:btoa(binary) }) });
+  location.reload();
+});
 const mediaAdmin = JSON.parse(document.getElementById('mediaAdminPayload').textContent || '[]');
 document.querySelectorAll('[data-edit-media]').forEach((b) => b.onclick = async () => {
   const item = mediaAdmin.find((row) => String(row.id) === String(b.dataset.editMedia));
@@ -446,7 +590,10 @@ document.querySelectorAll('[data-delete-media]').forEach((b) => b.onclick = asyn
 </main></body></html>`;
 }
 
-function libraryPage() {
+function libraryPage(req, res) {
+  const viewerId = getViewerId(req, res);
+  const viewer = db.viewerState(viewerId);
+  const theme = db.mediaTheme();
   const items = listLibraryItems({ limit: 1200 });
   const movies = items.filter((item) => item.kind === 'movie');
   const episodes = items.filter((item) => item.kind === 'episode');
@@ -469,15 +616,24 @@ function libraryPage() {
     position: item.position || 0,
     duration: item.wp_duration || item.duration || 0,
     file: path.basename(item.path || ''),
+    section: item.section || '',
+    folder: item.folder || '',
   })));
+  const viewerPayload = jsonForScript({
+    id: viewer.id,
+    favorites: viewer.favorites || [],
+    watchLater: viewer.watchLater || [],
+    history: viewer.history || [],
+  });
+  const sectionPayload = jsonForScript(librarySections(items));
   return `<!doctype html>
-<html lang="en">
+<html lang="${theme.direction === 'rtl' ? 'ar' : 'en'}" dir="${theme.direction}">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Manara Media Library</title>
 <style>
-:root{color-scheme:dark;--bg:#070b19;--panel:#10182f;--line:rgba(255,255,255,.1);--text:#eef2ff;--muted:#a7b3cf;--accent:#3b82f6;--accent2:#14b8a6}
+:root{color-scheme:dark;--bg:#070b19;--panel:#10182f;--line:rgba(255,255,255,.1);--text:#eef2ff;--muted:#a7b3cf;--accent:${escapeHtml(theme.accent)};--accent2:${escapeHtml(theme.accent2)}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,sans-serif}
 .hero{min-height:52vh;padding:22px;background:linear-gradient(90deg,rgba(7,11,25,.96),rgba(7,11,25,.72)),var(--hero,radial-gradient(circle at 70% 25%,rgba(59,130,246,.25),transparent 35%));background-size:cover;background-position:center;display:flex;align-items:flex-end}
 .hero-inner{width:100%;max-width:1280px;margin:auto}.top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:58px}.brand{font-weight:900;font-size:18px}.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a,.btn{border:1px solid var(--line);background:rgba(255,255,255,.08);color:#fff;text-decoration:none;border-radius:8px;padding:9px 12px;font-weight:800;cursor:pointer}
@@ -498,15 +654,17 @@ input,select{width:100%;border:1px solid var(--line);background:#111936;color:#f
 </head>
 <body><main>
 <script id="mediaPayload" type="application/json">${payload}</script>
+<script id="viewerPayload" type="application/json">${viewerPayload}</script>
+<script id="sectionPayload" type="application/json">${sectionPayload}</script>
 </main>
 <section class="hero" id="hero">
   <div class="hero-inner">
     <div class="top">
-      <div class="brand">Manara Media</div>
+      <div class="brand">${theme.logoUrl ? `<img src="${escapeHtml(theme.logoUrl)}" style="height:32px;vertical-align:middle;margin-inline-end:8px">` : ''}${escapeHtml(theme.brandName)}</div>
       <nav class="nav"><a href="/" class="primary">Channels</a><a href="/admin">Admin</a></nav>
     </div>
-    <h1>Local media library</h1>
-    <p>Movies, episodes, and audio served from this computer to every device on the same network, with watch progress, favorites, watch later, and stream analytics.</p>
+    <h1>${escapeHtml(theme.brandName)}</h1>
+    <p>${escapeHtml(theme.tagline)}</p>
     <div class="stats">
       <div class="stat"><b>${items.length}</b><span>Total items</span></div>
       <div class="stat"><b>${movies.length}</b><span>Movies</span></div>
@@ -520,18 +678,22 @@ input,select{width:100%;border:1px solid var(--line);background:#111936;color:#f
     <input id="search" placeholder="Search movies, series, audio..." autocomplete="off">
     <select id="kind"><option value="">All media</option><option value="movie">Movies</option><option value="episode">Episodes</option><option value="audio">Audio</option></select>
     <select id="view"><option value="all">All</option><option value="favorites">Favorites</option><option value="watchLater">Watch later</option><option value="continue">Continue watching</option></select>
+    <select id="sectionFilter"><option value="">All sections</option></select>
   </div>
+  <section class="section" id="sectionBrowser"><div class="section-head"><div><h2>Sections</h2><small>Browse folders and categories</small></div></div><div class="rail" id="sectionRail"></div></section>
   <section class="section" id="continueSection"><div class="section-head"><div><h2>Continue watching</h2><small>Resume where viewers stopped</small></div></div><div class="rail" id="continueRail"></div></section>
   <section class="section" id="favoritesSection"><div class="section-head"><div><h2>Favorites</h2><small>Saved on this device</small></div></div><div class="rail" id="favoritesRail"></div></section>
   <section class="section"><div class="section-head"><div><h2>Library</h2><small id="countLabel"></small></div></div><div class="grid" id="grid"></div><div class="empty" id="empty">No media was found yet. Add a library path from the desktop app, then scan the library.</div></section>
 </main>
 <script>
 const media = JSON.parse(document.getElementById('mediaPayload').textContent || '[]');
+const viewer = JSON.parse(document.getElementById('viewerPayload').textContent || '{}');
+const sections = JSON.parse(document.getElementById('sectionPayload').textContent || '[]');
 const storeKey = 'manaraMediaStorage';
 const storage = {
-  get(){ try { return JSON.parse(localStorage.getItem(storeKey)) || { favorites:[], watchLater:[] }; } catch { return { favorites:[], watchLater:[] }; } },
+  get(){ try { const local = JSON.parse(localStorage.getItem(storeKey)) || {}; return { favorites:[...(viewer.favorites||[]),...(local.favorites||[])], watchLater:[...(viewer.watchLater||[]),...(local.watchLater||[])] }; } catch { return { favorites:viewer.favorites||[], watchLater:viewer.watchLater||[] }; } },
   set(v){ localStorage.setItem(storeKey, JSON.stringify(v)); },
-  toggle(type, id){ const s=this.get(); const arr=s[type] || []; const key=String(id); const i=arr.indexOf(key); if(i>=0) arr.splice(i,1); else arr.push(key); s[type]=arr; this.set(s); render(); },
+  toggle(type, id){ const s=this.get(); const arr=s[type] || []; const key=String(id); const i=arr.indexOf(key); const active=i<0; if(active) arr.push(key); else arr.splice(i,1); s[type]=arr; this.set(s); fetch('/api/viewer/list',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({list:type,mediaId:id,active})}).catch(()=>{}); render(); },
   has(type, id){ return (this.get()[type] || []).includes(String(id)); }
 };
 function esc(s){ return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
@@ -552,8 +714,10 @@ function filtered(){
   const q = document.getElementById('search').value.trim().toLowerCase();
   const kind = document.getElementById('kind').value;
   const view = document.getElementById('view').value;
+  const section = document.getElementById('sectionFilter').value;
   return media.filter(item => !q || item.title.toLowerCase().includes(q) || item.file.toLowerCase().includes(q))
     .filter(item => !kind || item.kind === kind)
+    .filter(item => !section || item.section === section || item.folder === section)
     .filter(item => view !== 'favorites' || storage.has('favorites', item.id))
     .filter(item => view !== 'watchLater' || storage.has('watchLater', item.id))
     .filter(item => view !== 'continue' || pct(item) > 2);
@@ -573,20 +737,27 @@ function render(){
   const heroItem = cont[0] || media.find(x=>x.backdrop) || media[0];
   if(heroItem && heroItem.backdrop) document.getElementById('hero').style.setProperty('--hero','url('+heroItem.backdrop+')');
 }
-['search','kind','view'].forEach(id=>document.getElementById(id).addEventListener('input', render));
+const sectionFilter = document.getElementById('sectionFilter');
+sections.forEach(sec => { const opt=document.createElement('option'); opt.value=sec.name; opt.textContent=sec.name+' ('+sec.count+')'; sectionFilter.appendChild(opt); });
+document.getElementById('sectionRail').innerHTML = sections.map(sec => '<button class="btn" data-section="'+esc(sec.name)+'">'+esc(sec.name)+' · '+sec.count+'</button>').join('');
+document.querySelectorAll('[data-section]').forEach(btn=>btn.onclick=()=>{ sectionFilter.value=btn.dataset.section; render(); });
+['search','kind','view','sectionFilter'].forEach(id=>document.getElementById(id).addEventListener('input', render));
 render();
 </script>
 </body></html>`;
 }
 
-function playerPage(id) {
+function playerPage(id, req, res) {
+  const viewerId = getViewerId(req, res);
+  const viewer = db.viewerState(viewerId);
+  const theme = db.mediaTheme();
   const item = db.getMedia(parseInt(id, 10));
   if (!item) return null;
   const items = db.listMedia({ kind: item.kind, limit: 2000 });
   const index = items.findIndex((row) => String(row.id) === String(item.id));
   const prev = index > 0 ? items[index - 1] : null;
   const next = index >= 0 && index < items.length - 1 ? items[index + 1] : null;
-  const subs = db.listSubtitles(item.id).filter((sub) => path.extname(sub.path || '').toLowerCase() === '.vtt');
+  const subs = db.listSubtitles(item.id).filter((sub) => ['.vtt', '.srt'].includes(path.extname(sub.path || '').toLowerCase()));
   const type = mediaType(item);
   const title = mediaTitle(item);
   const streamUrl = `/media/${item.id}`;
@@ -600,6 +771,7 @@ function playerPage(id) {
     duration: item.wp_duration || item.duration || 0,
     streamUrl,
   });
+  const viewerPayload = jsonForScript({ favorites: viewer.favorites || [], watchLater: viewer.watchLater || [] });
   const playlistHtml = playlist.map((row, i) => {
     const current = String(row.id) === String(item.id);
     const p = row.poster_url ? `style="background-image:url('${escapeHtml(row.poster_url)}')"` : '';
@@ -611,11 +783,11 @@ function playerPage(id) {
   }).join('');
   const subtitleTracks = subs.map((sub, i) => `<track kind="subtitles" src="/sub/${sub.id}" srclang="${escapeHtml(sub.lang || 'auto')}" label="${escapeHtml(sub.label || sub.lang || 'Subtitle')}" ${i === 0 ? 'default' : ''}>`).join('');
   return `<!doctype html>
-<html lang="en"><head>
+<html lang="${theme.direction === 'rtl' ? 'ar' : 'en'}" dir="${theme.direction}"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(title)} - Manara</title>
 <style>
-:root{color-scheme:dark;--bg:#070b19;--panel:#10182f;--line:rgba(255,255,255,.1);--text:#eef2ff;--muted:#a7b3cf;--accent:#3b82f6}
+:root{color-scheme:dark;--bg:#070b19;--panel:#10182f;--line:rgba(255,255,255,.1);--text:#eef2ff;--muted:#a7b3cf;--accent:${escapeHtml(theme.accent)}}
 *{box-sizing:border-box}body{margin:0;background:linear-gradient(90deg,rgba(7,11,25,.98),rgba(7,11,25,.82)),url('${escapeHtml(poster)}');background-size:cover;background-position:center;color:var(--text);font-family:system-ui,-apple-system,Segoe UI,sans-serif}
 .wrap{max-width:1280px;margin:auto;padding:18px}.bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}.bar a,.btn{border:1px solid var(--line);background:rgba(255,255,255,.08);color:#fff;text-decoration:none;border-radius:8px;padding:9px 12px;font-weight:800;cursor:pointer}
 .layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px}.player{background:#000;border:1px solid var(--line);border-radius:8px;overflow:hidden;box-shadow:0 22px 70px rgba(0,0,0,.42);position:relative}
@@ -629,12 +801,13 @@ video,audio{width:100%;display:block;background:#000}video{aspect-ratio:16/9;max
 </style>
 </head><body>
 <script id="mediaMeta" type="application/json">${metaJson}</script>
+<script id="viewerMeta" type="application/json">${viewerPayload}</script>
 <div class="wrap">
   <div class="bar"><a href="/library">Library</a><div><a href="/">Channels</a> <a href="/admin">Admin</a></div></div>
   <div class="layout">
     <main>
       <div class="player">
-        <div class="logo">Manara</div>
+        <div class="logo">${theme.logoUrl ? `<img src="${escapeHtml(theme.logoUrl)}" style="height:28px;vertical-align:middle;margin-inline-end:6px">` : ''}${escapeHtml(theme.brandName)}</div>
         ${type === 'audio' ? `<div class="audioBox"><audio id="media" controls autoplay src="${streamUrl}"></audio></div>` : ''}
         ${type === 'video' ? `<video id="media" controls autoplay playsinline crossorigin="anonymous" poster="${escapeHtml(item.backdrop_url || item.poster_url || '')}"><source src="${streamUrl}" type="${escapeHtml(MIME[path.extname(item.path || '').toLowerCase()] || 'video/mp4')}">${subtitleTracks}</video>` : ''}
         ${type === 'unsupported' ? `<div class="unsupported"><div><h2>Unsupported format</h2><p>This browser cannot play ${escapeHtml(path.extname(item.path || '').slice(1).toUpperCase())}. Open it in VLC/MX Player or download it.</p></div></div>` : ''}
@@ -659,17 +832,18 @@ video,audio{width:100%;display:block;background:#000}video{aspect-ratio:16/9;max
 <div class="watch" id="watchPrompt"><div><h2>Still watching?</h2><p>The stream will stop on this device in <b id="countdown">60</b> seconds to save network resources.</p><button class="btn" id="yesBtn">Yes, continue</button> <button class="btn" id="stopBtn">Stop now</button></div></div>
 <script>
 const meta = JSON.parse(document.getElementById('mediaMeta').textContent || '{}');
+const viewer = JSON.parse(document.getElementById('viewerMeta').textContent || '{}');
 const media = document.getElementById('media');
 const storeKey = 'manaraMediaStorage';
-function getStore(){ try { return JSON.parse(localStorage.getItem(storeKey)) || { favorites:[], watchLater:[] }; } catch { return { favorites:[], watchLater:[] }; } }
+function getStore(){ try { const local=JSON.parse(localStorage.getItem(storeKey)) || {}; return { favorites:[...(viewer.favorites||[]),...(local.favorites||[])], watchLater:[...(viewer.watchLater||[]),...(local.watchLater||[])] }; } catch { return { favorites:viewer.favorites||[], watchLater:viewer.watchLater||[] }; } }
 function setStore(v){ localStorage.setItem(storeKey, JSON.stringify(v)); }
-function toggle(type){ const s=getStore(); const key=String(meta.id); const arr=s[type]||[]; const i=arr.indexOf(key); if(i>=0) arr.splice(i,1); else arr.push(key); s[type]=arr; setStore(s); syncButtons(); }
+function toggle(type){ const s=getStore(); const key=String(meta.id); const arr=s[type]||[]; const i=arr.indexOf(key); const active=i<0; if(active) arr.push(key); else arr.splice(i,1); s[type]=arr; setStore(s); fetch('/api/viewer/list',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({list:type,mediaId:meta.id,active})}).catch(()=>{}); syncButtons(); }
 function has(type){ return (getStore()[type]||[]).includes(String(meta.id)); }
 function syncButtons(){ favBtn.textContent=has('favorites')?'Remove favorite':'Favorite'; watchBtn.textContent=has('watchLater')?'Remove watch later':'Watch later'; }
 favBtn.onclick=()=>toggle('favorites'); watchBtn.onclick=()=>toggle('watchLater'); syncButtons();
 if(media){
   media.addEventListener('loadedmetadata',()=>{ if(meta.position && meta.position < media.duration - 8) media.currentTime = meta.position; },{once:true});
-  let last=0; function save(){ if(!media.duration) return; const now=Date.now(); if(now-last<5000) return; last=now; fetch('/api/media/'+meta.id+'/progress',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({position:media.currentTime,duration:media.duration}),keepalive:true}).catch(()=>{}); }
+  let last=0; function save(){ if(!media.duration) return; const now=Date.now(); if(now-last<5000) return; last=now; fetch('/api/media/'+meta.id+'/progress',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({position:media.currentTime,duration:media.duration,completed:(media.currentTime/media.duration)>=0.85}),keepalive:true}).catch(()=>{}); }
   media.addEventListener('timeupdate', save); window.addEventListener('pagehide', save);
 }
 const full = location.origin + meta.streamUrl;
@@ -712,6 +886,27 @@ function streamFile(req, res, filePath) {
   });
 }
 
+async function streamRemote(req, res, remoteUrl) {
+  const headers = {};
+  if (req.headers.range) headers.Range = req.headers.range;
+  const upstream = await fetch(remoteUrl, { headers });
+  if (!upstream.ok && upstream.status !== 206) {
+    res.writeHead(upstream.status || 502, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end(`Remote media failed: ${upstream.status} ${upstream.statusText}`);
+    return;
+  }
+  const outHeaders = {
+    'Content-Type': upstream.headers.get('content-type') || 'application/octet-stream',
+    'Accept-Ranges': upstream.headers.get('accept-ranges') || 'bytes',
+  };
+  for (const h of ['content-length', 'content-range']) {
+    const v = upstream.headers.get(h);
+    if (v) outHeaders[h.replace(/(^|-)([a-z])/g, (m) => m.toUpperCase())] = v;
+  }
+  res.writeHead(upstream.status, outHeaders);
+  Readable.fromWeb(upstream.body).pipe(res);
+}
+
 function createHandler(options = {}) {
   return async (req, res) => {
     const u = url.parse(req.url, true);
@@ -724,19 +919,42 @@ function createHandler(options = {}) {
       res.end();
       return;
     }
+    if (u.pathname === '/admin/login' && req.method === 'GET') {
+      return send(res, 200, adminLoginPage(), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    }
+    if (u.pathname === '/admin/login' && req.method === 'POST') {
+      const auth = typeof options.getAdminAuth === 'function' ? options.getAdminAuth() : {};
+      const body = await readBody(req);
+      const params = new URLSearchParams(body);
+      const username = auth.username || 'admin';
+      const password = auth.password || 'admin';
+      if (params.get('username') === username && params.get('password') === password) {
+        return send(res, 302, '', {
+          'Location': '/admin',
+          'Set-Cookie': `manara_admin=${Buffer.from(`${username}:${password}`).toString('base64')}; Path=/admin; HttpOnly; SameSite=Lax; Max-Age=604800`,
+        });
+      }
+      return send(res, 401, adminLoginPage('Invalid username or password.'), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    }
     if (u.pathname === '/admin') {
       if (!requireAdmin(req, res, options.getAdminAuth)) return;
       return send(res, 200, adminPage(options), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     }
     if (u.pathname === '/library') {
-      return send(res, 200, libraryPage(), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      return send(res, 200, libraryPage(req, res), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     }
     if (u.pathname === '/api/library') {
-      return sendJson(res, 200, { media: listLibraryItems(u.query) });
+      const media = listLibraryItems(u.query);
+      return sendJson(res, 200, {
+        media,
+        sections: librarySections(media),
+        theme: db.mediaTheme(),
+        viewer: db.viewerState(getViewerId(req, res)),
+      });
     }
     let m = /^\/player\/(\d+)$/.exec(u.pathname);
     if (m) {
-      const html = playerPage(m[1]);
+      const html = playerPage(m[1], req, res);
       if (!html) return send(res, 404, 'Media not found', { 'Content-Type': 'text/plain; charset=utf-8' });
       return send(res, 200, html, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     }
@@ -833,6 +1051,85 @@ function createHandler(options = {}) {
       if (!requireAdmin(req, res, options.getAdminAuth)) return;
       return sendJson(res, 200, db.mediaStats());
     }
+    if (u.pathname === '/api/admin/health') {
+      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      return sendJson(res, 200, healthDiagnostics());
+    }
+    if (u.pathname === '/api/admin/reports/views.json') {
+      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      return sendJson(res, 200, { stats: db.mediaStats(), logs: db.listAccessLogs(600) });
+    }
+    if (u.pathname === '/api/admin/reports/views.csv') {
+      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      return send(res, 200, reportCsv(db.listAccessLogs(600)), {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="manara-media-report.csv"',
+      });
+    }
+    if (u.pathname === '/api/admin/media-theme' && req.method === 'PUT') {
+      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      try {
+        const body = await parseJsonBody(req);
+        return sendJson(res, 200, { theme: db.setMediaTheme(body) });
+      } catch (e) { return sendJson(res, 500, { error: e.message }); }
+    }
+    if (u.pathname === '/api/admin/library-paths' && req.method === 'POST') {
+      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      try {
+        const body = await parseJsonBody(req);
+        if (!body.path) return sendJson(res, 400, { error: 'path is required' });
+        db.addPath(body.path, body.kind || 'movies', 0);
+        return sendJson(res, 200, { paths: db.listPaths() });
+      } catch (e) { return sendJson(res, 500, { error: e.message }); }
+    }
+    adminMatch = /^\/api\/admin\/library-paths\/(\d+)$/.exec(u.pathname);
+    if (adminMatch && req.method === 'DELETE') {
+      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      db.removePath(parseInt(adminMatch[1], 10));
+      return sendJson(res, 200, { paths: db.listPaths() });
+    }
+    if (u.pathname === '/api/admin/scan' && req.method === 'POST') {
+      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      try {
+        const cfg = typeof options.getLibraryConfig === 'function' ? options.getLibraryConfig() : {};
+        const result = await scanner.scanAll({ tmdbKey: cfg.tmdbKey || '', tmdbLang: cfg.tmdbLang || 'ar' });
+        return sendJson(res, 200, { ok: true, ...result });
+      } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
+    }
+    if (u.pathname === '/api/admin/upload' && req.method === 'POST') {
+      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      try {
+        const body = await parseJsonBody(req);
+        if (!body.name || !body.base64) return sendJson(res, 400, { error: 'name and base64 are required' });
+        const baseDir = path.dirname(db.diagnostics().mediaFallbackPath || db.diagnostics().channelsPath || process.cwd());
+        const importDir = path.join(baseDir, 'uploads');
+        fs.mkdirSync(importDir, { recursive: true });
+        const safeName = path.basename(String(body.name)).replace(/[^\w.\- ()\u0600-\u06FF]/g, '_');
+        const target = path.join(importDir, Date.now() + '-' + safeName);
+        fs.writeFileSync(target, Buffer.from(body.base64, 'base64'));
+        const id = db.upsertMedia({
+          path: target,
+          kind: ['movie', 'episode', 'audio'].includes(body.kind) ? body.kind : 'movie',
+          title: path.basename(safeName).replace(/\.[^.]+$/, '').replace(/[._]+/g, ' '),
+          size: fs.statSync(target).size,
+          section: 'Uploads',
+          folder: 'Uploads',
+        });
+        return sendJson(res, 200, { ok: true, media: db.getMedia(id) });
+      } catch (e) { return sendJson(res, 500, { error: e.message }); }
+    }
+    if (u.pathname === '/api/viewer/state') {
+      const viewerId = getViewerId(req, res);
+      return sendJson(res, 200, db.viewerState(viewerId));
+    }
+    if (u.pathname === '/api/viewer/list' && req.method === 'POST') {
+      try {
+        const viewerId = getViewerId(req, res);
+        const body = await parseJsonBody(req);
+        const list = body.list === 'watchLater' ? 'watchLater' : 'favorites';
+        return sendJson(res, 200, db.updateViewerList(viewerId, list, body.mediaId, !!body.active));
+      } catch (e) { return sendJson(res, 500, { error: e.message }); }
+    }
     m = /^\/api\/media\/(\d+)\/progress$/.exec(u.pathname);
     if (m && req.method === 'POST') {
       try {
@@ -841,6 +1138,7 @@ function createHandler(options = {}) {
         if (denyIfBlocked(req, res, { targetType: 'media', targetId: item.id, targetName: item.title })) return;
         const body = await parseJsonBody(req);
         db.setProgress(item.id, body.position, body.duration);
+        db.recordViewerHistory(getViewerId(req, res), item.id, body);
         db.addAccessLog({
           ip: clientIp(req),
           userAgent: req.headers['user-agent'] || '',
@@ -867,6 +1165,7 @@ function createHandler(options = {}) {
         if (!item) { res.writeHead(404); res.end(); return; }
         if (denyIfBlocked(req, res, { targetType: 'media', targetId: item.id, targetName: item.title })) return;
         attachRequestAccounting(req, res, { action: 'media', targetType: 'media', targetId: item.id, targetName: item.title });
+        if (/^https?:\/\//i.test(item.remote_url || item.path || '')) return streamRemote(req, res, item.remote_url || item.path);
         return streamFile(req, res, item.path);
       } catch (e) { res.writeHead(500); res.end(String(e.message)); return; }
     }
@@ -877,6 +1176,12 @@ function createHandler(options = {}) {
         if (!sub) { res.writeHead(404); res.end(); return; }
         if (denyIfBlocked(req, res, { targetType: 'subtitle', targetId: sub.id, targetName: sub.label || sub.path })) return;
         attachRequestAccounting(req, res, { action: 'subtitle', targetType: 'subtitle', targetId: sub.id, targetName: sub.label || sub.path });
+        if (path.extname(sub.path || '').toLowerCase() === '.srt') {
+          return send(res, 200, srtToVtt(fs.readFileSync(sub.path, 'utf8')), {
+            'Content-Type': 'text/vtt; charset=utf-8',
+            'Cache-Control': 'public, max-age=86400',
+          });
+        }
         return streamFile(req, res, sub.path);
       } catch (e) { res.writeHead(500); res.end(String(e.message)); return; }
     }
