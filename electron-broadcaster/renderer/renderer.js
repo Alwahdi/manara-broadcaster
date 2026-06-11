@@ -5,6 +5,7 @@ let settings = { channels: [] };
 let serverInfo = { port: 8080, ips: [] };
 let videoDevices = [];
 let audioDevices = [];
+let platformState = null;
 const runtime = new Map(); // channelId -> { stream, ws, peers:Map, status:'idle'|'starting'|'live'|'error', err? }
 
 function uid(){return 'c_'+Math.random().toString(36).slice(2,10)}
@@ -206,7 +207,7 @@ function renderChannels() {
         <div class="ch-actions">
           ${live||starting
             ?`<button class="btn live" data-act="stop" data-id="${c.id}">إيقاف البث</button>`
-            :`<button class="btn primary" data-act="start" data-id="${c.id}">بدء البث</button>`}
+            :`<button class="btn primary" data-act="start" data-id="${c.id}" ${featureAllowed('channels') ? '' : 'disabled'}>بدء البث</button>`}
           <button class="icon-btn" data-act="edit" data-id="${c.id}" title="تعديل">✏️</button>
           <button class="icon-btn danger" data-act="delete" data-id="${c.id}" title="حذف">🗑</button>
         </div>
@@ -258,6 +259,19 @@ function updateGlobalStatus() {
   else $('globalStatus').innerHTML = '<span class="led off"></span> جاهز';
 }
 function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+
+function featureAllowed(feature) {
+  if (!platformState || platformState.state === 'unregistered') return true;
+  return platformState.state === 'active' && !!platformState.features?.[feature];
+}
+
+function featureMessage(feature) {
+  const label = feature === 'iptv' ? 'IPTV' : feature === 'media' ? 'المكتبة' : 'القنوات';
+  if (!platformState || platformState.state === 'unregistered') return `${label} يحتاج تفعيل المنصة أولاً.`;
+  if (platformState.state === 'pending') return `${label} بانتظار موافقة مالك المنصة.`;
+  if (platformState.state === 'expired') return `${label} غير متاح لأن الاشتراك منتهي.`;
+  return `${label} غير متاح في هذه الخطة.`;
+}
 
 // ================= Editor modal =================
 let editingId = null;
@@ -414,6 +428,10 @@ function releaseStream(c) {
 function wsUrl() { return `ws://127.0.0.1:${serverInfo.port || settings.port || 8080}/ws`; }
 
 async function startChannel(id) {
+  if (!featureAllowed('channels')) {
+    toast(featureMessage('channels'), 'err');
+    return;
+  }
   const c = settings.channels.find(x => x.id === id);
   if (!c) return;
   if (runtime.has(id)) return;
@@ -589,6 +607,7 @@ function renderPlatformFeatures(s) {
 }
 
 function renderPlatformStatus(s) {
+  platformState = s || null;
   const box = $('platformStatusBox');
   if (box) {
     const policy = s?.updatePolicy;
@@ -601,6 +620,8 @@ function renderPlatformStatus(s) {
     $('platformFingerprintRow').textContent = `معرّف السيرفر: ${s?.activationId || '—'} · بصمة الجهاز: ${s?.fingerprint || '—'}`;
   }
   renderPlatformFeatures(s);
+  renderChannels();
+  refreshIptvList?.();
 }
 
 async function initPlatform() {
@@ -872,13 +893,14 @@ async function refreshIptvList() {
     card.className = 'channel-card';
     const isCloud = ch.source === 'cloud';
     const isEnabled = ch.enabled !== false && ch.enabled !== 0;
+    const canPlayIptv = isEnabled && featureAllowed('iptv');
     const cloudBadge = isCloud ? '<span class="badge" style="background:#3b82f6;color:#fff;font-size:10px;padding:2px 6px;border-radius:6px;margin-right:4px">من السحابة</span>' : '';
     const disabledBadge = isEnabled ? '' : '<span class="badge" style="background:#64748b;color:#fff;font-size:10px;padding:2px 6px;border-radius:6px;margin-right:4px">معطلة</span>';
     card.innerHTML = `
       <div class="ch-head">
         <div>
           <div class="ch-name">${cloudBadge}${disabledBadge}${escapeHtml(ch.name)} ${ch.category ? `<span class="muted small">· ${escapeHtml(ch.category)}</span>` : ''}</div>
-          <div class="muted small" style="margin-top:4px;word-break:break-all">${isCloud ? 'رابط المصدر مخفي ومحمي من المنصة' : escapeHtml(ch.url)}</div>
+          <div class="muted small" style="margin-top:4px;word-break:break-all">${featureAllowed('iptv') ? (isCloud ? 'رابط المصدر مخفي ومحمي من المنصة' : escapeHtml(ch.url)) : escapeHtml(featureMessage('iptv'))}</div>
         </div>
         <div style="display:flex;gap:6px;align-items:center">
           <span class="led ${st.upstreamOpen ? 'on' : 'off'}"></span>
@@ -907,7 +929,7 @@ async function refreshIptvList() {
         </div>
       </details>
       <div class="ch-actions" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn primary" data-act="play" ${isEnabled ? '' : 'disabled'}>تشغيل</button>
+        <button class="btn primary" data-act="play" ${canPlayIptv ? '' : 'disabled'}>تشغيل</button>
         <button class="btn ghost" data-act="copy">📋 نسخ رابط LAN</button>
         ${isCloud ? '' : '<button class="btn ghost" data-act="edit">تعديل</button>'}
         ${isCloud ? '' : '<button class="btn ghost" data-act="del">حذف</button>'}
@@ -1016,6 +1038,10 @@ function describeHlsError(data, extraMessage = '') {
 }
 
 async function playIptv(ch) {
+  if (!featureAllowed('iptv')) {
+    toast(featureMessage('iptv'), 'err');
+    return;
+  }
   const info = await window.broadcaster.iptvStreamUrl(ch.id);
   const proxyUrl = info.url; // local proxy
   $('iptvPlayerTitle').textContent = ch.name;

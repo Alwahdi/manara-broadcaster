@@ -272,6 +272,57 @@ function safeCloudIptvList() {
   catch { return []; }
 }
 
+function platformStatus(options = {}) {
+  try {
+    return typeof options.getPlatformStatus === 'function' ? options.getPlatformStatus() : null;
+  } catch {
+    return null;
+  }
+}
+
+function featureAllowed(options = {}, feature) {
+  const status = platformStatus(options);
+  if (!status || status.state === 'unregistered') return true; // legacy/offline installs keep working until registered.
+  if (status.state === 'active' && status.features?.[feature]) return true;
+  return false;
+}
+
+function platformGateMessage(status, feature) {
+  const label = {
+    channels: 'Broadcast channels',
+    iptv: 'IPTV',
+    media: 'Media library',
+    webAdmin: 'LAN admin',
+    analytics: 'Analytics',
+    branding: 'Branding',
+  }[feature] || feature;
+  if (!status || status.state === 'unregistered') return `${label} is not activated yet.`;
+  if (status.state === 'pending') return `${label} is waiting for platform owner approval.`;
+  if (status.state === 'expired') return `${label} is unavailable because the subscription expired.`;
+  if (status.state === 'suspended') return `${label} is temporarily unavailable.`;
+  return `${label} is not included in this subscription plan.`;
+}
+
+function denyFeature(req, res, options, feature) {
+  const status = platformStatus(options);
+  const message = platformGateMessage(status, feature);
+  if (String(req.headers.accept || '').includes('text/html')) {
+    send(res, 402, `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Feature unavailable</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#080d1f;color:#e5e7eb;font-family:system-ui,-apple-system,Segoe UI,sans-serif;text-align:center;padding:24px}main{max-width:560px}h1{font-size:24px;margin:0 0 10px}p{color:#cbd5e1;line-height:1.7}</style></head><body><main><h1>Feature unavailable</h1><p>${escapeHtml(message)}</p></main></body></html>`, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'X-Manara-Error': encodeURIComponent(message),
+    });
+    return true;
+  }
+  sendJson(res, 402, {
+    error: 'feature_unavailable',
+    feature,
+    message,
+    platform: status ? { state: status.state, activationId: status.activationId || '' } : null,
+  });
+  return true;
+}
+
 function adminPage(options = {}) {
   const broadcastJson = escapeHtml(JSON.stringify(db.listBroadcastChannels(), null, 2));
   const status = iptv.status();
@@ -938,12 +989,19 @@ function createHandler(options = {}) {
     }
     if (u.pathname === '/admin') {
       if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      if (!featureAllowed(options, 'webAdmin')) return denyFeature(req, res, options, 'webAdmin');
       return send(res, 200, adminPage(options), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     }
+    if (/^\/api\/admin\//.test(u.pathname) && !featureAllowed(options, 'webAdmin')) {
+      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      return denyFeature(req, res, options, 'webAdmin');
+    }
     if (u.pathname === '/library') {
+      if (!featureAllowed(options, 'media')) return denyFeature(req, res, options, 'media');
       return send(res, 200, libraryPage(req, res), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     }
     if (u.pathname === '/api/library') {
+      if (!featureAllowed(options, 'media')) return denyFeature(req, res, options, 'media');
       const media = listLibraryItems(u.query);
       return sendJson(res, 200, {
         media,
@@ -954,6 +1012,7 @@ function createHandler(options = {}) {
     }
     let m = /^\/player\/(\d+)$/.exec(u.pathname);
     if (m) {
+      if (!featureAllowed(options, 'media')) return denyFeature(req, res, options, 'media');
       const html = playerPage(m[1], req, res);
       if (!html) return send(res, 404, 'Media not found', { 'Content-Type': 'text/plain; charset=utf-8' });
       return send(res, 200, html, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -1132,6 +1191,7 @@ function createHandler(options = {}) {
     }
     m = /^\/api\/media\/(\d+)\/progress$/.exec(u.pathname);
     if (m && req.method === 'POST') {
+      if (!featureAllowed(options, 'media')) return denyFeature(req, res, options, 'media');
       try {
         const item = db.getMedia(parseInt(m[1], 10));
         if (!item) return sendJson(res, 404, { error: 'not found' });
@@ -1154,12 +1214,14 @@ function createHandler(options = {}) {
     }
     m = /^\/api\/media\/(\d+)$/.exec(u.pathname);
     if (m) {
+      if (!featureAllowed(options, 'media')) return denyFeature(req, res, options, 'media');
       const item = db.getMedia(parseInt(m[1], 10));
       if (!item) return sendJson(res, 404, { error: 'not found' });
       return sendJson(res, 200, { media: item, subtitles: db.listSubtitles(item.id) });
     }
     m = /^\/media\/(\d+)$/.exec(u.pathname);
     if (m) {
+      if (!featureAllowed(options, 'media')) return denyFeature(req, res, options, 'media');
       try {
         const item = db.getMedia(parseInt(m[1], 10));
         if (!item) { res.writeHead(404); res.end(); return; }
@@ -1171,6 +1233,7 @@ function createHandler(options = {}) {
     }
     m = /^\/sub\/(\d+)$/.exec(u.pathname);
     if (m) {
+      if (!featureAllowed(options, 'media')) return denyFeature(req, res, options, 'media');
       try {
         const sub = db.getSubtitle(parseInt(m[1], 10));
         if (!sub) { res.writeHead(404); res.end(); return; }
@@ -1188,6 +1251,7 @@ function createHandler(options = {}) {
     // IPTV proxy: /iptv/:id  (local numeric or cloud-<uuid>)
     m = /^\/iptv\/(cloud-[^/]+|\d+)(?:\/(\w+))?$/i.exec(u.pathname);
     if (m) {
+      if (!featureAllowed(options, 'iptv')) return denyFeature(req, res, options, 'iptv');
       try {
         const rawId = m[1];
         const sub = m[2] || '';

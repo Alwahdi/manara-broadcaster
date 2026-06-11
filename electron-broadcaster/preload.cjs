@@ -50,6 +50,7 @@ contextBridge.exposeInMainWorld('broadcaster', {
   // Platform subscription / activation
   platformStatus: () => ipcRenderer.invoke('platform-status'),
   platformRefresh: () => ipcRenderer.invoke('platform-refresh'),
+  platformFeatureAllowed: (feature) => ipcRenderer.invoke('platform-feature-allowed', feature),
   platformRequestActivation: (payload) => ipcRenderer.invoke('platform-request-activation', payload),
   onPlatformStatus: (cb) => {
     const h = (_e, s) => cb(s);

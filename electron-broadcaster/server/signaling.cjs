@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
 
-function startSignalingServer({ port = 8080, mediaHandler = null, getIptvChannels = null } = {}) {
+function startSignalingServer({ port = 8080, mediaHandler = null, getIptvChannels = null, getFeatureAllowed = null } = {}) {
   const viewerHtml = fs.readFileSync(path.join(__dirname, 'viewer.html'), 'utf8');
   const watchHtml = fs.readFileSync(path.join(__dirname, 'watch.html'), 'utf8');
   const iptvPlayerHtml = fs.readFileSync(path.join(__dirname, 'iptv-player.html'), 'utf8');
@@ -24,16 +24,24 @@ function startSignalingServer({ port = 8080, mediaHandler = null, getIptvChannel
   const channels = new Map();
   let nextViewerId = 1;
 
+  function featureAllowed(feature) {
+    try {
+      return typeof getFeatureAllowed === 'function' ? getFeatureAllowed(feature) !== false : true;
+    } catch {
+      return true;
+    }
+  }
+
   function channelSummary() {
-    const broadcast = [...channels.values()].map(c => ({
+    const broadcast = featureAllowed('channels') ? [...channels.values()].map(c => ({
       ...c.meta,
       type: 'broadcast',
       viewers: c.viewers.size,
       live: !!(c.broadcaster && c.broadcaster.readyState === 1),
-    }));
+    })) : [];
     let iptv = [];
     try {
-      iptv = typeof getIptvChannels === 'function' ? getIptvChannels() : [];
+      iptv = featureAllowed('iptv') && typeof getIptvChannels === 'function' ? getIptvChannels() : [];
     } catch {}
     return [...broadcast, ...iptv];
   }
@@ -93,6 +101,11 @@ function startSignalingServer({ port = 8080, mediaHandler = null, getIptvChannel
       // Broadcaster registers a channel. Multiple channels possible via multiple WS
       // connections from the same app.
       if (msg.type === 'register-broadcaster') {
+        if (!featureAllowed('channels')) {
+          ws.send(JSON.stringify({ type:'error', message:'broadcast-feature-unavailable' }));
+          ws.close();
+          return;
+        }
         const id = String(msg.channelId || '');
         if (!id) { ws.send(JSON.stringify({ type:'error', message:'missing channelId' })); ws.close(); return; }
         let ch = channels.get(id);
@@ -130,6 +143,11 @@ function startSignalingServer({ port = 8080, mediaHandler = null, getIptvChannel
       }
 
       if (msg.type === 'register-viewer') {
+        if (!featureAllowed('channels')) {
+          ws.send(JSON.stringify({ type:'error', message:'broadcast-feature-unavailable' }));
+          ws.close();
+          return;
+        }
         const id = String(msg.channelId || '');
         const ch = channels.get(id);
         if (!ch) { ws.send(JSON.stringify({ type:'error', message:'channel-not-found' })); ws.close(); return; }

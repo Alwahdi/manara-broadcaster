@@ -361,6 +361,7 @@ function mediaServerOptions() {
       tmdbKey: settings.tmdbKey || '',
       tmdbLang: settings.tmdbLang || 'ar',
     }),
+    getPlatformStatus: () => platform.status(),
     onChannelsChanged: () => refreshSettingsChannelMirror('lan-admin'),
   };
 }
@@ -380,11 +381,18 @@ async function refreshPlatformStatus() {
   return s;
 }
 
+function platformFeatureAllowed(feature) {
+  const status = platform.status();
+  if (!status || status.state === 'unregistered') return true;
+  return status.state === 'active' && !!status.features?.[feature];
+}
+
 function createMediaHandler() {
   return libraryServer.createHandler(mediaServerOptions());
 }
 
 function publicIptvChannels() {
+  if (!platformFeatureAllowed('iptv')) return [];
   const rows = [];
   try {
     rows.push(...cloudIptv.list());
@@ -562,7 +570,12 @@ ipcMain.handle('save-settings', (_e, next) => {
 });
 ipcMain.handle('restart-server', async (_e, port) => {
   if (serverInfo && serverInfo.close) await serverInfo.close();
-  serverInfo = startSignalingServer({ port: port || settings.port, mediaHandler: createMediaHandler(), getIptvChannels: publicIptvChannels });
+  serverInfo = startSignalingServer({
+    port: port || settings.port,
+    mediaHandler: createMediaHandler(),
+    getIptvChannels: publicIptvChannels,
+    getFeatureAllowed: platformFeatureAllowed,
+  });
   serverInfo.setBrand({
     brandName: settings.brandName, brandTagline: settings.brandTagline,
     accent: settings.accent, accent2: settings.accent2,
@@ -623,6 +636,7 @@ ipcMain.handle('license-hardware-id', () => getHardwareId());
 // ---------- Platform subscription IPC ----------
 ipcMain.handle('platform-status', async () => platform.status());
 ipcMain.handle('platform-refresh', async () => refreshPlatformStatus());
+ipcMain.handle('platform-feature-allowed', (_e, feature) => platformFeatureAllowed(String(feature || '')));
 ipcMain.handle('platform-request-activation', async (_e, payload) => {
   const clean = payload && typeof payload === 'object' ? payload : {};
   settings = {
@@ -778,7 +792,12 @@ app.whenReady().then(() => {
     }, { useSystemPicker: false });
   } catch (e) { console.error('setDisplayMediaRequestHandler failed', e); }
 
-  serverInfo = startSignalingServer({ port: settings.port, mediaHandler: createMediaHandler(), getIptvChannels: publicIptvChannels });
+  serverInfo = startSignalingServer({
+    port: settings.port,
+    mediaHandler: createMediaHandler(),
+    getIptvChannels: publicIptvChannels,
+    getFeatureAllowed: platformFeatureAllowed,
+  });
   serverInfo.setBrand({
     brandName: settings.brandName, brandTagline: settings.brandTagline,
     accent: settings.accent, accent2: settings.accent2,
