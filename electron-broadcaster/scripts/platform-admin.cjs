@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 const fs = require('fs');
 const path = require('path');
+require('../library/env.cjs').loadLocalEnv(path.join(__dirname, '..'));
 
 const DEFAULT_FEATURES = ['channels', 'iptv', 'media', 'webAdmin', 'analytics', 'branding'];
 
@@ -13,7 +14,7 @@ Usage:
   node scripts/platform-admin.cjs approve <instance-id> [--plan=pro] [--days=365] [--features=all|channels,iptv,media,webAdmin,analytics,branding]
   node scripts/platform-admin.cjs suspend <instance-id> [reason]
   node scripts/platform-admin.cjs expire <instance-id>
-  node scripts/platform-admin.cjs policy --channel=stable --latest=2.5.12 --minimum=2.5.0 [--mandatory=true] [--notes="..."]
+  node scripts/platform-admin.cjs policy --channel=stable --latest=2.5.13 --minimum=2.5.0 [--mandatory=true] [--notes="..."]
 `);
 }
 
@@ -27,6 +28,58 @@ function parseFeatures(value) {
   const raw = String(value || 'all').trim();
   const enabled = raw === 'all' ? DEFAULT_FEATURES : raw.split(',').map((s) => s.trim()).filter(Boolean);
   return Object.fromEntries(DEFAULT_FEATURES.map((name) => [name, enabled.includes(name)]));
+}
+
+function splitSqlStatements(sqlText) {
+  const statements = [];
+  let current = '';
+  let single = false;
+  let double = false;
+  let dollarTag = '';
+  for (let i = 0; i < sqlText.length; i += 1) {
+    const ch = sqlText[i];
+    const next = sqlText[i + 1] || '';
+    if (!single && !double && !dollarTag && ch === '-' && next === '-') {
+      while (i < sqlText.length && sqlText[i] !== '\n') i += 1;
+      current += '\n';
+      continue;
+    }
+    if (!single && !double && !dollarTag && ch === '/' && next === '*') {
+      i += 2;
+      while (i < sqlText.length && !(sqlText[i] === '*' && sqlText[i + 1] === '/')) i += 1;
+      i += 1;
+      continue;
+    }
+    if (!single && !double && ch === '$') {
+      const rest = sqlText.slice(i);
+      const match = /^\$[A-Za-z_][A-Za-z0-9_]*\$|^\$\$/.exec(rest);
+      if (match) {
+        const tag = match[0];
+        if (!dollarTag) dollarTag = tag;
+        else if (dollarTag === tag) dollarTag = '';
+        current += tag;
+        i += tag.length - 1;
+        continue;
+      }
+    }
+    if (!double && !dollarTag && ch === "'" && single && next === "'") {
+      current += "''";
+      i += 1;
+      continue;
+    }
+    if (!double && !dollarTag && ch === "'") single = !single;
+    else if (!single && !dollarTag && ch === '"') double = !double;
+    if (!single && !double && !dollarTag && ch === ';') {
+      const stmt = current.trim();
+      if (stmt) statements.push(stmt);
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  const tail = current.trim();
+  if (tail) statements.push(tail);
+  return statements;
 }
 
 async function sqlClient() {
@@ -65,8 +118,9 @@ async function main() {
 
   if (cmd === 'apply-schema') {
     const schema = fs.readFileSync(path.join(__dirname, '..', 'neon', 'schema.sql'), 'utf8');
-    await sql.query(schema);
-    console.log('Schema applied.');
+    const statements = splitSqlStatements(schema);
+    for (const statement of statements) await sql.query(statement);
+    console.log(`Schema applied (${statements.length} statements).`);
     return;
   }
 

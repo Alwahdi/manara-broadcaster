@@ -9,6 +9,8 @@ const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell, desktopCapt
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { loadLocalEnv } = require('./library/env.cjs');
+const loadedEnvFiles = loadLocalEnv(__dirname);
 const { startSignalingServer } = require('./server/signaling.cjs');
 const { verifyLicense, getHardwareId } = require('./licensing/verify.cjs');
 const { autoUpdater } = require('electron-updater');
@@ -21,6 +23,10 @@ const deviceState = require('./library/device-state.cjs');
 const platform = require('./library/platform.cjs');
 let runtimeConfig = {};
 try { runtimeConfig = require('./library/cloud-runtime.cjs'); } catch {}
+if (!process.env.MANARA_NEON_DATABASE_URL && !runtimeConfig.neonDatabaseUrl && !app.isPackaged) {
+  console.warn('[Manara] dev mode has no MANARA_NEON_DATABASE_URL. Add it to .env.local for Neon cloud IPTV/platform tests.');
+}
+if (loadedEnvFiles.length) console.log('[Manara] loaded local env files:', loadedEnvFiles.join(', '));
 
 function initSentry() {
   const dsn = process.env.SENTRY_DSN || runtimeConfig.sentryDsn || '';

@@ -95,8 +95,8 @@ for each row execute function set_updated_at();
 
 insert into platform_update_policies (channel, latest_version, minimum_version, mandatory, notes, is_active)
 values
-  ('stable', '2.5.11', '2.5.0', false, 'Stable channel with automatic background updates.', true),
-  ('beta', '2.5.11', '2.5.0', false, 'Beta channel for early customer testing.', true)
+  ('stable', '2.5.13', '2.5.0', false, 'Stable channel with automatic background updates.', true),
+  ('beta', '2.5.13', '2.5.0', false, 'Beta channel for early customer testing.', true)
 on conflict do nothing;
 
 insert into cloud_iptv_channels (name, url, category, sort_order, is_active)

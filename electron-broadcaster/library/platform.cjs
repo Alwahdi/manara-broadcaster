@@ -5,11 +5,12 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { getHardwareId } = require('../licensing/machine-id.cjs');
+try { require('./env.cjs').loadLocalEnv(__dirname); } catch {}
 
 let runtimeConfig = {};
 try { runtimeConfig = require('./cloud-runtime.cjs'); } catch {}
 
-let neonDatabaseUrl = process.env.MANARA_NEON_DATABASE_URL || runtimeConfig.neonDatabaseUrl || '';
+let neonDatabaseUrl = process.env.MANARA_NEON_DATABASE_URL || process.env.DATABASE_URL || runtimeConfig.neonDatabaseUrl || '';
 let cachePath = null;
 let cache = null;
 let lastStatus = null;
@@ -60,7 +61,7 @@ function setCachePath(file) {
 }
 
 function setNeonDatabaseUrl(url) {
-  neonDatabaseUrl = String(url || '').trim() || process.env.MANARA_NEON_DATABASE_URL || runtimeConfig.neonDatabaseUrl || '';
+  neonDatabaseUrl = String(url || '').trim() || process.env.MANARA_NEON_DATABASE_URL || process.env.DATABASE_URL || runtimeConfig.neonDatabaseUrl || '';
 }
 
 async function sqlClient() {

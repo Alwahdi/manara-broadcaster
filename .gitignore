@@ -21,6 +21,7 @@ dist-ssr
 .env
 .env.*
 !.env.example
+electron-broadcaster/library/cloud-runtime.cjs
 
 
 

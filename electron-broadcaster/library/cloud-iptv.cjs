@@ -4,12 +4,15 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+try { require('./env.cjs').loadLocalEnv(__dirname); } catch {}
 
 const CLOUD_BASE = process.env.MANARA_CLOUD_URL ||
   'https://project--67c27b7a-ed28-4f60-b80e-05a2f89dcda5.lovable.app';
 const CLOUD_REST = CLOUD_BASE + '/api/public/iptv/list';
-const SUPABASE_URL = process.env.MANARA_SUPABASE_URL || 'https://yvfyvanvkjrgapufatnn.supabase.co';
+const SUPABASE_URL = process.env.MANARA_SUPABASE_URL || process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://yvfyvanvkjrgapufatnn.supabase.co';
 const SUPABASE_ANON_KEY = process.env.MANARA_SUPABASE_ANON_KEY ||
+  process.env.SUPABASE_PUBLISHABLE_KEY ||
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl2Znl2YW52a2pyZ2FwdWZhdG5uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MzU3OTcsImV4cCI6MjA5NDAxMTc5N30.yx8R7ZpkUWj52cEfaNNtU0uaUrw_QS9lNRNAg-sUsPo';
 const SUPABASE_PUBLIC_REST = SUPABASE_URL +
   '/rest/v1/cloud_iptv_channels?select=id,name,url,logo_url,category,headers,transfer_limit_bytes,is_active,sort_order&is_active=eq.true&order=sort_order.asc';
