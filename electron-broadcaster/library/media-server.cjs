@@ -65,14 +65,26 @@ function requireAdmin(req, res, getAdminAuth) {
   return false;
 }
 
-function adminPage() {
+function formatBytes(bytes) {
+  const n = Number(bytes) || 0;
+  if (n <= 0) return 'No limit';
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+function adminPage(options = {}) {
   const broadcastJson = escapeHtml(JSON.stringify(db.listBroadcastChannels(), null, 2));
+  const status = iptv.status();
   const iptvRows = db.listIptv().map((ch) => `
     <tr>
       <td>${escapeHtml(ch.name)}</td>
       <td>${escapeHtml(ch.category || '')}</td>
-      <td class="url">${escapeHtml(ch.url)}</td>
+      <td class="url">Hidden in LAN admin</td>
       <td>${ch.enabled ? 'Enabled' : 'Disabled'}</td>
+      <td>${formatBytes(ch.transferLimitBytes)}</td>
+      <td>${status[ch.id]?.viewers || 0}</td>
+      <td>${formatBytes(status[ch.id]?.totalUpstreamBytes || 0)}</td>
       <td>
         <button data-toggle="${ch.id}">${ch.enabled ? 'Disable' : 'Enable'}</button>
         <button data-del="${ch.id}">Delete</button>
@@ -109,9 +121,10 @@ td,th{border-bottom:1px solid rgba(255,255,255,.1);padding:8px;text-align:left;v
     <label>URL</label><input name="url" required placeholder="https://.../playlist.m3u8">
     <label>Category</label><input name="category">
     <label>Logo URL</label><input name="logo">
+    <label>Internet transfer limit (MB, 0 = no limit)</label><input name="transferLimitMb" type="number" min="0" step="1" value="0">
     <button>Add IPTV</button>
   </form>
-  <table><thead><tr><th>Name</th><th>Category</th><th>URL</th><th>Status</th><th>Actions</th></tr></thead><tbody>${iptvRows || '<tr><td colspan="5">No IPTV channels yet.</td></tr>'}</tbody></table>
+  <table><thead><tr><th>Name</th><th>Category</th><th>Source URL</th><th>Status</th><th>Limit</th><th>Viewers</th><th>Internet used</th><th>Actions</th></tr></thead><tbody>${iptvRows || '<tr><td colspan="8">No IPTV channels yet.</td></tr>'}</tbody></table>
 </section>
 <section>
   <h2>Broadcast Channels JSON</h2>
@@ -131,6 +144,8 @@ async function api(path, opts) {
 document.getElementById('iptvForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const data = Object.fromEntries(new FormData(e.target).entries());
+  data.transferLimitBytes = Math.max(0, Number(data.transferLimitMb || 0)) * 1024 * 1024;
+  delete data.transferLimitMb;
   await api('/api/admin/iptv', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
   location.reload();
 });
@@ -194,7 +209,7 @@ function createHandler(options = {}) {
     }
     if (u.pathname === '/admin') {
       if (!requireAdmin(req, res, options.getAdminAuth)) return;
-      return send(res, 200, adminPage(), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      return send(res, 200, adminPage(options), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     }
     if (u.pathname === '/api/admin/state') {
       if (!requireAdmin(req, res, options.getAdminAuth)) return;
@@ -276,7 +291,8 @@ function createHandler(options = {}) {
           return;
         }
         const baseProxyUrl = `http://${req.headers.host}/iptv/${rawId}`;
-        return iptv.handleRequest(ch, sub, u.query, req, res, baseProxyUrl);
+        const policy = typeof options.getIptvPolicy === 'function' ? options.getIptvPolicy() : {};
+        return iptv.handleRequest(ch, sub, u.query, req, res, baseProxyUrl, policy);
       } catch (e) {
         const message = `Local IPTV proxy failed: ${e.message}`;
         res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8', 'X-Manara-Error': encodeURIComponent(message) });

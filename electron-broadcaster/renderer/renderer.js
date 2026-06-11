@@ -99,7 +99,7 @@ function hydrateSettingsForm() {
   if ($('libraryPort')) $('libraryPort').value = settings.libraryPort || 8420;
   if ($('adminUsername')) $('adminUsername').value = settings.adminUsername || 'admin';
   if ($('adminPassword')) $('adminPassword').value = settings.adminPassword || 'admin';
-  if ($('neonDatabaseUrl')) $('neonDatabaseUrl').value = settings.neonDatabaseUrl || '';
+  if ($('iptvGlobalLimitMb')) $('iptvGlobalLimitMb').value = bytesToWholeMb(settings.iptvGlobalLimitBytes || 0);
   renderAdminLinks();
 }
 
@@ -142,7 +142,6 @@ $('saveSettingsBtn').onclick = async () => {
     libraryPort: Number($('libraryPort')?.value) || 8420,
     adminUsername: $('adminUsername')?.value.trim() || 'admin',
     adminPassword: $('adminPassword')?.value || 'admin',
-    neonDatabaseUrl: $('neonDatabaseUrl')?.value.trim() || '',
   });
   toast('تم حفظ الإعدادات', 'ok');
 };
@@ -153,11 +152,10 @@ $('saveAdminBtn')?.addEventListener('click', async () => {
   });
   toast('تم حفظ بيانات الإدارة', 'ok');
 });
-$('saveCloudDbBtn')?.addEventListener('click', async () => {
-  await persistSettings({ neonDatabaseUrl: $('neonDatabaseUrl').value.trim() });
-  await window.broadcaster.cloudIptvRefresh?.();
+$('saveIptvLimitsBtn')?.addEventListener('click', async () => {
+  await persistSettings({ iptvGlobalLimitBytes: mbToBytes($('iptvGlobalLimitMb').value) });
   await refreshIptvList();
-  toast('تم حفظ قاعدة IPTV السحابية وتحديث القنوات', 'ok');
+  toast('تم حفظ حدود IPTV', 'ok');
 });
 $('restartServerBtn').onclick = async () => {
   const port = Number($('port').value) || 8080;
@@ -226,11 +224,16 @@ function renderChannels() {
       else if (act === 'delete') {
         if (confirm('حذف القناة؟')) {
           stopChannel(id);
-          window.broadcaster.getBroadcastChannels?.().then((current) => {
-            const base = Array.isArray(current) ? current : (settings.channels || []);
-            settings.channels = base.filter(c => c.id !== id);
-            return persistBroadcastChannels(settings.channels);
-          }).then(() => renderChannels()).catch(() => renderChannels());
+          const remove = window.broadcaster.removeBroadcastChannel
+            ? window.broadcaster.removeBroadcastChannel(id)
+            : window.broadcaster.getBroadcastChannels?.().then((current) => {
+              const base = Array.isArray(current) ? current : (settings.channels || []);
+              settings.channels = base.filter(c => c.id !== id);
+              return persistBroadcastChannels(settings.channels);
+            });
+          Promise.resolve(remove)
+            .then((saved) => { if (Array.isArray(saved)) settings.channels = saved; renderChannels(); })
+            .catch((e) => { toast('فشل حذف القناة: ' + (e?.message || e), 'err'); renderChannels(); });
         }
       }
     };
@@ -735,6 +738,7 @@ function openIptvModal(ch) {
   $('iptvUrl').value = ch?.url || '';
   $('iptvCategory').value = ch?.category || '';
   $('iptvLogo').value = ch?.logo || '';
+  $('iptvTransferLimitMb').value = bytesToWholeMb(ch?.transferLimitBytes || 0);
   $('iptvEnabled').checked = ch ? (ch.enabled !== false && ch.enabled !== 0) : true;
   $('iptvProbeBox').style.display = 'none';
   $('iptvModal').style.display = 'flex';
@@ -782,7 +786,7 @@ async function refreshIptvList() {
       <div class="ch-head">
         <div>
           <div class="ch-name">${cloudBadge}${disabledBadge}${escapeHtml(ch.name)} ${ch.category ? `<span class="muted small">· ${escapeHtml(ch.category)}</span>` : ''}</div>
-          <div class="muted small" style="margin-top:4px;word-break:break-all">${escapeHtml(ch.url)}</div>
+          <div class="muted small" style="margin-top:4px;word-break:break-all">${isCloud ? 'رابط المصدر مخفي ومحمي من المنصة' : escapeHtml(ch.url)}</div>
         </div>
         <div style="display:flex;gap:6px;align-items:center">
           <span class="led ${st.upstreamOpen ? 'on' : 'off'}"></span>
@@ -796,6 +800,7 @@ async function refreshIptvList() {
         <div><strong>${formatKbps(st.downstreamKbps)}</strong><span>توزيع LAN</span></div>
         <div><strong>${formatBytes(st.totalUpstreamBytes)}</strong><span>إجمالي الإنترنت</span></div>
         <div><strong>${formatBytes(st.totalDownstreamBytes)}</strong><span>إجمالي LAN</span></div>
+        <div><strong>${formatBytes(ch.transferLimitBytes || settings.iptvGlobalLimitBytes || 0)}</strong><span>حد الإنترنت</span></div>
       </div>
       <details class="iptv-details">
         <summary>تقرير مفصل</summary>
@@ -848,6 +853,16 @@ function formatBytes(bytes) {
 function formatKbps(kbps) {
   const n = Number(kbps) || 0;
   return n >= 1000 ? `${(n / 1000).toFixed(2)} Mbps` : `${n} kbps`;
+}
+
+function mbToBytes(value) {
+  const mb = Math.max(0, Number(value) || 0);
+  return Math.round(mb * 1024 * 1024);
+}
+
+function bytesToWholeMb(value) {
+  const bytes = Number(value) || 0;
+  return bytes > 0 ? Math.round(bytes / 1024 / 1024) : 0;
 }
 
 let _hls = null;
@@ -999,6 +1014,7 @@ function setupIptv() {
       url: $('iptvUrl').value.trim(),
       category: $('iptvCategory').value.trim(),
       logo: $('iptvLogo').value.trim(),
+      transferLimitBytes: mbToBytes($('iptvTransferLimitMb').value),
       enabled: $('iptvEnabled').checked,
     };
     if (!payload.name || !payload.url) { toast('الاسم والرابط مطلوبان', 'err'); return; }

@@ -156,6 +156,32 @@ function sendIptvError(res, statusCode, message) {
   res.end(message);
 }
 
+function formatLimitBytes(bytes) {
+  const n = Number(bytes) || 0;
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+function limitMessage(channel, limitBytes, usedBytes) {
+  return `IPTV transfer limit reached for "${channel.name || channel.id}". Limit: ${formatLimitBytes(limitBytes)}, used: ${formatLimitBytes(usedBytes || 0)}. The local server stopped this stream automatically.`;
+}
+
+function activeLimit(channel, policy = {}) {
+  const channelLimit = Math.max(0, Number(channel.transferLimitBytes) || 0);
+  const globalLimit = Math.max(0, Number(policy.iptvGlobalLimitBytes) || 0);
+  if (channelLimit && globalLimit) return Math.min(channelLimit, globalLimit);
+  return channelLimit || globalLimit || 0;
+}
+
+function limitExceeded(channel, policy = {}) {
+  const limit = activeLimit(channel, policy);
+  if (!limit) return null;
+  const used = metrics(channel.id).totalUpstreamBytes;
+  return used >= limit ? { limit, used, message: limitMessage(channel, limit, used) } : null;
+}
+
 // ---- TS / raw fan-out ----
 function tsState(id) {
   metrics(id, 'ts');
@@ -167,8 +193,14 @@ function tsState(id) {
   return s;
 }
 
-function startTsUpstream(channel, s) {
+function startTsUpstream(channel, s, policy = {}) {
   if (s.upstreamReq) return;
+  const blocked = limitExceeded(channel, policy);
+  if (blocked) {
+    markError(channel.id, blocked.message, 429);
+    for (const c of s.clients) sendIptvError(c, 429, blocked.message);
+    return;
+  }
   const m = metrics(channel.id, 'ts');
   m.upstreamRequests += 1;
   m.upstreamOpen = true;
@@ -193,6 +225,13 @@ function startTsUpstream(channel, s) {
     }
     up.on('data', (chunk) => {
       addBytes(channel.id, chunk.length, chunk.length * s.clients.size);
+      const blockedNow = limitExceeded(channel, policy);
+      if (blockedNow) {
+        markError(channel.id, blockedNow.message, 429);
+        for (const c of s.clients) sendIptvError(c, 429, blockedNow.message);
+        stopTsUpstream(channel, s);
+        return;
+      }
       for (const c of s.clients) { try { c.write(chunk); } catch {} }
     });
     up.on('end', () => stopTsUpstream(channel, s));
@@ -221,7 +260,13 @@ function stopTsUpstream(channel, s) {
   metrics(channel.id, 'ts').upstreamOpen = false;
 }
 
-function serveTs(channel, req, res) {
+function serveTs(channel, req, res, policy = {}) {
+  const blocked = limitExceeded(channel, policy);
+  if (blocked) {
+    markError(channel.id, blocked.message, 429);
+    sendIptvError(res, 429, blocked.message);
+    return;
+  }
   const s = tsState(channel.id);
   const m = metrics(channel.id, 'ts');
   m.totalViewerSessions += 1;
@@ -231,7 +276,7 @@ function serveTs(channel, req, res) {
   if (s.upstreamRes && !res.headersSent) {
     try { res.writeHead(200, { 'Content-Type': s.contentType, 'Cache-Control': 'no-cache' }); } catch {}
   }
-  if (!s.upstreamReq) startTsUpstream(channel, s);
+  if (!s.upstreamReq) startTsUpstream(channel, s, policy);
   const cleanup = () => {
     if (!s.clients.has(res)) return;
     s.clients.delete(res);
@@ -295,8 +340,14 @@ function isPlaylistResponse(targetUrl, contentType, body) {
     body.slice(0, 512).toString('utf8').trimStart().startsWith('#EXTM3U');
 }
 
-async function serveHlsPlaylist(channel, playlistUrl, baseProxyUrl, req, res) {
+async function serveHlsPlaylist(channel, playlistUrl, baseProxyUrl, req, res, policy = {}) {
   try {
+    const blocked = limitExceeded(channel, policy);
+    if (blocked) {
+      markError(channel.id, blocked.message, 429);
+      sendIptvError(res, 429, blocked.message);
+      return;
+    }
     touchHls(channel.id);
     touchHlsViewer(channel, req);
     const m = metrics(channel.id, 'hls');
@@ -314,6 +365,13 @@ async function serveHlsPlaylist(channel, playlistUrl, baseProxyUrl, req, res) {
     const body = (await readAll(up)).toString('utf8');
     const rewritten = rewritePlaylist(body, playlistUrl, baseProxyUrl);
     addBytes(channel.id, Buffer.byteLength(body), Buffer.byteLength(rewritten));
+    const blockedNow = limitExceeded(channel, policy);
+    if (blockedNow) {
+      markError(channel.id, blockedNow.message, 429);
+      metrics(channel.id, 'hls').upstreamOpen = false;
+      sendIptvError(res, 429, blockedNow.message);
+      return;
+    }
     res.writeHead(200, {
       'Content-Type': 'application/vnd.apple.mpegurl',
       'Cache-Control': 'no-cache',
@@ -330,8 +388,14 @@ async function serveHlsPlaylist(channel, playlistUrl, baseProxyUrl, req, res) {
   }
 }
 
-async function serveHlsSegment(channel, segUrl, baseProxyUrl, req, res) {
+async function serveHlsSegment(channel, segUrl, baseProxyUrl, req, res, policy = {}) {
   try {
+    const blocked = limitExceeded(channel, policy);
+    if (blocked) {
+      markError(channel.id, blocked.message, 429);
+      sendIptvError(res, 429, blocked.message);
+      return;
+    }
     touchHls(channel.id);
     touchHlsViewer(channel, req);
     const m = metrics(channel.id, 'hls');
@@ -352,6 +416,13 @@ async function serveHlsSegment(channel, segUrl, baseProxyUrl, req, res) {
     if (isPlaylistResponse(segUrl, contentType, body)) {
       const rewritten = rewritePlaylist(body.toString('utf8'), segUrl, baseProxyUrl);
       addBytes(channel.id, body.length, Buffer.byteLength(rewritten));
+      const blockedNow = limitExceeded(channel, policy);
+      if (blockedNow) {
+        markError(channel.id, blockedNow.message, 429);
+        metrics(channel.id, 'hls').upstreamOpen = false;
+        sendIptvError(res, 429, blockedNow.message);
+        return;
+      }
       res.writeHead(200, {
         'Content-Type': 'application/vnd.apple.mpegurl',
         'Cache-Control': 'no-cache',
@@ -361,6 +432,13 @@ async function serveHlsSegment(channel, segUrl, baseProxyUrl, req, res) {
       return;
     }
     addBytes(channel.id, body.length, body.length);
+    const blockedNow = limitExceeded(channel, policy);
+    if (blockedNow) {
+      markError(channel.id, blockedNow.message, 429);
+      metrics(channel.id, 'hls').upstreamOpen = false;
+      sendIptvError(res, 429, blockedNow.message);
+      return;
+    }
     const headers = {
       'Content-Type': contentType || 'video/mp2t',
       'Cache-Control': 'no-cache',
@@ -382,14 +460,14 @@ async function serveHlsSegment(channel, segUrl, baseProxyUrl, req, res) {
 }
 
 // ---- Public entry called from media-server ----
-async function handleRequest(channel, subPath, query, req, res, baseProxyUrl) {
+async function handleRequest(channel, subPath, query, req, res, baseProxyUrl, policy = {}) {
   if (isHls(channel.url)) {
     if (subPath === 'seg' && query.u) {
-      return serveHlsSegment(channel, query.u, baseProxyUrl, req, res);
+      return serveHlsSegment(channel, query.u, baseProxyUrl, req, res, policy);
     }
-    return serveHlsPlaylist(channel, channel.url, baseProxyUrl, req, res);
+    return serveHlsPlaylist(channel, channel.url, baseProxyUrl, req, res, policy);
   }
-  return serveTs(channel, req, res);
+  return serveTs(channel, req, res, policy);
 }
 
 function status() {

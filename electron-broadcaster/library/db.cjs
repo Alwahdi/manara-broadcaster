@@ -310,7 +310,12 @@ function listIptv() {
 function getIptv(id) {
   return _channels.iptv.find((r) => String(r.id) === String(id)) || null;
 }
-function addIptv({ name, url, logo, category, enabled }) {
+function cleanLimitBytes(value) {
+  const n = Math.max(0, Math.floor(Number(value) || 0));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function addIptv({ name, url, logo, category, enabled, transferLimitBytes }) {
   const nextId = _channels.iptv.reduce((m, r) => Math.max(m, Number(r.id) || 0), 0) + 1;
   const row = {
     id: nextId,
@@ -318,6 +323,7 @@ function addIptv({ name, url, logo, category, enabled }) {
     url,
     logo: logo || null,
     category: category || null,
+    transferLimitBytes: cleanLimitBytes(transferLimitBytes),
     enabled: enabled === false || enabled === 0 ? 0 : 1,
     added_at: Date.now(),
   };
@@ -336,6 +342,7 @@ function updateIptv(id, patch) {
       url: next.url,
       logo: next.logo || null,
       category: next.category || null,
+      transferLimitBytes: cleanLimitBytes(next.transferLimitBytes),
       enabled: next.enabled === false || next.enabled === 0 ? 0 : 1,
     }
     : r);
@@ -415,6 +422,7 @@ function replaceAllChannels({ broadcast, iptv } = {}) {
       url: c.url || '',
       logo: c.logo || null,
       category: c.category || null,
+      transferLimitBytes: cleanLimitBytes(c.transferLimitBytes),
       enabled: c.enabled === false || c.enabled === 0 ? 0 : 1,
       added_at: Number(c.added_at) || Date.now(),
     })).filter((c) => c.url);

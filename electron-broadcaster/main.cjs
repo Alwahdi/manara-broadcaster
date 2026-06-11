@@ -102,6 +102,7 @@ function defaultSettings() {
     adminUsername: 'admin',
     adminPassword: 'admin',
     neonDatabaseUrl: '',
+    iptvGlobalLimitBytes: 0,
     channels: [],
     localIptvChannels: [],
   };
@@ -156,7 +157,9 @@ function publicServerInfo() {
 }
 
 function publicSettings() {
-  return JSON.parse(JSON.stringify(settings));
+  const clone = JSON.parse(JSON.stringify(settings));
+  delete clone.neonDatabaseUrl;
+  return clone;
 }
 
 function getLocalIPs() {
@@ -179,7 +182,7 @@ let lastDeviceSync = { state: 'idle', at: null, error: '' };
 const launchedAtBoot = process.argv.includes('--autostart') || process.argv.includes('--hidden');
 
 function cloudSafeSettings() {
-  const { channels: _channels, localIptvChannels: _localIptvChannels, licenseKey: _licenseKey, ...rest } = settings;
+  const { channels: _channels, localIptvChannels: _localIptvChannels, licenseKey: _licenseKey, neonDatabaseUrl: _neonDatabaseUrl, ...rest } = settings;
   return rest;
 }
 
@@ -317,6 +320,9 @@ function mediaServerOptions() {
       username: settings.adminUsername || 'admin',
       password: settings.adminPassword || 'admin',
     }),
+    getIptvPolicy: () => ({
+      iptvGlobalLimitBytes: Number(settings.iptvGlobalLimitBytes) || 0,
+    }),
     onChannelsChanged: () => refreshSettingsChannelMirror('lan-admin'),
   };
 }
@@ -447,9 +453,27 @@ ipcMain.handle('broadcast-save-all', (_e, channels) => {
   scheduleDeviceStatePush('broadcast-save-all');
   return settings.channels;
 });
+ipcMain.handle('broadcast-remove', (_e, id) => {
+  if (!id) return Array.isArray(settings.channels) ? settings.channels : [];
+  if (!libraryReady) {
+    settings.channels = (settings.channels || []).filter((c) => c.id !== id);
+    saveSettingsAndBackup('broadcast-remove-before-library-ready');
+    return settings.channels;
+  }
+  libraryDb.removeBroadcastChannel(id);
+  settings.channels = libraryDb.listBroadcastChannels();
+  try { settings.localIptvChannels = libraryDb.listIptv(); } catch {}
+  saveSettingsAndBackup('broadcast-remove');
+  scheduleDeviceStatePush('broadcast-remove');
+  return settings.channels;
+});
 ipcMain.handle('save-settings', (_e, next) => {
   try {
     const patch = (next && typeof next === 'object') ? { ...next } : {};
+    if (Object.prototype.hasOwnProperty.call(patch, 'neonDatabaseUrl')) {
+      delete patch.neonDatabaseUrl;
+      console.warn('[Manara] ignored customer-side Neon URL edit; cloud database is owner controlled');
+    }
     const hasChannels = Object.prototype.hasOwnProperty.call(patch, 'channels');
     if (hasChannels && !Array.isArray(patch.channels)) {
       console.warn('[Manara] ignored invalid channels save payload');

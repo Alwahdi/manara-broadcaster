@@ -121,6 +121,7 @@
         <label class="field"><span>رابط البث (M3U8 / TS) *</span><input id="iptvUrl" type="text" placeholder="https://.../stream.m3u8" /></label>
         <label class="field"><span>التصنيف</span><input id="iptvCategory" type="text" maxlength="40" placeholder="رياضة، أخبار، أطفال…" /></label>
         <label class="field"><span>شعار (URL)</span><input id="iptvLogo" type="text" placeholder="https://.../logo.png" /></label>
+        <label class="field"><span>حد السحب من الإنترنت لهذه القناة (MB، 0 = بدون حد)</span><input id="iptvTransferLimitMb" type="number" min="0" step="1" placeholder="0" /></label>
         <label class="toggle row-toggle"><input type="checkbox" id="iptvEnabled" checked /><span></span><div><strong>مفعّلة للمشاهدة على الشبكة</strong></div></label>
         <div id="iptvProbeBox" class="hint" style="display:none;margin-top:8px"></div>
       </div>
@@ -199,11 +200,11 @@
     </div>
 
     <div class="card">
-      <div class="card-title">IPTV السحابي عبر Neon</div>
-      <p class="muted small">ضع رابط Neon Postgres لقنوات IPTV السحابية. سيقرأ التطبيق القنوات المفعلة فقط من جدول cloud_iptv_channels.</p>
-      <label class="field"><span>Neon Database URL</span><input id="neonDatabaseUrl" type="password" placeholder="postgresql://..." /></label>
+      <div class="card-title">حدود IPTV</div>
+      <p class="muted small">إذا وصل سحب IPTV من الإنترنت إلى الحد المحدد، يوقف الخادم المحلي القناة تلقائياً. اتركه 0 ليبقى بدون حد.</p>
+      <label class="field"><span>حد جميع قنوات IPTV (MB)</span><input id="iptvGlobalLimitMb" type="number" min="0" step="1" placeholder="0" /></label>
       <div class="buttons end">
-        <button class="btn primary" id="saveCloudDbBtn">حفظ قاعدة السحابة</button>
+        <button class="btn primary" id="saveIptvLimitsBtn">حفظ حدود IPTV</button>
       </div>
     </div>
 

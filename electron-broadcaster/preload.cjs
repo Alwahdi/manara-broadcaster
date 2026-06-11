@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('broadcaster', {
   saveSettings: (s) => ipcRenderer.invoke('save-settings', s),
   getBroadcastChannels: () => ipcRenderer.invoke('broadcast-list'),
   saveBroadcastChannels: (channels) => ipcRenderer.invoke('broadcast-save-all', channels),
+  removeBroadcastChannel: (id) => ipcRenderer.invoke('broadcast-remove', id),
   waitForStorage,
   restartServer: (port) => ipcRenderer.invoke('restart-server', port),
   launchedAtBoot: () => ipcRenderer.invoke('launched-at-boot'),
