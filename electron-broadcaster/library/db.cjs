@@ -342,8 +342,16 @@ function listMedia({ kind, q, limit = 200 } = {}) {
   return db().prepare(sql).all(...params);
 }
 function getMedia(id) {
-  if (!_db) return _mediaFallback.media_items.find((r) => String(r.id) === String(id)) || null;
-  return db().prepare('SELECT * FROM media_items WHERE id = ?').get(id);
+  if (!_db) {
+    const item = _mediaFallback.media_items.find((r) => String(r.id) === String(id)) || null;
+    if (!item) return null;
+    const progress = _mediaFallback.watch_progress[String(item.id)] || {};
+    return { ...item, position: progress.position || 0, wp_duration: progress.duration || 0 };
+  }
+  return db().prepare(`SELECT m.*, wp.position, wp.duration AS wp_duration
+    FROM media_items m
+    LEFT JOIN watch_progress wp ON wp.media_id = m.id
+    WHERE m.id = ?`).get(id);
 }
 function deleteMissing(existingPaths) {
   if (!_db) {

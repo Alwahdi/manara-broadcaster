@@ -5,6 +5,7 @@ const db = require('./db.cjs');
 const tmdb = require('./tmdb.cjs');
 
 const VIDEO_EXT = new Set(['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v', '.ts', '.flv', '.wmv']);
+const AUDIO_EXT = new Set(['.mp3', '.m4a', '.wav', '.flac', '.ogg', '.aac', '.wma', '.opus']);
 const SUB_EXT = new Set(['.srt', '.vtt', '.ass']);
 
 // Parse filename like: "Movie Name (2021).mkv" or "Show.S01E03.Title.mkv"
@@ -52,17 +53,17 @@ async function scanAll({ tmdbKey, tmdbLang = 'ar' } = {}, onProgress) {
     const files = walk(lp.path);
     for (const f of files) {
       const ext = path.extname(f).toLowerCase();
-      if (VIDEO_EXT.has(ext)) allFiles.push({ file: f, libKind: lp.kind });
+      if (VIDEO_EXT.has(ext) || AUDIO_EXT.has(ext)) allFiles.push({ file: f, libKind: lp.kind, mediaKind: AUDIO_EXT.has(ext) ? 'audio' : 'video' });
     }
   }
   total = allFiles.length;
-  for (const { file, libKind } of allFiles) {
+  for (const { file, libKind, mediaKind } of allFiles) {
     try {
       const stat = fs.statSync(file);
       const meta = parseName(path.basename(file));
       const item = {
         path: file,
-        kind: meta.kind === 'episode' ? 'episode' : (libKind === 'tv' ? 'episode' : 'movie'),
+        kind: mediaKind === 'audio' ? 'audio' : (meta.kind === 'episode' ? 'episode' : (libKind === 'tv' ? 'episode' : 'movie')),
         title: meta.title,
         year: meta.year || null,
         season: meta.season || null,
