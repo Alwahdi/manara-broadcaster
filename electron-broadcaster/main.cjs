@@ -432,22 +432,10 @@ ipcMain.handle('broadcast-save-all', (_e, channels) => {
     saveSettingsAndBackup('broadcast-save-before-library-ready');
     return settings.channels;
   }
-  // Guard against a stale/empty renderer list wiping persisted channels.
+  // The renderer and LAN admin send the intended full replacement list.
+  // Older merge protection made real deletions come back after saving.
   syncBroadcastChannelsFromDb({ persist: false });
-  const existing = libraryDb.listBroadcastChannels();
-  if (existing.length > 0 && channels.length === 0) {
-    console.warn('[Manara] refused empty channel save that would wipe', existing.length, 'channels');
-    settings.channels = existing;
-    return settings.channels;
-  }
-  let next = channels;
-  if (existing.length > 0 && channels.length > 0 && channels.length < existing.length) {
-    const byId = new Map(existing.map((c) => [c.id, c]));
-    for (const c of channels) byId.set(c.id, c);
-    next = [...byId.values()];
-    console.warn('[Manara] merged partial channel save:', channels.length, '→', next.length);
-  }
-  settings.channels = libraryDb.setBroadcastChannels(next);
+  settings.channels = libraryDb.setBroadcastChannels(channels);
   try { settings.localIptvChannels = libraryDb.listIptv(); } catch {}
   saveSettingsAndBackup('broadcast-save-all');
   scheduleDeviceStatePush('broadcast-save-all');

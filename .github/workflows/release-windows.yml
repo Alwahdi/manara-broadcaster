@@ -34,6 +34,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Write owner cloud config
+        shell: pwsh
+        env:
+          MANARA_NEON_DATABASE_URL: ${{ secrets.MANARA_NEON_DATABASE_URL }}
+        run: |
+          if (-not [string]::IsNullOrWhiteSpace($env:MANARA_NEON_DATABASE_URL)) {
+            $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($env:MANARA_NEON_DATABASE_URL))
+            "module.exports = { neonDatabaseUrl: Buffer.from('$encoded', 'base64').toString('utf8') };" | Set-Content -Path "library/cloud-runtime.cjs" -Encoding UTF8
+          }
+
       - name: Publish release artifacts
         run: npm run release
         env:

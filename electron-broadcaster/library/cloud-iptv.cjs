@@ -14,7 +14,9 @@ const SUPABASE_ANON_KEY = process.env.MANARA_SUPABASE_ANON_KEY ||
 const SUPABASE_PUBLIC_REST = SUPABASE_URL +
   '/rest/v1/cloud_iptv_channels?select=id,name,url,logo_url,category,headers,is_active,sort_order&is_active=eq.true&order=sort_order.asc';
 const REFRESH_MS = 60 * 60 * 1000; // 1h
-let neonDatabaseUrl = process.env.MANARA_NEON_DATABASE_URL || '';
+let runtimeConfig = {};
+try { runtimeConfig = require('./cloud-runtime.cjs'); } catch {}
+let neonDatabaseUrl = process.env.MANARA_NEON_DATABASE_URL || runtimeConfig.neonDatabaseUrl || '';
 
 let cachePath = null;
 let cached = []; // [{id,name,url,logo,category,headers}]
@@ -85,7 +87,7 @@ async function fetchFromNeon() {
 }
 
 function setNeonDatabaseUrl(url) {
-  neonDatabaseUrl = String(url || '').trim() || process.env.MANARA_NEON_DATABASE_URL || '';
+  neonDatabaseUrl = String(url || '').trim() || process.env.MANARA_NEON_DATABASE_URL || runtimeConfig.neonDatabaseUrl || '';
 }
 
 async function refresh(licenseKey) {
@@ -93,6 +95,7 @@ async function refresh(licenseKey) {
   try {
     const rows = await fetchFromNeon();
     if (Array.isArray(rows)) {
+      if (rows.length === 0) throw new Error('Neon returned zero active IPTV channels');
       cached = rows;
       lastFetch = Date.now();
       lastStatus = { state: 'ok', at: new Date().toISOString(), error: '', count: cached.length, source: 'neon-postgres' };
@@ -109,7 +112,9 @@ async function refresh(licenseKey) {
     const payload = await fetchJson(url, licenseKey ? { 'X-License-Key': licenseKey } : {});
     const rows = Array.isArray(payload) ? payload : payload.channels;
     if (Array.isArray(rows)) {
-      cached = normalizeRows(rows);
+      const normalized = normalizeRows(rows);
+      if (normalized.length === 0) throw new Error('public endpoint returned zero IPTV channels');
+      cached = normalized;
       lastFetch = Date.now();
       lastStatus = { state: 'ok', at: new Date().toISOString(), error: '', count: cached.length, source: CLOUD_REST };
       persist();
@@ -126,7 +131,9 @@ async function refresh(licenseKey) {
       Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
     });
     if (Array.isArray(rows)) {
-      cached = normalizeRows(rows);
+      const normalized = normalizeRows(rows);
+      if (normalized.length === 0) throw new Error('Supabase REST returned zero IPTV channels');
+      cached = normalized;
       lastFetch = Date.now();
       lastStatus = { state: 'ok', at: new Date().toISOString(), error: '', count: cached.length, source: 'supabase-rest' };
       persist();
