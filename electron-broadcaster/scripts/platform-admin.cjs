@@ -12,6 +12,7 @@ Usage:
   node scripts/platform-admin.cjs apply-schema
   node scripts/platform-admin.cjs list [pending|active|expired|suspended|all]
   node scripts/platform-admin.cjs approve <instance-id> [--plan=pro] [--days=365] [--features=all|channels,iptv,media,webAdmin,analytics,branding]
+  node scripts/platform-admin.cjs import-hydra-bein [--limit-bytes=0]
   node scripts/platform-admin.cjs suspend <instance-id> [reason]
   node scripts/platform-admin.cjs expire <instance-id>
   node scripts/platform-admin.cjs policy --channel=stable --latest=2.5.13 --minimum=2.5.0 [--mandatory=true] [--notes="..."]
@@ -108,6 +109,83 @@ function printRows(rows) {
   }
 }
 
+function hydraConfig() {
+  const host = String(process.env.HYDRA_IPTV_HOST || '').trim().replace(/^https?:\/\//i, '');
+  const username = String(process.env.HYDRA_IPTV_USERNAME || '').trim();
+  const password = String(process.env.HYDRA_IPTV_PASSWORD || '').trim();
+  if (!host || !username || !password) {
+    throw new Error('Set HYDRA_IPTV_HOST, HYDRA_IPTV_USERNAME, and HYDRA_IPTV_PASSWORD before importing Hydra IPTV.');
+  }
+  return { host, username, password, base: `http://${host}` };
+}
+
+async function fetchHydraJson(action) {
+  const cfg = hydraConfig();
+  const url = `${cfg.base}/player_api.php?username=${encodeURIComponent(cfg.username)}&password=${encodeURIComponent(cfg.password)}&action=${encodeURIComponent(action)}`;
+  const res = await fetch(url, { headers: { 'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20' } });
+  if (!res.ok) throw new Error(`Hydra ${action} failed: HTTP ${res.status}`);
+  return res.json();
+}
+
+async function importHydraBein(sql) {
+  const cfg = hydraConfig();
+  const [streams, categories] = await Promise.all([
+    fetchHydraJson('get_live_streams'),
+    fetchHydraJson('get_live_categories'),
+  ]);
+  if (!Array.isArray(streams)) throw new Error('Hydra streams response was not an array.');
+  const catMap = new Map(Array.isArray(categories)
+    ? categories.map((c) => [String(c.category_id), c.category_name || ''])
+    : []);
+  const limitBytes = Math.max(0, Number(arg('limit-bytes', '0')) || 0);
+  const channels = streams
+    .filter((s) => {
+      const name = String(s.name || '');
+      const cat = String(catMap.get(String(s.category_id)) || '');
+      return /be\s*in|bein/i.test(name) && (/sport|sports/i.test(name) || /sport|sports/i.test(cat));
+    })
+    .map((s, index) => {
+      const category = String(catMap.get(String(s.category_id)) || 'BeIN Sports').trim() || 'BeIN Sports';
+      return {
+        name: String(s.name || `BeIN Sports ${s.stream_id}`).trim(),
+        url: `${cfg.base}/live/${encodeURIComponent(cfg.username)}/${encodeURIComponent(cfg.password)}/${encodeURIComponent(String(s.stream_id))}.m3u8`,
+        logo_url: String(s.stream_icon || '').trim(),
+        category,
+        sort_order: 10000 + index,
+      };
+    });
+
+  if (!channels.length) throw new Error('No beIN Sports channels found in Hydra stream list.');
+
+  const deleted = await sql`
+    delete from cloud_iptv_channels
+    where url like ${`${cfg.base}/live/${cfg.username}/%`}
+      and (name ilike '%bein%' or name ilike '%beIN%' or name ilike '%be in%')
+    returning id
+  `;
+
+  for (const ch of channels) {
+    await sql`
+      insert into cloud_iptv_channels
+        (name, url, logo_url, category, headers, transfer_limit_bytes, is_active, sort_order)
+      values
+        (${ch.name}, ${ch.url}, ${ch.logo_url}, ${ch.category}, ${JSON.stringify({})}::jsonb, ${limitBytes}, true, ${ch.sort_order})
+    `;
+  }
+
+  const rows = await sql`
+    select id, name, category, sort_order
+    from cloud_iptv_channels
+    where url like ${`${cfg.base}/live/${cfg.username}/%`}
+      and (name ilike '%bein%' or name ilike '%beIN%' or name ilike '%be in%')
+    order by sort_order asc
+    limit 20
+  `;
+  console.log(`Imported ${channels.length} Hydra beIN Sports channels. Removed previous imports: ${deleted.length}.`);
+  console.log(`Transfer limit per channel: ${limitBytes} bytes (${limitBytes === 0 ? 'unlimited' : 'limited'}).`);
+  for (const row of rows) console.log(`${row.sort_order}\t${row.category}\t${row.name}`);
+}
+
 async function main() {
   const cmd = process.argv[2];
   if (!cmd || cmd === '--help' || cmd === '-h') {
@@ -151,6 +229,11 @@ async function main() {
       returning *
     `;
     printRows(rows);
+    return;
+  }
+
+  if (cmd === 'import-hydra-bein') {
+    await importHydraBein(sql);
     return;
   }
 

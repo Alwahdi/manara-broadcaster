@@ -43,6 +43,9 @@ jobs:
       - name: Run platform admin
         env:
           MANARA_NEON_DATABASE_URL: ${{ secrets.MANARA_NEON_DATABASE_URL }}
+          HYDRA_IPTV_HOST: ${{ secrets.HYDRA_IPTV_HOST }}
+          HYDRA_IPTV_USERNAME: ${{ secrets.HYDRA_IPTV_USERNAME }}
+          HYDRA_IPTV_PASSWORD: ${{ secrets.HYDRA_IPTV_PASSWORD }}
           PLATFORM_COMMAND: ${{ inputs.command }}
           PLATFORM_ARGS: ${{ inputs.args }}
         run: |
