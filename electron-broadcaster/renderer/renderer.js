@@ -930,6 +930,9 @@ function renderCloudIptvGroups(root, cloud, status) {
     const upstream = group.items.some((ch) => status[ch.id]?.upstreamOpen);
     const activeItems = group.items.filter((ch) => ch.enabled !== false && ch.enabled !== 0);
     const defaultItem = activeItems[0] || group.items[0];
+    const totalUp = group.items.reduce((sum, ch) => sum + (Number(status[ch.id]?.totalUpstreamBytes) || 0), 0);
+    const totalDown = group.items.reduce((sum, ch) => sum + (Number(status[ch.id]?.totalDownstreamBytes) || 0), 0);
+    const errors = group.items.reduce((sum, ch) => sum + (Number(status[ch.id]?.errors) || 0), 0);
     card.innerHTML = `
       <div class="ch-head">
         <div>
@@ -941,12 +944,20 @@ function renderCloudIptvGroups(root, cloud, status) {
           <span class="muted small">${viewers} مشاهد الآن · ${activeCount}/${group.items.length} مفعّل</span>
         </div>
       </div>
+      <div class="iptv-report group-report">
+        <div><strong>${viewers}</strong><span>مشاهد الآن</span></div>
+        <div><strong>${activeCount}/${group.items.length}</strong><span>الجودات المفعّلة</span></div>
+        <div><strong>${formatBytes(totalUp)}</strong><span>إنترنت</span></div>
+        <div><strong>${formatBytes(totalDown)}</strong><span>توزيع LAN</span></div>
+        <div><strong>${errors}</strong><span>أخطاء</span></div>
+        <div><strong>${defaultItem?.qualityLabel || parseIptvName(defaultItem?.name).quality}</strong><span>جودة البدء</span></div>
+      </div>
+      <div class="quality-list" aria-label="الجودات"></div>
       <div class="group-actions">
         <button class="btn primary" data-act="play-group" ${activeItems.length && featureAllowed('iptv') ? '' : 'disabled'}>تشغيل</button>
         <button class="btn ghost" data-act="enable-all">تفعيل الكل</button>
         <button class="btn ghost" data-act="disable-all" ${activeItems.length ? '' : 'disabled'}>تعطيل الكل</button>
       </div>
-      <div class="quality-list"></div>
     `;
     card.querySelector('[data-act="play-group"]').onclick = () => playIptv(defaultItem, activeItems);
     card.querySelector('[data-act="enable-all"]').onclick = async () => {
@@ -966,31 +977,22 @@ function renderCloudIptvGroups(root, cloud, status) {
 }
 
 function renderIptvQualityRow(ch, st, groupItems = []) {
-  const row = document.createElement('div');
-  row.className = `quality-row ${ch.enabled !== false && ch.enabled !== 0 ? 'on' : 'off'}`;
+  const row = document.createElement('button');
+  row.type = 'button';
+  row.className = `quality-pill ${ch.enabled !== false && ch.enabled !== 0 ? 'on' : 'off'}`;
   const isEnabled = ch.enabled !== false && ch.enabled !== 0;
-  const canPlayIptv = isEnabled && featureAllowed('iptv');
+  const quality = ch.qualityLabel || parseIptvName(ch.name).quality;
   row.innerHTML = `
-    <div class="quality-main">
-      <strong>${escapeHtml(ch.qualityLabel || parseIptvName(ch.name).quality)}</strong>
-      <span>${escapeHtml(ch.name)}</span>
-    </div>
-    <div class="quality-stats">
-      <span>${st.viewers || 0} مشاهد</span>
-      <span>${st.upstreamOpen ? 'متصل' : 'عند الطلب'}</span>
-      <span>${formatBytes(st.totalUpstreamBytes || 0)}</span>
-    </div>
-    <div class="quality-actions">
-      <button class="btn ${isEnabled ? 'ghost' : 'primary'}" data-act="toggle">${isEnabled ? 'تعطيل' : 'تفعيل'}</button>
-      <button class="btn ghost" data-act="copy" ${isEnabled ? '' : 'disabled'}>نسخ</button>
-    </div>
+    <strong>${escapeHtml(quality)}</strong>
+    <span>${isEnabled ? 'مفعّل' : 'متوقف'}</span>
+    ${st.viewers ? `<em>${st.viewers}</em>` : ''}
   `;
-  row.querySelector('[data-act="toggle"]').onclick = async () => {
+  row.title = `${ch.name} - ${isEnabled ? 'اضغط للتعطيل' : 'اضغط للتفعيل'}`;
+  row.onclick = async () => {
     await window.broadcaster.cloudIptvSetEnabled(ch.id, !isEnabled, ch.transferLimitBytes || 0);
     toast(!isEnabled ? 'تم تفعيل الجودة لهذا السيرفر' : 'تم تعطيل الجودة', 'ok');
     refreshIptvList();
   };
-  row.querySelector('[data-act="copy"]').onclick = async () => copyIptvLanUrl(ch.id);
   return row;
 }
 
@@ -1176,7 +1178,7 @@ async function loadIptvSource(ch) {
   const info = await window.broadcaster.iptvStreamUrl(ch.id);
   const proxyUrl = info.url; // local proxy
   _iptvPlayerCurrentId = String(ch.id);
-  $('iptvPlayerTitle').textContent = ch.name;
+  $('iptvPlayerTitle').textContent = ch.groupTitle || parseIptvName(ch.name).group || ch.name;
   renderPlayerQualityBar(ch, _iptvPlayerQualities);
   setIptvPlayerInfo(`
     <div class="player-status-panel">
@@ -1261,10 +1263,11 @@ async function playIptv(ch, qualities = []) {
     return;
   }
   _iptvPlayerQualities = (qualities || []).filter((q) => q && q.enabled !== false && q.enabled !== 0)
+    .map((q) => ({ ...q, groupTitle: parseIptvName(ch.name).group }))
     .sort((a, b) => qualityRank(a.qualityLabel || parseIptvName(a.name).quality) - qualityRank(b.qualityLabel || parseIptvName(b.name).quality));
   if (!_iptvPlayerQualities.length && ch) _iptvPlayerQualities = [ch];
   $('iptvPlayerModal').style.display = 'flex';
-  await loadIptvSource(ch);
+  await loadIptvSource(_iptvPlayerQualities.find((q) => String(q.id) === String(ch.id)) || _iptvPlayerQualities[0] || ch);
 }
 
 function closeIptvPlayer() {

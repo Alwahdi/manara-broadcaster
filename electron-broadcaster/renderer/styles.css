@@ -71,17 +71,14 @@ h1{font-size:16px;font-weight:900;letter-spacing:-.3px}
 .led.on{background:#22c55e;box-shadow:0 0 12px #22c55e}
 .led.off{background:#64748b}
 .iptv-group-card{border-color:rgba(59,130,246,.22);background:linear-gradient(180deg,rgba(59,130,246,.08),rgba(255,255,255,.035))}
-.quality-list{display:grid;gap:8px;margin-top:12px}
-.quality-row{display:grid;grid-template-columns:minmax(170px,1.3fr) minmax(190px,1fr) auto;gap:10px;align-items:center;padding:10px;border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.035)}
-.quality-row.on{border-color:rgba(34,197,94,.32);background:rgba(34,197,94,.08)}
-.quality-row.off{opacity:.82}
-.quality-main{display:flex;align-items:center;gap:10px;min-width:0}
-.quality-main strong{min-width:48px;text-align:center;padding:5px 8px;border-radius:8px;background:rgba(255,255,255,.09);font-size:12px}
-.quality-main span{font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.quality-stats{display:flex;gap:8px;flex-wrap:wrap;color:#cbd5e1;font-size:11px}
-.quality-stats span{padding:3px 7px;border-radius:7px;background:rgba(255,255,255,.055)}
-.quality-actions{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
-.quality-actions .btn{padding:7px 10px;font-size:11px}
+.quality-list{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.quality-pill{display:grid;grid-template-columns:auto auto;gap:2px 7px;align-items:center;min-width:82px;padding:8px 10px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:rgba(255,255,255,.045);color:#e5e7eb;font-family:inherit;cursor:pointer;text-align:right}
+.quality-pill strong{font-size:13px;font-weight:900;line-height:1}
+.quality-pill span{font-size:10px;color:#cbd5e1}
+.quality-pill em{grid-column:1/-1;font-style:normal;font-size:10px;color:#bfdbfe}
+.quality-pill.on{border-color:rgba(34,197,94,.42);background:rgba(34,197,94,.11);color:#dcfce7}
+.quality-pill.off{opacity:.78}
+.quality-pill:hover{background:rgba(255,255,255,.08)}
 .group-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .group-actions .btn{padding:8px 12px;font-size:12px}
 .iptv-report{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
@@ -192,4 +189,4 @@ h1{font-size:16px;font-weight:900;letter-spacing:-.3px}
 .lib-sub { font-size:11px; color:rgba(255,255,255,.5); margin-top:2px; }
 .lib-progress { height:3px; background:rgba(255,255,255,.1); position:relative; }
 .lib-progress > i { position:absolute; inset:0 auto 0 0; background:var(--accent); display:block; }
-@media (max-width:760px){.quality-row{grid-template-columns:1fr}.quality-actions{justify-content:flex-start}.quality-main span{white-space:normal}.live-video-shell video{max-height:56vh}}
+@media (max-width:760px){.quality-list{gap:6px}.quality-pill{min-width:70px}.live-video-shell video{max-height:56vh}}
