@@ -102,17 +102,17 @@ function requireAdmin(req, res, getAdminAuth) {
     'WWW-Authenticate': 'Basic realm="Manara LAN Admin"',
     'Content-Type': 'text/plain; charset=utf-8',
   });
-  res.end('Authentication required');
+  res.end('تسجيل الدخول مطلوب');
   return false;
 }
 
 function adminLoginPage(error = '') {
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Manara Admin</title><style>:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:linear-gradient(180deg,#081126,#070b1e);color:#eef2ff;font-family:system-ui,-apple-system,Segoe UI,sans-serif}.card{width:min(420px,92vw);border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.86);border-radius:8px;padding:24px;box-shadow:0 24px 70px rgba(0,0,0,.38)}h1{font-size:24px;margin:0 0 6px}.lead{color:#94a3b8;line-height:1.6;margin:0 0 18px;font-size:13px}label{display:block;color:#cbd5e1;font-size:12px;font-weight:800;margin-top:12px}input{width:100%;box-sizing:border-box;margin:7px 0 2px;padding:12px;border-radius:8px;border:1px solid rgba(148,163,184,.24);background:#111936;color:#fff;font:inherit}button{width:100%;padding:12px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-weight:900;margin-top:16px;cursor:pointer}.err{color:#fecaca;background:rgba(127,29,29,.26);border:1px solid rgba(248,113,113,.34);border-radius:8px;padding:10px;font-size:13px}</style></head><body><form class="card" method="post" action="/admin/login"><h1>Manara Admin</h1><p class="lead">Sign in to manage channels, IPTV, media, viewers, and reports on this local network.</p>${error ? `<p class="err">${escapeHtml(error)}</p>` : ''}<label>Username<input name="username" autocomplete="username" autofocus></label><label>Password<input name="password" type="password" autocomplete="current-password"></label><button>Sign in</button></form></body></html>`;
+  return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>لوحة إدارة منارة</title><style>:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at 70% 10%,rgba(37,99,235,.18),transparent 34%),linear-gradient(180deg,#081126,#070b1e);color:#eef2ff;font-family:system-ui,-apple-system,Segoe UI,Tahoma,sans-serif}.card{width:min(430px,92vw);border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.9);border-radius:8px;padding:24px;box-shadow:0 24px 70px rgba(0,0,0,.38)}h1{font-size:24px;margin:0 0 6px}.lead{color:#94a3b8;line-height:1.7;margin:0 0 18px;font-size:13px}label{display:block;color:#cbd5e1;font-size:12px;font-weight:800;margin-top:12px}input{width:100%;box-sizing:border-box;margin:7px 0 2px;padding:12px;border-radius:8px;border:1px solid rgba(148,163,184,.24);background:#111936;color:#fff;font:inherit}button{width:100%;padding:12px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-weight:900;margin-top:16px;cursor:pointer}.err{color:#fecaca;background:rgba(127,29,29,.26);border:1px solid rgba(248,113,113,.34);border-radius:8px;padding:10px;font-size:13px}</style></head><body><form class="card" method="post" action="/admin/login"><h1>لوحة إدارة منارة</h1><p class="lead">ادخل لإدارة القنوات، IPTV، مكتبة الوسائط، المشاهدين، والتقارير داخل الشبكة المحلية.</p>${error ? `<p class="err">${escapeHtml(error)}</p>` : ''}<label>اسم المستخدم<input name="username" autocomplete="username" autofocus></label><label>كلمة المرور<input name="password" type="password" autocomplete="current-password"></label><button>دخول</button></form></body></html>`;
 }
 
 function formatBytes(bytes) {
   const n = Number(bytes) || 0;
-  if (n <= 0) return 'No limit';
+  if (n <= 0) return 'بدون حد';
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
   return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
@@ -130,7 +130,34 @@ function formatDuration(seconds) {
 function mediaTitle(item) {
   if (!item) return '';
   const ep = item.season ? ` S${String(item.season).padStart(2, '0')}E${String(item.episode || 1).padStart(2, '0')}` : '';
-  return `${item.title || 'Untitled'}${ep}`;
+  return `${item.title || 'بدون عنوان'}${ep}`;
+}
+
+function sourceKindLabel(source) {
+  return source === 'Cloud' ? 'سحابي' : 'يدوي';
+}
+
+function mediaKindLabel(kind) {
+  return {
+    movie: 'فيلم',
+    episode: 'حلقة',
+    audio: 'صوتيات',
+    movies: 'أفلام',
+    tv: 'مسلسلات',
+  }[kind] || kind || '';
+}
+
+function blockTypeLabel(type) {
+  return type === 'userAgent' ? 'جهاز / متصفح' : 'عنوان IP';
+}
+
+function accessActionLabel(action) {
+  return {
+    stream: 'تشغيل',
+    blocked: 'محظور',
+    request: 'طلب',
+    media: 'وسائط',
+  }[action] || action || '';
 }
 
 function mediaType(item) {
@@ -151,7 +178,7 @@ function listLibraryItems(query = {}) {
 function librarySections(items = listLibraryItems({ limit: 5000 })) {
   const sections = new Map();
   for (const item of items) {
-    const section = item.section || (item.kind === 'episode' ? 'Series' : item.kind === 'audio' ? 'Audio' : 'Movies');
+    const section = item.section || (item.kind === 'episode' ? 'مسلسلات' : item.kind === 'audio' ? 'صوتيات' : 'أفلام');
     const folder = item.folder || section;
     if (!sections.has(section)) sections.set(section, { name: section, count: 0, folders: new Map() });
     const sec = sections.get(section);
@@ -260,7 +287,7 @@ function denyIfBlocked(req, res, meta = {}) {
     status: 403,
     message: block.reason || 'blocked',
   });
-  send(res, 403, `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Stream unavailable</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#080d1f;color:#e5e7eb;font-family:system-ui,-apple-system,Segoe UI,sans-serif;text-align:center;padding:24px}main{max-width:520px}h1{font-size:24px;margin:0 0 10px}p{color:#cbd5e1;line-height:1.7}</style></head><body><main><h1>Stream unavailable</h1><p>${escapeHtml(db.blockedMessage())}</p></main></body></html>`, {
+  send(res, 403, `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>البث غير متاح</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#080d1f;color:#e5e7eb;font-family:system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;text-align:center;padding:24px}main{max-width:520px}h1{font-size:24px;margin:0 0 10px}p{color:#cbd5e1;line-height:1.7}</style></head><body><main><h1>البث غير متاح حالياً</h1><p>${escapeHtml(db.blockedMessage())}</p></main></body></html>`, {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'no-store',
   });
@@ -289,25 +316,25 @@ function featureAllowed(options = {}, feature) {
 
 function platformGateMessage(status, feature) {
   const label = {
-    channels: 'Broadcast channels',
+    channels: 'القنوات',
     iptv: 'IPTV',
-    media: 'Media library',
-    webAdmin: 'LAN admin',
-    analytics: 'Analytics',
-    branding: 'Branding',
+    media: 'مكتبة الوسائط',
+    webAdmin: 'إدارة الشبكة',
+    analytics: 'التقارير',
+    branding: 'التخصيص',
   }[feature] || feature;
-  if (!status || status.state === 'unregistered') return `${label} is not activated yet.`;
-  if (status.state === 'pending') return `${label} is waiting for platform owner approval.`;
-  if (status.state === 'expired') return `${label} is unavailable because the subscription expired.`;
-  if (status.state === 'suspended') return `${label} is temporarily unavailable.`;
-  return `${label} is not included in this subscription plan.`;
+  if (!status || status.state === 'unregistered') return `ميزة ${label} غير مفعلة بعد.`;
+  if (status.state === 'pending') return `ميزة ${label} بانتظار موافقة مالك المنصة.`;
+  if (status.state === 'expired') return `ميزة ${label} غير متاحة لأن الاشتراك منتهي.`;
+  if (status.state === 'suspended') return `ميزة ${label} متوقفة مؤقتاً.`;
+  return `ميزة ${label} غير موجودة في خطة الاشتراك الحالية.`;
 }
 
 function denyFeature(req, res, options, feature) {
   const status = platformStatus(options);
   const message = platformGateMessage(status, feature);
   if (String(req.headers.accept || '').includes('text/html')) {
-    send(res, 402, `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Feature unavailable</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#080d1f;color:#e5e7eb;font-family:system-ui,-apple-system,Segoe UI,sans-serif;text-align:center;padding:24px}main{max-width:560px}h1{font-size:24px;margin:0 0 10px}p{color:#cbd5e1;line-height:1.7}</style></head><body><main><h1>Feature unavailable</h1><p>${escapeHtml(message)}</p></main></body></html>`, {
+    send(res, 402, `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>الميزة غير متاحة</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#080d1f;color:#e5e7eb;font-family:system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;text-align:center;padding:24px}main{max-width:560px}h1{font-size:24px;margin:0 0 10px}p{color:#cbd5e1;line-height:1.7}</style></head><body><main><h1>الميزة غير متاحة حالياً</h1><p>${escapeHtml(message)}</p></main></body></html>`, {
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'no-store',
       'X-Manara-Error': encodeURIComponent(message),
@@ -342,15 +369,15 @@ function adminPage(options = {}) {
   const iptvRows = [...cloudRows, ...localRows].map((ch) => `
     <tr>
       <td>${escapeHtml(ch.name)}</td>
-      <td>${escapeHtml(ch.sourceKind)}</td>
+      <td>${escapeHtml(sourceKindLabel(ch.sourceKind))}</td>
       <td>${escapeHtml(ch.category || '')}</td>
-      <td class="url">Hidden in LAN admin</td>
-      <td>${ch.enabled ? 'Enabled' : 'Disabled'}</td>
+      <td class="url">محفوظ ومخفي عن لوحة الشبكة</td>
+      <td>${ch.enabled ? 'مفعل' : 'متوقف'}</td>
       <td>${formatBytes(ch.transferLimitBytes)}</td>
       <td>${status[ch.id]?.viewers || 0}</td>
       <td>${formatBytes(status[ch.id]?.totalUpstreamBytes || 0)}</td>
       <td>
-        ${ch.readonly ? '<span class="muted">Cloud managed</span>' : `<button data-toggle="${ch.id}">${ch.enabled ? 'Disable' : 'Enable'}</button><button data-del="${ch.id}">Delete</button>`}
+        ${ch.readonly ? '<span class="muted">تدار من السحابة</span>' : `<button data-toggle="${ch.id}">${ch.enabled ? 'إيقاف' : 'تفعيل'}</button><button data-del="${ch.id}">حذف</button>`}
       </td>
     </tr>`).join('');
   const sessions = db.listSessions();
@@ -368,19 +395,19 @@ function adminPage(options = {}) {
       <td>${formatBytes(s.bytes)}</td>
       <td>${Number(s.requests || 0)}</td>
       <td class="url">${escapeHtml(s.userAgent || '')}</td>
-      <td><button data-block-ip="${escapeHtml(s.ip)}">Block IP</button></td>
+      <td><button data-block-ip="${escapeHtml(s.ip)}">حظر العنوان</button></td>
     </tr>`).join('');
   const blockRows = blocks.map((b) => `
     <tr>
-      <td>${escapeHtml(b.type)}</td>
+      <td>${escapeHtml(blockTypeLabel(b.type))}</td>
       <td class="url">${escapeHtml(b.identifier)}</td>
       <td>${escapeHtml(b.reason || '')}</td>
-      <td><button data-remove-block="${b.id}">Remove</button></td>
+      <td><button data-remove-block="${b.id}">إزالة</button></td>
     </tr>`).join('');
   const logRows = logs.map((l) => `
     <tr>
       <td>${new Date(l.at).toLocaleString()}</td>
-      <td>${escapeHtml(l.action)}</td>
+      <td>${escapeHtml(accessActionLabel(l.action))}</td>
       <td class="url">${escapeHtml(l.ip)}</td>
       <td>${escapeHtml(l.targetName || l.targetId || '')}</td>
       <td>${formatBytes(l.bytes)}</td>
@@ -389,7 +416,7 @@ function adminPage(options = {}) {
   const topMediaRows = mediaStats.top.map((m) => `
     <tr>
       <td>${escapeHtml(m.title)}</td>
-      <td>${escapeHtml(m.kind)}</td>
+      <td>${escapeHtml(mediaKindLabel(m.kind))}</td>
       <td>${Number(m.plays || 0)}</td>
       <td>${formatBytes(m.bytes)}</td>
       <td>${m.lastAt ? new Date(m.lastAt).toLocaleString() : '-'}</td>
@@ -397,17 +424,17 @@ function adminPage(options = {}) {
   const mediaRows = mediaItems.map((item) => `
     <tr>
       <td>${escapeHtml(item.titleText)}</td>
-      <td>${escapeHtml(item.kind || '')}</td>
+      <td>${escapeHtml(mediaKindLabel(item.kind))}</td>
       <td>${formatBytes(item.size)}</td>
       <td>${formatDuration(item.wp_duration || item.duration)}</td>
       <td class="url">${escapeHtml(path.basename(item.path || ''))}</td>
       <td>
-        <button data-edit-media="${item.id}">Edit</button>
-        <button data-delete-media="${item.id}">Remove</button>
+        <button data-edit-media="${item.id}">تعديل</button>
+        <button data-delete-media="${item.id}">إزالة</button>
       </td>
     </tr>`).join('');
   const pathRows = libraryPaths.map((p) => `
-    <tr><td class="url">${escapeHtml(p.path)}</td><td>${escapeHtml(p.kind)}</td><td>${p.locked ? 'Locked' : `<button data-path-del="${p.id}">Remove</button>`}</td></tr>`).join('');
+    <tr><td class="url">${escapeHtml(p.path)}</td><td>${escapeHtml(mediaKindLabel(p.kind))}</td><td>${p.locked ? 'مثبت' : `<button data-path-del="${p.id}">إزالة</button>`}</td></tr>`).join('');
   const mediaPayload = jsonForScript(mediaItems.map((item) => ({
     id: item.id,
     title: item.title || '',
@@ -421,25 +448,25 @@ function adminPage(options = {}) {
     rating: item.rating || '',
   })));
   return `<!doctype html>
-<html lang="en">
+<html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Manara LAN Admin</title>
+<title>لوحة إدارة منارة</title>
 <style>
-body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;background:linear-gradient(180deg,#081126,#070b1e);color:#eef2ff}
+body{font-family:system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;margin:0;background:radial-gradient(circle at 76% 4%,rgba(37,99,235,.16),transparent 30%),linear-gradient(180deg,#081126,#070b1e);color:#eef2ff}
 main{max-width:1280px;margin:auto;padding:24px}
 h1{font-size:24px;margin:0 0 6px}.lead{color:#94a3b8;line-height:1.6;margin:0 0 18px}.shell-head{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:18px}.shell-head a{color:#bfdbfe;text-decoration:none;font-size:13px;font-weight:800}
 section{border:1px solid rgba(148,163,184,.18);background:rgba(15,23,42,.72);border-radius:8px;padding:16px;margin-bottom:14px;box-shadow:0 18px 54px rgba(0,0,0,.18)}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 label{display:block;font-size:12px;color:#cbd5e1;margin:10px 0 5px}
 input,textarea,select{width:100%;box-sizing:border-box;border:1px solid rgba(148,163,184,.22);border-radius:8px;padding:9px;background:#111936;color:#fff}
-textarea{min-height:240px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+textarea{min-height:240px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;direction:ltr;text-align:left}
 button{border:0;border-radius:8px;padding:8px 11px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer;margin:4px 4px 4px 0}
 button.secondary{background:#334155}
 table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
-td,th{border-bottom:1px solid rgba(255,255,255,.1);padding:8px;text-align:left;vertical-align:top}
-.url{word-break:break-all;color:#bfdbfe}
+td,th{border-bottom:1px solid rgba(255,255,255,.1);padding:8px;text-align:right;vertical-align:top}
+.url{word-break:break-all;color:#bfdbfe;direction:ltr;text-align:left}
 .msg{color:#86efac;font-size:13px;margin-top:8px}
 .muted{color:#94a3b8;font-size:12px}
 .statcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:10px 0 12px}.statcard{border:1px solid rgba(148,163,184,.16);background:rgba(0,0,0,.18);border-radius:8px;padding:12px}.statcard b{display:block;font-size:22px}.statcard span{font-size:12px;color:#94a3b8}
@@ -448,92 +475,92 @@ td,th{border-bottom:1px solid rgba(255,255,255,.1);padding:8px;text-align:left;v
 </style>
 </head>
 <body><main>
-<div class="shell-head"><div><h1>Manara Admin</h1><p class="lead">Manage the local viewing experience, IPTV availability, media library, viewer access, and reports.</p></div><a href="/">Open viewer page</a></div>
+<div class="shell-head"><div><h1>لوحة إدارة منارة</h1><p class="lead">إدارة تجربة المشاهدة المحلية، القنوات، IPTV، مكتبة الوسائط، صلاحيات المشاهدين، والتقارير من صفحة واحدة.</p></div><a href="/">فتح صفحة المشاهدة</a></div>
 <script id="mediaAdminPayload" type="application/json">${mediaPayload}</script>
 <section>
-  <h2>Media Library</h2>
+  <h2>مكتبة الوسائط</h2>
   <div class="statcards">
-    <div class="statcard"><b>${mediaStats.total}</b><span>Total media</span></div>
-    <div class="statcard"><b>${formatBytes(mediaStats.totalSize)}</b><span>Library size</span></div>
-    <div class="statcard"><b>${mediaStats.byKind.movie || 0}</b><span>Movies</span></div>
-    <div class="statcard"><b>${mediaStats.uniqueDevices || 0}</b><span>Unique devices</span></div>
+    <div class="statcard"><b>${mediaStats.total}</b><span>كل المحتوى</span></div>
+    <div class="statcard"><b>${formatBytes(mediaStats.totalSize)}</b><span>حجم المكتبة</span></div>
+    <div class="statcard"><b>${mediaStats.byKind.movie || 0}</b><span>أفلام</span></div>
+    <div class="statcard"><b>${mediaStats.uniqueDevices || 0}</b><span>أجهزة مختلفة</span></div>
   </div>
   <div class="statcards">
-    <div class="statcard"><b>${mediaStats.byKind.episode || 0}</b><span>Episodes</span></div>
-    <div class="statcard"><b>${mediaStats.byKind.audio || 0}</b><span>Audio</span></div>
-    <div class="statcard"><b>${mediaStats.completionRate || 0}%</b><span>Completion rate</span></div>
-    <div class="statcard"><b>${health.missingFiles.length + health.unsupportedFormats.length + health.brokenSubtitles.length}</b><span>Health issues</span></div>
+    <div class="statcard"><b>${mediaStats.byKind.episode || 0}</b><span>حلقات</span></div>
+    <div class="statcard"><b>${mediaStats.byKind.audio || 0}</b><span>صوتيات</span></div>
+    <div class="statcard"><b>${mediaStats.completionRate || 0}%</b><span>معدل الإكمال</span></div>
+    <div class="statcard"><b>${health.missingFiles.length + health.unsupportedFormats.length + health.brokenSubtitles.length}</b><span>تنبيهات تحتاج مراجعة</span></div>
   </div>
-  <h3>Folders and scanner</h3>
+  <h3>المجلدات والفحص</h3>
   <form id="pathForm">
-    <label>Folder path on this computer</label><input name="path" required placeholder="C:\\Media\\Movies or /Users/name/Movies">
-    <label>Kind</label><select name="kind"><option value="movies">Movies</option><option value="tv">TV / Series</option><option value="audio">Audio</option></select>
-    <button>Add path</button><button type="button" id="scanNowBtn">Scan now</button>
+    <label>مسار المجلد على هذا الجهاز</label><input name="path" required placeholder="C:\\Media\\Movies أو /Users/name/Movies">
+    <label>النوع</label><select name="kind"><option value="movies">أفلام</option><option value="tv">مسلسلات / حلقات</option><option value="audio">صوتيات</option></select>
+    <button>إضافة المجلد</button><button type="button" id="scanNowBtn">فحص الآن</button>
   </form>
-  <table><thead><tr><th>Path</th><th>Kind</th><th>Action</th></tr></thead><tbody>${pathRows || '<tr><td colspan="3">No folders have been added yet.</td></tr>'}</tbody></table>
-  <h3>Theme</h3>
+  <table><thead><tr><th>المسار</th><th>النوع</th><th>الإجراء</th></tr></thead><tbody>${pathRows || '<tr><td colspan="3">لم تتم إضافة أي مجلدات بعد.</td></tr>'}</tbody></table>
+  <h3>التخصيص</h3>
   <form id="themeForm" class="grid">
-    <label>Brand name<input name="brandName" value="${escapeHtml(mediaTheme.brandName)}"></label>
-    <label>Tagline<input name="tagline" value="${escapeHtml(mediaTheme.tagline)}"></label>
-    <label>Logo URL<input name="logoUrl" value="${escapeHtml(mediaTheme.logoUrl)}"></label>
-    <label>Direction<select name="direction"><option value="rtl" ${mediaTheme.direction === 'rtl' ? 'selected' : ''}>Arabic / RTL</option><option value="ltr" ${mediaTheme.direction === 'ltr' ? 'selected' : ''}>English / LTR</option></select></label>
-    <label>Accent<input name="accent" type="color" value="${escapeHtml(mediaTheme.accent)}"></label>
-    <label>Accent 2<input name="accent2" type="color" value="${escapeHtml(mediaTheme.accent2)}"></label>
-    <div><button>Save theme</button></div>
+    <label>اسم الواجهة<input name="brandName" value="${escapeHtml(mediaTheme.brandName)}"></label>
+    <label>وصف قصير<input name="tagline" value="${escapeHtml(mediaTheme.tagline)}"></label>
+    <label>رابط الشعار<input name="logoUrl" value="${escapeHtml(mediaTheme.logoUrl)}"></label>
+    <label>اتجاه الواجهة<select name="direction"><option value="rtl" ${mediaTheme.direction === 'rtl' ? 'selected' : ''}>عربي / من اليمين</option><option value="ltr" ${mediaTheme.direction === 'ltr' ? 'selected' : ''}>إنجليزي / من اليسار</option></select></label>
+    <label>اللون الأساسي<input name="accent" type="color" value="${escapeHtml(mediaTheme.accent)}"></label>
+    <label>اللون المساعد<input name="accent2" type="color" value="${escapeHtml(mediaTheme.accent2)}"></label>
+    <div><button>حفظ التخصيص</button></div>
   </form>
-  <h3>Upload / import media</h3>
+  <h3>رفع أو استيراد وسائط</h3>
   <form id="uploadForm">
-    <label>Import file into the local library storage</label><input id="uploadFile" type="file" accept="video/*,audio/*,.mkv,.srt,.vtt">
-    <label>Kind</label><select name="kind"><option value="movie">Movie</option><option value="episode">Episode</option><option value="audio">Audio</option></select>
-    <button>Upload</button>
+    <label>إضافة ملف إلى تخزين المكتبة المحلي</label><input id="uploadFile" type="file" accept="video/*,audio/*,.mkv,.srt,.vtt">
+    <label>النوع</label><select name="kind"><option value="movie">فيلم</option><option value="episode">حلقة</option><option value="audio">صوتيات</option></select>
+    <button>رفع الملف</button>
   </form>
-  <p class="muted">Reports: <a href="/api/admin/reports/views.csv">CSV</a> · <a href="/api/admin/reports/views.json">JSON</a> · <a href="/api/admin/health">Health diagnostics</a></p>
-  <p class="muted">Health: ${health.missingFiles.length} missing files, ${health.unsupportedFormats.length} unsupported formats, ${health.brokenSubtitles.length} subtitle issues.</p>
-  <h3>Top watched</h3>
-  <table><thead><tr><th>Title</th><th>Kind</th><th>Plays</th><th>Transferred</th><th>Last view</th></tr></thead><tbody>${topMediaRows || '<tr><td colspan="5">No viewing activity yet.</td></tr>'}</tbody></table>
-  <h3 style="margin-top:18px">Media inventory</h3>
-  <table><thead><tr><th>Title</th><th>Kind</th><th>Size</th><th>Duration</th><th>File</th><th>Actions</th></tr></thead><tbody>${mediaRows || '<tr><td colspan="6">No media has been indexed yet. Add folders, then run a scan.</td></tr>'}</tbody></table>
+  <p class="muted">التقارير: <a href="/api/admin/reports/views.csv">CSV</a> · <a href="/api/admin/reports/views.json">JSON</a> · <a href="/api/admin/health">فحص الصحة</a></p>
+  <p class="muted">الحالة: ${health.missingFiles.length} ملفات مفقودة، ${health.unsupportedFormats.length} صيغ غير مدعومة، ${health.brokenSubtitles.length} مشاكل ترجمة.</p>
+  <h3>الأكثر مشاهدة</h3>
+  <table><thead><tr><th>العنوان</th><th>النوع</th><th>مرات التشغيل</th><th>البيانات المنقولة</th><th>آخر مشاهدة</th></tr></thead><tbody>${topMediaRows || '<tr><td colspan="5">لا توجد مشاهدات بعد.</td></tr>'}</tbody></table>
+  <h3 style="margin-top:18px">محتوى المكتبة</h3>
+  <table><thead><tr><th>العنوان</th><th>النوع</th><th>الحجم</th><th>المدة</th><th>الملف</th><th>الإجراءات</th></tr></thead><tbody>${mediaRows || '<tr><td colspan="6">لم تتم فهرسة أي وسائط بعد. أضف مجلداً ثم شغل الفحص.</td></tr>'}</tbody></table>
 </section>
 <section>
-  <h2>Active Viewers</h2>
-  <table><thead><tr><th>IP</th><th>Watching</th><th>Transferred</th><th>Requests</th><th>Device</th><th>Action</th></tr></thead><tbody>${sessionRows || '<tr><td colspan="6">No active viewers right now.</td></tr>'}</tbody></table>
+  <h2>المشاهدون النشطون</h2>
+  <table><thead><tr><th>IP</th><th>يشاهد</th><th>البيانات المنقولة</th><th>الطلبات</th><th>الجهاز</th><th>الإجراء</th></tr></thead><tbody>${sessionRows || '<tr><td colspan="6">لا يوجد مشاهدون نشطون حالياً.</td></tr>'}</tbody></table>
 </section>
 <section>
-  <h2>IPTV Channels</h2>
+  <h2>قنوات IPTV</h2>
   <form id="iptvForm">
-    <label>Name</label><input name="name" required>
-    <label>URL</label><input name="url" required placeholder="https://.../playlist.m3u8">
-    <label>Category</label><input name="category">
-    <label>Logo URL</label><input name="logo">
-    <label>Internet transfer limit (MB, 0 = no limit)</label><input name="transferLimitMb" type="number" min="0" step="1" value="0">
-    <button>Add IPTV</button>
+    <label>اسم القناة</label><input name="name" required>
+    <label>الرابط الأصلي</label><input name="url" required placeholder="https://.../playlist.m3u8">
+    <label>التصنيف</label><input name="category">
+    <label>رابط الشعار</label><input name="logo">
+    <label>حد استهلاك الإنترنت (MB، 0 يعني بدون حد)</label><input name="transferLimitMb" type="number" min="0" step="1" value="0">
+    <button>إضافة IPTV</button>
   </form>
-  <table><thead><tr><th>Name</th><th>Source</th><th>Category</th><th>Source URL</th><th>Status</th><th>Limit</th><th>Viewers</th><th>Internet used</th><th>Actions</th></tr></thead><tbody>${iptvRows || '<tr><td colspan="9">No IPTV channels have been added yet.</td></tr>'}</tbody></table>
+  <table><thead><tr><th>الاسم</th><th>المصدر</th><th>التصنيف</th><th>الرابط</th><th>الحالة</th><th>الحد</th><th>المشاهدون</th><th>استهلاك الإنترنت</th><th>الإجراءات</th></tr></thead><tbody>${iptvRows || '<tr><td colspan="9">لا توجد قنوات IPTV مضافة بعد.</td></tr>'}</tbody></table>
 </section>
 <div class="grid">
 <section>
-  <h2>Blocklist</h2>
+  <h2>الحظر</h2>
   <form id="blockForm">
-    <label>Type</label><select name="type"><option value="ip">IP address</option><option value="userAgent">Device / user agent contains</option></select>
-    <label>Identifier</label><input name="identifier" required placeholder="192.168.1.50">
-    <label>Admin note</label><input name="reason" placeholder="Optional">
-    <button>Add block</button>
+    <label>النوع</label><select name="type"><option value="ip">عنوان IP</option><option value="userAgent">الجهاز / المتصفح يحتوي على</option></select>
+    <label>المعرف</label><input name="identifier" required placeholder="192.168.1.50">
+    <label>ملاحظة داخلية</label><input name="reason" placeholder="اختياري">
+    <button>إضافة حظر</button>
   </form>
-  <label>Viewer message</label><input id="blockedMessage" value="${escapeHtml(db.blockedMessage())}">
-  <button id="saveBlockedMessage">Save message</button>
-  <table><thead><tr><th>Type</th><th>Identifier</th><th>Reason</th><th>Action</th></tr></thead><tbody>${blockRows || '<tr><td colspan="4">No blocked viewers.</td></tr>'}</tbody></table>
+  <label>الرسالة التي تظهر للمشاهد</label><input id="blockedMessage" value="${escapeHtml(db.blockedMessage())}">
+  <button id="saveBlockedMessage">حفظ الرسالة</button>
+  <table><thead><tr><th>النوع</th><th>المعرف</th><th>السبب</th><th>الإجراء</th></tr></thead><tbody>${blockRows || '<tr><td colspan="4">لا توجد أجهزة محظورة.</td></tr>'}</tbody></table>
 </section>
 <section>
-  <h2>Access Log</h2>
-  <table><thead><tr><th>Time</th><th>Action</th><th>IP</th><th>Target</th><th>Bytes</th><th>Status</th></tr></thead><tbody>${logRows || '<tr><td colspan="6">No access logs yet.</td></tr>'}</tbody></table>
+  <h2>سجل الوصول</h2>
+  <table><thead><tr><th>الوقت</th><th>الإجراء</th><th>IP</th><th>الهدف</th><th>البيانات</th><th>الحالة</th></tr></thead><tbody>${logRows || '<tr><td colspan="6">لا توجد سجلات حتى الآن.</td></tr>'}</tbody></table>
 </section>
 </div>
 <section>
-  <h2>Broadcast Channels JSON</h2>
-  <p class="muted">Advanced editor for the saved broadcast channel list used by the desktop app.</p>
+  <h2>قنوات البث المحفوظة</h2>
+  <p class="muted">محرر متقدم لقائمة قنوات البث التي يستخدمها تطبيق سطح المكتب.</p>
   <textarea id="broadcastJson">${broadcastJson}</textarea>
-  <button id="saveBroadcast">Save Broadcast Channels</button>
-  <button class="secondary" onclick="location.reload()">Reload</button>
+  <button id="saveBroadcast">حفظ قنوات البث</button>
+  <button class="secondary" onclick="location.reload()">إعادة تحميل</button>
   <div id="msg" class="msg"></div>
 </section>
 <script>
@@ -552,7 +579,7 @@ document.getElementById('iptvForm').addEventListener('submit', async (e) => {
   location.reload();
 });
 document.querySelectorAll('[data-del]').forEach((b) => b.onclick = async () => {
-  if (!confirm('Delete this IPTV channel?')) return;
+  if (!confirm('حذف قناة IPTV هذه؟')) return;
   await api('/api/admin/iptv/' + b.dataset.del, { method:'DELETE' });
   location.reload();
 });
@@ -567,7 +594,7 @@ document.getElementById('blockForm').addEventListener('submit', async (e) => {
   location.reload();
 });
 document.querySelectorAll('[data-block-ip]').forEach((b) => b.onclick = async () => {
-  await api('/api/admin/blocklist', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ type:'ip', identifier:b.dataset.blockIp, reason:'Blocked from active viewers' }) });
+  await api('/api/admin/blocklist', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ type:'ip', identifier:b.dataset.blockIp, reason:'تم الحظر من قائمة المشاهدين النشطين' }) });
   location.reload();
 });
 document.querySelectorAll('[data-remove-block]').forEach((b) => b.onclick = async () => {
@@ -576,12 +603,12 @@ document.querySelectorAll('[data-remove-block]').forEach((b) => b.onclick = asyn
 });
 document.getElementById('saveBlockedMessage').onclick = async () => {
   await api('/api/admin/block-message', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ message:document.getElementById('blockedMessage').value }) });
-  msg.textContent = 'Saved.';
+  msg.textContent = 'تم الحفظ.';
 };
 document.getElementById('saveBroadcast').onclick = async () => {
   const channels = JSON.parse(document.getElementById('broadcastJson').value);
   await api('/api/admin/broadcast', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ channels }) });
-  msg.textContent = 'Saved.';
+  msg.textContent = 'تم الحفظ.';
 };
 document.getElementById('pathForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -593,9 +620,9 @@ document.querySelectorAll('[data-path-del]').forEach((b) => b.onclick = async ()
   location.reload();
 });
 document.getElementById('scanNowBtn').onclick = async () => {
-  msg.textContent = 'Scanning...';
+  msg.textContent = 'جاري الفحص...';
   const r = await api('/api/admin/scan', { method:'POST' });
-  msg.textContent = r.ok ? 'Scan complete: ' + r.done + ' item(s)' : (r.error || 'Scan failed');
+  msg.textContent = r.ok ? 'اكتمل الفحص: ' + r.done + ' عنصر' : (r.error || 'تعذر إكمال الفحص');
 };
 document.getElementById('themeForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -616,13 +643,13 @@ const mediaAdmin = JSON.parse(document.getElementById('mediaAdminPayload').textC
 document.querySelectorAll('[data-edit-media]').forEach((b) => b.onclick = async () => {
   const item = mediaAdmin.find((row) => String(row.id) === String(b.dataset.editMedia));
   if (!item) return;
-  const title = prompt('Title', item.title || '');
+  const title = prompt('العنوان', item.title || '');
   if (title == null) return;
-  const kind = prompt('Kind: movie, episode, audio', item.kind || 'movie');
+  const kind = prompt('النوع: movie أو episode أو audio', item.kind || 'movie');
   if (kind == null) return;
-  const year = prompt('Year', item.year || '');
+  const year = prompt('السنة', item.year || '');
   if (year == null) return;
-  const overview = prompt('Overview', item.overview || '');
+  const overview = prompt('الوصف', item.overview || '');
   if (overview == null) return;
   await api('/api/admin/media/' + item.id, {
     method:'PUT',
@@ -632,7 +659,7 @@ document.querySelectorAll('[data-edit-media]').forEach((b) => b.onclick = async 
   location.reload();
 });
 document.querySelectorAll('[data-delete-media]').forEach((b) => b.onclick = async () => {
-  const removeFile = confirm('Remove this item from the library? Press OK to remove only from the library list. The file stays on disk.');
+  const removeFile = confirm('إزالة هذا العنصر من المكتبة؟ سيتم حذفه من قائمة المكتبة فقط وسيبقى الملف على القرص.');
   if (!removeFile) return;
   await api('/api/admin/media/' + b.dataset.deleteMedia, { method:'DELETE' });
   location.reload();
@@ -1185,6 +1212,11 @@ function createHandler(options = {}) {
   return async (req, res) => {
     const u = url.parse(req.url, true);
     res.setHeader('Access-Control-Allow-Origin', '*');
+    if (u.pathname === '/favicon.ico') {
+      res.writeHead(204, { 'Cache-Control': 'public, max-age=86400' });
+      res.end();
+      return;
+    }
     if (req.method === 'OPTIONS') {
       res.writeHead(204, {
         'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
@@ -1394,8 +1426,8 @@ function createHandler(options = {}) {
           kind: ['movie', 'episode', 'audio'].includes(body.kind) ? body.kind : 'movie',
           title: path.basename(safeName).replace(/\.[^.]+$/, '').replace(/[._]+/g, ' '),
           size: fs.statSync(target).size,
-          section: 'Uploads',
-          folder: 'Uploads',
+          section: 'المرفوعات',
+          folder: 'المرفوعات',
         });
         return sendJson(res, 200, { ok: true, media: db.getMedia(id) });
       } catch (e) { return sendJson(res, 500, { error: e.message }); }

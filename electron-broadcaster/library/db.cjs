@@ -531,10 +531,10 @@ let _adminState = {
   viewers: {},
   blocks: [],
   logs: [],
-  blockedMessage: 'Stream is not available right now.',
+  blockedMessage: 'البث غير متاح حالياً.',
   mediaTheme: {
-    brandName: 'Manara Media',
-    tagline: 'مكتبة وسائط محلية على نفس الشبكة',
+    brandName: 'مكتبة منارة',
+    tagline: 'أفلام ومسلسلات وصوتيات جاهزة للمشاهدة داخل الشبكة المحلية',
     logoUrl: '',
     accent: '#3b82f6',
     accent2: '#14b8a6',
@@ -543,16 +543,24 @@ let _adminState = {
 };
 
 function normalizeAdminState(raw = {}) {
+  const mediaTheme = {
+    ..._adminState.mediaTheme,
+    ...(raw.mediaTheme && typeof raw.mediaTheme === 'object' ? raw.mediaTheme : {}),
+  };
+  if (mediaTheme.brandName === 'Manara Media') mediaTheme.brandName = 'مكتبة منارة';
+  if (mediaTheme.tagline === 'مكتبة وسائط محلية على نفس الشبكة') {
+    mediaTheme.tagline = 'أفلام ومسلسلات وصوتيات جاهزة للمشاهدة داخل الشبكة المحلية';
+  }
+  const blockedMessage = raw.blockedMessage === 'Stream is not available right now.'
+    ? 'البث غير متاح حالياً.'
+    : String(raw.blockedMessage || 'البث غير متاح حالياً.').slice(0, 300);
   return {
     sessions: raw.sessions && typeof raw.sessions === 'object' ? raw.sessions : {},
     viewers: raw.viewers && typeof raw.viewers === 'object' ? raw.viewers : {},
     blocks: Array.isArray(raw.blocks) ? raw.blocks : [],
     logs: Array.isArray(raw.logs) ? raw.logs.slice(-600) : [],
-    blockedMessage: String(raw.blockedMessage || 'Stream is not available right now.').slice(0, 300),
-    mediaTheme: {
-      ..._adminState.mediaTheme,
-      ...(raw.mediaTheme && typeof raw.mediaTheme === 'object' ? raw.mediaTheme : {}),
-    },
+    blockedMessage,
+    mediaTheme,
   };
 }
 
@@ -760,11 +768,11 @@ function isBlocked({ ip, userAgent } = {}) {
 }
 
 function blockedMessage() {
-  return _adminState.blockedMessage || 'Stream is not available right now.';
+  return _adminState.blockedMessage || 'البث غير متاح حالياً.';
 }
 
 function setBlockedMessage(message) {
-  _adminState.blockedMessage = String(message || 'Stream is not available right now.').slice(0, 300);
+  _adminState.blockedMessage = String(message || 'البث غير متاح حالياً.').slice(0, 300);
   saveAdminState();
   return _adminState.blockedMessage;
 }
