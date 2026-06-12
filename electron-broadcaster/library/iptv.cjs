@@ -146,6 +146,25 @@ function explainHttp(statusCode, targetUrl) {
   return `The IPTV provider returned HTTP ${statusCode}. URL: ${targetUrl}`;
 }
 
+function noContentMessage(targetUrl) {
+  return `No broadcast content is available right now. The IPTV provider responded, but this channel has no playable HLS segments or quality variants at the moment. Try another quality or check again later. URL: ${targetUrl}`;
+}
+
+function playlistContentIssue(body, targetUrl) {
+  const text = String(body || '').replace(/^\uFEFF/, '').trim();
+  if (!text) return noContentMessage(targetUrl);
+  if (!text.startsWith('#EXTM3U')) {
+    return `The IPTV provider responded, but it did not return a playable HLS playlist. This can happen when an error page, login page, or empty response is returned instead of video. URL: ${targetUrl}`;
+  }
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const uriLines = lines.filter((line) => !line.startsWith('#'));
+  const hasReferencedUri = uriLines.length > 0 || /URI="[^"]+"/i.test(text);
+  const expectsMedia = /#EXTINF|#EXT-X-STREAM-INF|#EXT-X-MEDIA/i.test(text);
+  if (!hasReferencedUri && !expectsMedia) return noContentMessage(targetUrl);
+  if (!hasReferencedUri && /#EXT-X-ENDLIST/i.test(text)) return noContentMessage(targetUrl);
+  return '';
+}
+
 function sendIptvError(res, statusCode, message) {
   if (res.headersSent) {
     try { res.end(message); } catch {}
@@ -441,6 +460,12 @@ async function serveHlsPlaylist(channel, playlistUrl, baseProxyUrl, req, res, po
       return;
     }
     const body = up.body.toString('utf8');
+    const issue = playlistContentIssue(body, playlistUrl);
+    if (issue) {
+      markError(channel.id, issue, 503);
+      sendIptvError(res, 503, issue);
+      return;
+    }
     const rewritten = rewritePlaylist(body, playlistUrl, baseProxyUrl);
     addBytes(channel.id, up.fromCache ? 0 : Buffer.byteLength(body), Buffer.byteLength(rewritten));
     const blockedNow = limitExceeded(channel, policy);
@@ -490,7 +515,14 @@ async function serveHlsSegment(channel, segUrl, baseProxyUrl, req, res, policy =
     const contentType = up.headers['content-type'] || '';
     const body = up.body;
     if (isPlaylistResponse(segUrl, contentType, body)) {
-      const rewritten = rewritePlaylist(body.toString('utf8'), segUrl, baseProxyUrl);
+      const bodyText = body.toString('utf8');
+      const issue = playlistContentIssue(bodyText, segUrl);
+      if (issue) {
+        markError(channel.id, issue, 503);
+        sendIptvError(res, 503, issue);
+        return;
+      }
+      const rewritten = rewritePlaylist(bodyText, segUrl, baseProxyUrl);
       addBytes(channel.id, up.fromCache ? 0 : body.length, Buffer.byteLength(rewritten));
       const blockedNow = limitExceeded(channel, policy);
       if (blockedNow) {
@@ -505,6 +537,12 @@ async function serveHlsSegment(channel, segUrl, baseProxyUrl, req, res, policy =
         'Access-Control-Allow-Origin': '*',
       });
       res.end(rewritten);
+      return;
+    }
+    if (!body.length) {
+      const issue = noContentMessage(segUrl);
+      markError(channel.id, issue, 503);
+      sendIptvError(res, 503, issue);
       return;
     }
     addBytes(channel.id, up.fromCache ? 0 : body.length, body.length);

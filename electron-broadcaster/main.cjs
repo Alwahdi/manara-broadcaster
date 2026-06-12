@@ -415,7 +415,7 @@ function publicIptvChannels() {
   try {
     rows.push(...libraryDb.listIptv().map((c) => ({ ...c, source: 'local' })));
   } catch {}
-  return rows
+  const playable = rows
     .filter((c) => c && c.url && c.enabled !== false && c.enabled !== 0)
     .map((c) => ({
       id: String(c.id),
@@ -425,7 +425,60 @@ function publicIptvChannels() {
       viewers: 0,
       live: true,
       source: c.source || 'local',
+      quality: parseIptvQuality(c.name || ''),
+      groupName: parseIptvGroupName(c.name || 'IPTV'),
+      category: c.category || '',
     }));
+  const grouped = new Map();
+  for (const ch of playable) {
+    const key = `${ch.category || ''}|${ch.groupName || ch.name}`.toLowerCase();
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        ...ch,
+        id: ch.id,
+        name: ch.groupName || ch.name,
+        description: ch.category ? `IPTV - ${ch.category}` : 'IPTV عند الطلب',
+        qualities: [],
+      });
+    }
+    grouped.get(key).qualities.push({
+      id: ch.id,
+      label: ch.quality,
+      name: ch.name,
+      source: ch.source,
+    });
+  }
+  return [...grouped.values()].map((group) => {
+    group.qualities.sort((a, b) => iptvQualityRank(a.label) - iptvQualityRank(b.label) || a.name.localeCompare(b.name));
+    const first = group.qualities[0] || {};
+    return {
+      ...group,
+      id: first.id || group.id,
+      quality: first.label || group.quality,
+      description: `${group.description}${group.qualities.length > 1 ? ` - ${group.qualities.map((q) => q.label).join(' / ')}` : ''}`,
+    };
+  });
+}
+
+function parseIptvQuality(name = '') {
+  const text = String(name).toUpperCase();
+  if (/\b(4K|UHD|2160P)\b/.test(text)) return '4K';
+  if (/\b(FHD|FULL\s*HD|1080P)\b/.test(text)) return 'FHD';
+  if (/\b(HD|720P)\b/.test(text)) return 'HD';
+  if (/\b(SD|480P|360P)\b/.test(text)) return 'SD';
+  return 'AUTO';
+}
+
+function iptvQualityRank(label = '') {
+  return ({ SD: 1, HD: 2, FHD: 3, '4K': 4, AUTO: 5 })[String(label).toUpperCase()] || 9;
+}
+
+function parseIptvGroupName(name = '') {
+  return String(name || 'IPTV')
+    .replace(/\b(4K|UHD|2160P|FHD|FULL\s*HD|1080P|HD|720P|SD|480P|360P|LOW|AUTO)\b/gi, '')
+    .replace(/\s*[-_()[\]]+\s*$/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim() || String(name || 'IPTV').trim() || 'IPTV';
 }
 
 function normalizeCloudId(id) {
