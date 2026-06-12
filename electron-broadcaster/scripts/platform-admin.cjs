@@ -14,6 +14,7 @@ Usage:
   node scripts/platform-admin.cjs approve <instance-id> [--plan=pro] [--days=365] [--features=all|channels,iptv,media,webAdmin,analytics,branding]
   node scripts/platform-admin.cjs import-hydra-bein [--limit-bytes=0]
   node scripts/platform-admin.cjs import-hydra-bein-file [--file=scripts/hydra-bein-channels.json] [--limit-bytes=0]
+  node scripts/platform-admin.cjs replace-fiber-bein-file [--file=scripts/fiber-bein-working-channels.json] [--limit-bytes=0]
   node scripts/platform-admin.cjs suspend <instance-id> [reason]
   node scripts/platform-admin.cjs expire <instance-id>
   node scripts/platform-admin.cjs policy --channel=stable --latest=2.5.13 --minimum=2.5.0 [--mandatory=true] [--notes="..."]
@@ -120,6 +121,16 @@ function hydraConfig() {
   return { host, username, password, base: `http://${host}` };
 }
 
+function fiberConfig() {
+  const host = String(process.env.FIBER_IPTV_HOST || '').trim().replace(/^https?:\/\//i, '');
+  const username = String(process.env.FIBER_IPTV_USERNAME || '').trim();
+  const password = String(process.env.FIBER_IPTV_PASSWORD || '').trim();
+  if (!host || !username || !password) {
+    throw new Error('Set FIBER_IPTV_HOST, FIBER_IPTV_USERNAME, and FIBER_IPTV_PASSWORD before importing Fiber IPTV.');
+  }
+  return { host, username, password, base: `https://${host}` };
+}
+
 async function fetchHydraJson(action) {
   const cfg = hydraConfig();
   const url = `${cfg.base}/player_api.php?username=${encodeURIComponent(cfg.username)}&password=${encodeURIComponent(cfg.password)}&action=${encodeURIComponent(action)}`;
@@ -203,6 +214,44 @@ async function importHydraBein(sql, { fromFile = false } = {}) {
   for (const row of rows) console.log(`${row.sort_order}\t${row.category}\t${row.name}`);
 }
 
+function fiberBeinChannelsFromFile() {
+  const file = arg('file', 'scripts/fiber-bein-working-channels.json');
+  const resolved = path.isAbsolute(file) ? file : path.join(__dirname, '..', file);
+  const rows = JSON.parse(fs.readFileSync(resolved, 'utf8'));
+  if (!Array.isArray(rows)) throw new Error(`Fiber channel file must contain an array: ${resolved}`);
+  return rows;
+}
+
+async function replaceFiberBein(sql) {
+  const cfg = fiberConfig();
+  const channels = fiberBeinChannelsFromFile();
+  const limitBytes = Math.max(0, Number(arg('limit-bytes', '0')) || 0);
+  if (!channels.length) throw new Error('No Fiber beIN channels found in file.');
+
+  const deleted = await sql`delete from cloud_iptv_channels returning id`;
+  for (const ch of channels) {
+    const streamId = String(ch.stream_id || ch.streamId || '').trim();
+    if (!streamId) throw new Error(`Missing stream_id for channel: ${ch.name || 'unknown'}`);
+    const url = `${cfg.base}/live/${encodeURIComponent(cfg.username)}/${encodeURIComponent(cfg.password)}/${encodeURIComponent(streamId)}.m3u8`;
+    await sql`
+      insert into cloud_iptv_channels
+        (name, url, logo_url, category, headers, transfer_limit_bytes, is_active, sort_order)
+      values
+        (${ch.name}, ${url}, ${ch.logo_url || ''}, ${ch.category || 'BeIN Sports'}, ${JSON.stringify({})}::jsonb, ${limitBytes}, true, ${Number(ch.sort_order) || 100})
+    `;
+  }
+
+  const rows = await sql`
+    select name, category, sort_order
+    from cloud_iptv_channels
+    order by sort_order asc, name asc
+  `;
+  console.log(`Deleted ${deleted.length} cloud IPTV channels.`);
+  console.log(`Inserted ${channels.length} Fiber beIN Sports channels.`);
+  console.log(`Transfer limit per channel: ${limitBytes} bytes (${limitBytes === 0 ? 'unlimited' : 'limited'}).`);
+  for (const row of rows) console.log(`${row.sort_order}\t${row.category}\t${row.name}`);
+}
+
 async function main() {
   const cmd = process.argv[2];
   if (!cmd || cmd === '--help' || cmd === '-h') {
@@ -256,6 +305,11 @@ async function main() {
 
   if (cmd === 'import-hydra-bein-file') {
     await importHydraBein(sql, { fromFile: true });
+    return;
+  }
+
+  if (cmd === 'replace-fiber-bein-file') {
+    await replaceFiberBein(sql);
     return;
   }
 

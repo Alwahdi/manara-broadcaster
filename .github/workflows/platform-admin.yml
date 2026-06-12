@@ -46,6 +46,9 @@ jobs:
           HYDRA_IPTV_HOST: ${{ secrets.HYDRA_IPTV_HOST }}
           HYDRA_IPTV_USERNAME: ${{ secrets.HYDRA_IPTV_USERNAME }}
           HYDRA_IPTV_PASSWORD: ${{ secrets.HYDRA_IPTV_PASSWORD }}
+          FIBER_IPTV_HOST: ${{ secrets.FIBER_IPTV_HOST }}
+          FIBER_IPTV_USERNAME: ${{ secrets.FIBER_IPTV_USERNAME }}
+          FIBER_IPTV_PASSWORD: ${{ secrets.FIBER_IPTV_PASSWORD }}
           PLATFORM_COMMAND: ${{ inputs.command }}
           PLATFORM_ARGS: ${{ inputs.args }}
         run: |
