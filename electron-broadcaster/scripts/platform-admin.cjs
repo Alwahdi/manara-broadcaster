@@ -13,6 +13,7 @@ Usage:
   node scripts/platform-admin.cjs list [pending|active|expired|suspended|all]
   node scripts/platform-admin.cjs approve <instance-id> [--plan=pro] [--days=365] [--features=all|channels,iptv,media,webAdmin,analytics,branding]
   node scripts/platform-admin.cjs import-hydra-bein [--limit-bytes=0]
+  node scripts/platform-admin.cjs import-hydra-bein-file [--file=scripts/hydra-bein-channels.json] [--limit-bytes=0]
   node scripts/platform-admin.cjs suspend <instance-id> [reason]
   node scripts/platform-admin.cjs expire <instance-id>
   node scripts/platform-admin.cjs policy --channel=stable --latest=2.5.13 --minimum=2.5.0 [--mandatory=true] [--notes="..."]
@@ -127,7 +128,7 @@ async function fetchHydraJson(action) {
   return res.json();
 }
 
-async function importHydraBein(sql) {
+async function hydraBeinChannelsFromProvider() {
   const cfg = hydraConfig();
   const [streams, categories] = await Promise.all([
     fetchHydraJson('get_live_streams'),
@@ -137,8 +138,7 @@ async function importHydraBein(sql) {
   const catMap = new Map(Array.isArray(categories)
     ? categories.map((c) => [String(c.category_id), c.category_name || ''])
     : []);
-  const limitBytes = Math.max(0, Number(arg('limit-bytes', '0')) || 0);
-  const channels = streams
+  return streams
     .filter((s) => {
       const name = String(s.name || '');
       const cat = String(catMap.get(String(s.category_id)) || '');
@@ -148,12 +148,26 @@ async function importHydraBein(sql) {
       const category = String(catMap.get(String(s.category_id)) || 'BeIN Sports').trim() || 'BeIN Sports';
       return {
         name: String(s.name || `BeIN Sports ${s.stream_id}`).trim(),
-        url: `${cfg.base}/live/${encodeURIComponent(cfg.username)}/${encodeURIComponent(cfg.password)}/${encodeURIComponent(String(s.stream_id))}.m3u8`,
+        stream_id: String(s.stream_id),
         logo_url: String(s.stream_icon || '').trim(),
         category,
         sort_order: 10000 + index,
       };
     });
+}
+
+function hydraBeinChannelsFromFile() {
+  const file = arg('file', 'scripts/hydra-bein-channels.json');
+  const resolved = path.isAbsolute(file) ? file : path.join(__dirname, '..', file);
+  const rows = JSON.parse(fs.readFileSync(resolved, 'utf8'));
+  if (!Array.isArray(rows)) throw new Error(`Hydra channel file must contain an array: ${resolved}`);
+  return rows;
+}
+
+async function importHydraBein(sql, { fromFile = false } = {}) {
+  const cfg = hydraConfig();
+  const limitBytes = Math.max(0, Number(arg('limit-bytes', '0')) || 0);
+  const channels = fromFile ? hydraBeinChannelsFromFile() : await hydraBeinChannelsFromProvider();
 
   if (!channels.length) throw new Error('No beIN Sports channels found in Hydra stream list.');
 
@@ -165,11 +179,14 @@ async function importHydraBein(sql) {
   `;
 
   for (const ch of channels) {
+    const streamId = String(ch.stream_id || ch.streamId || '').trim();
+    if (!streamId) throw new Error(`Missing stream_id for channel: ${ch.name || 'unknown'}`);
+    const url = `${cfg.base}/live/${encodeURIComponent(cfg.username)}/${encodeURIComponent(cfg.password)}/${encodeURIComponent(streamId)}.m3u8`;
     await sql`
       insert into cloud_iptv_channels
         (name, url, logo_url, category, headers, transfer_limit_bytes, is_active, sort_order)
       values
-        (${ch.name}, ${ch.url}, ${ch.logo_url}, ${ch.category}, ${JSON.stringify({})}::jsonb, ${limitBytes}, true, ${ch.sort_order})
+        (${ch.name}, ${url}, ${ch.logo_url || ''}, ${ch.category || 'BeIN Sports'}, ${JSON.stringify({})}::jsonb, ${limitBytes}, true, ${Number(ch.sort_order) || 10000})
     `;
   }
 
@@ -234,6 +251,11 @@ async function main() {
 
   if (cmd === 'import-hydra-bein') {
     await importHydraBein(sql);
+    return;
+  }
+
+  if (cmd === 'import-hydra-bein-file') {
+    await importHydraBein(sql, { fromFile: true });
     return;
   }
 
