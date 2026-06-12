@@ -15,9 +15,9 @@ function startSignalingServer({ port = 8080, mediaHandler = null, getIptvChannel
 
   let brand = {
     brandName: 'TeraNet',
-    brandTagline: 'بث محلي عبر شبكة Wi-Fi — بدون إنترنت',
-    accent: '#3b82f6',
-    accent2: '#8b5cf6',
+    brandTagline: 'خدمة مشاهدة داخل الشبكة',
+    accent: '#2563eb',
+    accent2: '#14b8a6',
   };
 
   // channelId -> { meta:{id,name,description,active}, broadcaster: ws|null, viewers: Map<viewerId, ws> }

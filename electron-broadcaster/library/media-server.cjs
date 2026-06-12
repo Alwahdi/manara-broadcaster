@@ -107,7 +107,7 @@ function requireAdmin(req, res, getAdminAuth) {
 }
 
 function adminLoginPage(error = '') {
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Manara Admin Login</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#080d1f;color:#eef2ff;font-family:system-ui,-apple-system,Segoe UI,sans-serif}.card{width:min(420px,92vw);border:1px solid rgba(255,255,255,.12);background:#101936;border-radius:10px;padding:22px}input{width:100%;box-sizing:border-box;margin:8px 0 12px;padding:11px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:#111936;color:#fff}button{width:100%;padding:11px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-weight:900}.err{color:#fca5a5}</style></head><body><form class="card" method="post" action="/admin/login"><h1>Manara Admin</h1>${error ? `<p class="err">${escapeHtml(error)}</p>` : ''}<label>Username<input name="username" autocomplete="username"></label><label>Password<input name="password" type="password" autocomplete="current-password"></label><button>Sign in</button></form></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Manara Admin</title><style>:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:linear-gradient(180deg,#081126,#070b1e);color:#eef2ff;font-family:system-ui,-apple-system,Segoe UI,sans-serif}.card{width:min(420px,92vw);border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.86);border-radius:8px;padding:24px;box-shadow:0 24px 70px rgba(0,0,0,.38)}h1{font-size:24px;margin:0 0 6px}.lead{color:#94a3b8;line-height:1.6;margin:0 0 18px;font-size:13px}label{display:block;color:#cbd5e1;font-size:12px;font-weight:800;margin-top:12px}input{width:100%;box-sizing:border-box;margin:7px 0 2px;padding:12px;border-radius:8px;border:1px solid rgba(148,163,184,.24);background:#111936;color:#fff;font:inherit}button{width:100%;padding:12px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-weight:900;margin-top:16px;cursor:pointer}.err{color:#fecaca;background:rgba(127,29,29,.26);border:1px solid rgba(248,113,113,.34);border-radius:8px;padding:10px;font-size:13px}</style></head><body><form class="card" method="post" action="/admin/login"><h1>Manara Admin</h1><p class="lead">Sign in to manage channels, IPTV, media, viewers, and reports on this local network.</p>${error ? `<p class="err">${escapeHtml(error)}</p>` : ''}<label>Username<input name="username" autocomplete="username" autofocus></label><label>Password<input name="password" type="password" autocomplete="current-password"></label><button>Sign in</button></form></body></html>`;
 }
 
 function formatBytes(bytes) {
@@ -427,31 +427,31 @@ function adminPage(options = {}) {
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Manara LAN Admin</title>
 <style>
-body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;background:#0b1024;color:#eef2ff}
+body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;background:linear-gradient(180deg,#081126,#070b1e);color:#eef2ff}
 main{max-width:1280px;margin:auto;padding:24px}
-h1{font-size:22px;margin:0 0 18px}
-section{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);border-radius:8px;padding:16px;margin-bottom:14px}
+h1{font-size:24px;margin:0 0 6px}.lead{color:#94a3b8;line-height:1.6;margin:0 0 18px}.shell-head{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:18px}.shell-head a{color:#bfdbfe;text-decoration:none;font-size:13px;font-weight:800}
+section{border:1px solid rgba(148,163,184,.18);background:rgba(15,23,42,.72);border-radius:8px;padding:16px;margin-bottom:14px;box-shadow:0 18px 54px rgba(0,0,0,.18)}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 label{display:block;font-size:12px;color:#cbd5e1;margin:10px 0 5px}
-input,textarea,select{width:100%;box-sizing:border-box;border:1px solid rgba(255,255,255,.16);border-radius:6px;padding:9px;background:#111936;color:#fff}
+input,textarea,select{width:100%;box-sizing:border-box;border:1px solid rgba(148,163,184,.22);border-radius:8px;padding:9px;background:#111936;color:#fff}
 textarea{min-height:240px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-button{border:0;border-radius:6px;padding:8px 11px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer;margin:4px 4px 4px 0}
+button{border:0;border-radius:8px;padding:8px 11px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer;margin:4px 4px 4px 0}
 button.secondary{background:#334155}
 table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
 td,th{border-bottom:1px solid rgba(255,255,255,.1);padding:8px;text-align:left;vertical-align:top}
 .url{word-break:break-all;color:#bfdbfe}
 .msg{color:#86efac;font-size:13px;margin-top:8px}
 .muted{color:#94a3b8;font-size:12px}
-.statcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:10px 0 12px}.statcard{border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.18);border-radius:8px;padding:12px}.statcard b{display:block;font-size:22px}.statcard span{font-size:12px;color:#94a3b8}
+.statcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:10px 0 12px}.statcard{border:1px solid rgba(148,163,184,.16);background:rgba(0,0,0,.18);border-radius:8px;padding:12px}.statcard b{display:block;font-size:22px}.statcard span{font-size:12px;color:#94a3b8}
 @media (max-width:900px){.grid{grid-template-columns:1fr}table{display:block;overflow:auto}}
 @media (max-width:700px){.statcards{grid-template-columns:1fr 1fr}}
 </style>
 </head>
 <body><main>
-<h1>Manara LAN Admin</h1>
+<div class="shell-head"><div><h1>Manara Admin</h1><p class="lead">Manage the local viewing experience, IPTV availability, media library, viewer access, and reports.</p></div><a href="/">Open viewer page</a></div>
 <script id="mediaAdminPayload" type="application/json">${mediaPayload}</script>
 <section>
-  <h2>Media Command Center</h2>
+  <h2>Media Library</h2>
   <div class="statcards">
     <div class="statcard"><b>${mediaStats.total}</b><span>Total media</span></div>
     <div class="statcard"><b>${formatBytes(mediaStats.totalSize)}</b><span>Library size</span></div>
@@ -464,13 +464,13 @@ td,th{border-bottom:1px solid rgba(255,255,255,.1);padding:8px;text-align:left;v
     <div class="statcard"><b>${mediaStats.completionRate || 0}%</b><span>Completion rate</span></div>
     <div class="statcard"><b>${health.missingFiles.length + health.unsupportedFormats.length + health.brokenSubtitles.length}</b><span>Health issues</span></div>
   </div>
-  <h3>Library paths and scanner</h3>
+  <h3>Folders and scanner</h3>
   <form id="pathForm">
     <label>Folder path on this computer</label><input name="path" required placeholder="C:\\Media\\Movies or /Users/name/Movies">
     <label>Kind</label><select name="kind"><option value="movies">Movies</option><option value="tv">TV / Series</option><option value="audio">Audio</option></select>
     <button>Add path</button><button type="button" id="scanNowBtn">Scan now</button>
   </form>
-  <table><thead><tr><th>Path</th><th>Kind</th><th>Action</th></tr></thead><tbody>${pathRows || '<tr><td colspan="3">No library paths yet.</td></tr>'}</tbody></table>
+  <table><thead><tr><th>Path</th><th>Kind</th><th>Action</th></tr></thead><tbody>${pathRows || '<tr><td colspan="3">No folders have been added yet.</td></tr>'}</tbody></table>
   <h3>Theme</h3>
   <form id="themeForm" class="grid">
     <label>Brand name<input name="brandName" value="${escapeHtml(mediaTheme.brandName)}"></label>
@@ -488,15 +488,15 @@ td,th{border-bottom:1px solid rgba(255,255,255,.1);padding:8px;text-align:left;v
     <button>Upload</button>
   </form>
   <p class="muted">Reports: <a href="/api/admin/reports/views.csv">CSV</a> · <a href="/api/admin/reports/views.json">JSON</a> · <a href="/api/admin/health">Health diagnostics</a></p>
-  <p class="muted">Health: ${health.missingFiles.length} missing files, ${health.unsupportedFormats.length} unsupported formats, ${health.brokenSubtitles.length} broken subtitles.</p>
+  <p class="muted">Health: ${health.missingFiles.length} missing files, ${health.unsupportedFormats.length} unsupported formats, ${health.brokenSubtitles.length} subtitle issues.</p>
   <h3>Top watched</h3>
-  <table><thead><tr><th>Title</th><th>Kind</th><th>Plays</th><th>Transferred</th><th>Last view</th></tr></thead><tbody>${topMediaRows || '<tr><td colspan="5">No media views yet.</td></tr>'}</tbody></table>
+  <table><thead><tr><th>Title</th><th>Kind</th><th>Plays</th><th>Transferred</th><th>Last view</th></tr></thead><tbody>${topMediaRows || '<tr><td colspan="5">No viewing activity yet.</td></tr>'}</tbody></table>
   <h3 style="margin-top:18px">Media inventory</h3>
-  <table><thead><tr><th>Title</th><th>Kind</th><th>Size</th><th>Duration</th><th>File</th><th>Actions</th></tr></thead><tbody>${mediaRows || '<tr><td colspan="6">No media found. Add folders and scan from the desktop app.</td></tr>'}</tbody></table>
+  <table><thead><tr><th>Title</th><th>Kind</th><th>Size</th><th>Duration</th><th>File</th><th>Actions</th></tr></thead><tbody>${mediaRows || '<tr><td colspan="6">No media has been indexed yet. Add folders, then run a scan.</td></tr>'}</tbody></table>
 </section>
 <section>
-  <h2>Active LAN Viewers</h2>
-  <table><thead><tr><th>IP</th><th>Watching</th><th>Transferred</th><th>Requests</th><th>Device</th><th>Action</th></tr></thead><tbody>${sessionRows || '<tr><td colspan="6">No viewers yet.</td></tr>'}</tbody></table>
+  <h2>Active Viewers</h2>
+  <table><thead><tr><th>IP</th><th>Watching</th><th>Transferred</th><th>Requests</th><th>Device</th><th>Action</th></tr></thead><tbody>${sessionRows || '<tr><td colspan="6">No active viewers right now.</td></tr>'}</tbody></table>
 </section>
 <section>
   <h2>IPTV Channels</h2>
@@ -508,7 +508,7 @@ td,th{border-bottom:1px solid rgba(255,255,255,.1);padding:8px;text-align:left;v
     <label>Internet transfer limit (MB, 0 = no limit)</label><input name="transferLimitMb" type="number" min="0" step="1" value="0">
     <button>Add IPTV</button>
   </form>
-  <table><thead><tr><th>Name</th><th>Source</th><th>Category</th><th>Source URL</th><th>Status</th><th>Limit</th><th>Viewers</th><th>Internet used</th><th>Actions</th></tr></thead><tbody>${iptvRows || '<tr><td colspan="9">No IPTV channels yet.</td></tr>'}</tbody></table>
+  <table><thead><tr><th>Name</th><th>Source</th><th>Category</th><th>Source URL</th><th>Status</th><th>Limit</th><th>Viewers</th><th>Internet used</th><th>Actions</th></tr></thead><tbody>${iptvRows || '<tr><td colspan="9">No IPTV channels have been added yet.</td></tr>'}</tbody></table>
 </section>
 <div class="grid">
 <section>
@@ -530,7 +530,7 @@ td,th{border-bottom:1px solid rgba(255,255,255,.1);padding:8px;text-align:left;v
 </div>
 <section>
   <h2>Broadcast Channels JSON</h2>
-  <p>Edit carefully. This is the same saved channel list used by the Windows app.</p>
+  <p class="muted">Advanced editor for the saved broadcast channel list used by the desktop app.</p>
   <textarea id="broadcastJson">${broadcastJson}</textarea>
   <button id="saveBroadcast">Save Broadcast Channels</button>
   <button class="secondary" onclick="location.reload()">Reload</button>
@@ -677,16 +677,71 @@ function libraryPage(req, res) {
     history: viewer.history || [],
   });
   const sectionPayload = jsonForScript(librarySections(items));
+  const isRtl = theme.direction === 'rtl';
+  const text = isRtl ? {
+    pageTitle: 'مكتبة Manara',
+    channels: 'القنوات',
+    admin: 'الإدارة',
+    totalItems: 'كل المحتوى',
+    movies: 'أفلام',
+    episodes: 'حلقات',
+    audio: 'صوتيات',
+    search: 'ابحث في الأفلام والمسلسلات والصوتيات',
+    allMedia: 'كل المحتوى',
+    all: 'الكل',
+    favorites: 'المفضلة',
+    watchLater: 'المشاهدة لاحقاً',
+    continue: 'متابعة المشاهدة',
+    allSections: 'كل الأقسام',
+    sections: 'الأقسام',
+    sectionsHint: 'تصفح حسب المجلد أو التصنيف',
+    continueHint: 'أكمل من آخر نقطة مشاهدة',
+    favoritesHint: 'محفوظة لهذا الجهاز',
+    library: 'المكتبة',
+    empty: 'لا يوجد محتوى متاح حالياً.',
+    items: 'عنصر',
+    noResume: 'لا توجد مشاهدة غير مكتملة حالياً.',
+    noFavorites: 'لا توجد عناصر مفضلة على هذا الجهاز.',
+    favoriteTitle: 'إضافة إلى المفضلة',
+    watchTitle: 'مشاهدة لاحقاً',
+  } : {
+    pageTitle: 'Manara Media Library',
+    channels: 'Channels',
+    admin: 'Admin',
+    totalItems: 'Total items',
+    movies: 'Movies',
+    episodes: 'Episodes',
+    audio: 'Audio',
+    search: 'Search movies, series, audio',
+    allMedia: 'All media',
+    all: 'All',
+    favorites: 'Favorites',
+    watchLater: 'Watch later',
+    continue: 'Continue watching',
+    allSections: 'All sections',
+    sections: 'Sections',
+    sectionsHint: 'Browse folders and categories',
+    continueHint: 'Resume where you stopped',
+    favoritesHint: 'Saved on this device',
+    library: 'Library',
+    empty: 'No media is available right now.',
+    items: 'item(s)',
+    noResume: 'Nothing to resume yet.',
+    noFavorites: 'No favorites on this device yet.',
+    favoriteTitle: 'Favorite',
+    watchTitle: 'Watch later',
+  };
+  const textPayload = jsonForScript(text);
   return `<!doctype html>
 <html lang="${theme.direction === 'rtl' ? 'ar' : 'en'}" dir="${theme.direction}">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Manara Media Library</title>
+<title>${escapeHtml(text.pageTitle)}</title>
 <style>
 :root{color-scheme:dark;--bg:#070b19;--panel:#10182f;--line:rgba(255,255,255,.1);--text:#eef2ff;--muted:#a7b3cf;--accent:${escapeHtml(theme.accent)};--accent2:${escapeHtml(theme.accent2)}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,sans-serif}
-.hero{min-height:52vh;padding:22px;background:linear-gradient(90deg,rgba(7,11,25,.96),rgba(7,11,25,.72)),var(--hero,radial-gradient(circle at 70% 25%,rgba(59,130,246,.25),transparent 35%));background-size:cover;background-position:center;display:flex;align-items:flex-end}
+.hero{min-height:52vh;padding:22px;background:linear-gradient(90deg,rgba(7,11,25,.96),rgba(7,11,25,.72)),var(--hero,linear-gradient(135deg,#10182f,#07111f));background-size:cover;background-position:center;display:flex;align-items:flex-end}
 .hero-inner{width:100%;max-width:1280px;margin:auto}.top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:58px}.brand{font-weight:900;font-size:18px}.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a,.btn{border:1px solid var(--line);background:rgba(255,255,255,.08);color:#fff;text-decoration:none;border-radius:8px;padding:9px 12px;font-weight:800;cursor:pointer}
 .btn.primary,.nav a.primary{background:var(--accent);border-color:transparent}.hero h1{font-size:clamp(34px,6vw,72px);line-height:.98;margin:0 0 12px;letter-spacing:0}.hero p{max-width:720px;color:#dbeafe;line-height:1.7;margin:0 0 18px}
 .stats{display:flex;gap:10px;flex-wrap:wrap}.stat{border:1px solid var(--line);background:rgba(0,0,0,.24);border-radius:8px;padding:10px 12px}.stat b{display:block;font-size:18px}.stat span{font-size:12px;color:var(--muted)}
@@ -698,7 +753,7 @@ input,select{width:100%;border:1px solid var(--line);background:#111936;color:#f
 .poster{aspect-ratio:2/3;background:#18213d center/cover no-repeat;display:grid;place-items:center;color:rgba(255,255,255,.32);font-size:40px}.poster.audio{aspect-ratio:1;background:linear-gradient(135deg,#18213d,#123c4a)}
 .meta{padding:9px}.title{font-size:13px;font-weight:900;line-height:1.35;min-height:35px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.sub{font-size:11px;color:var(--muted);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .progress{height:4px;background:rgba(255,255,255,.12)}.progress i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2))}
-.quick{position:absolute;top:8px;right:8px;display:flex;gap:5px}.quick button{width:30px;height:30px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.52);color:#fff;border-radius:999px;cursor:pointer}.quick button.on{background:#dc2626}
+.quick{position:absolute;top:8px;right:8px;display:flex;gap:5px}.quick button{width:30px;height:30px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.52);color:#fff;border-radius:8px;cursor:pointer}.quick button.on{background:#dc2626}
 .empty{border:1px solid var(--line);background:rgba(255,255,255,.045);border-radius:8px;padding:22px;color:var(--muted);line-height:1.7}.hide{display:none!important}
 @media(max-width:760px){.hero{min-height:46vh}.top{margin-bottom:34px}.tools{grid-template-columns:1fr}.rail{grid-auto-columns:minmax(132px,155px)}main{padding:16px 14px 28px}}
 </style>
@@ -707,39 +762,41 @@ input,select{width:100%;border:1px solid var(--line);background:#111936;color:#f
 <script id="mediaPayload" type="application/json">${payload}</script>
 <script id="viewerPayload" type="application/json">${viewerPayload}</script>
 <script id="sectionPayload" type="application/json">${sectionPayload}</script>
+<script id="textPayload" type="application/json">${textPayload}</script>
 </main>
 <section class="hero" id="hero">
   <div class="hero-inner">
     <div class="top">
       <div class="brand">${theme.logoUrl ? `<img src="${escapeHtml(theme.logoUrl)}" style="height:32px;vertical-align:middle;margin-inline-end:8px">` : ''}${escapeHtml(theme.brandName)}</div>
-      <nav class="nav"><a href="/" class="primary">Channels</a><a href="/admin">Admin</a></nav>
+      <nav class="nav"><a href="/" class="primary">${escapeHtml(text.channels)}</a><a href="/admin">${escapeHtml(text.admin)}</a></nav>
     </div>
     <h1>${escapeHtml(theme.brandName)}</h1>
     <p>${escapeHtml(theme.tagline)}</p>
     <div class="stats">
-      <div class="stat"><b>${items.length}</b><span>Total items</span></div>
-      <div class="stat"><b>${movies.length}</b><span>Movies</span></div>
-      <div class="stat"><b>${episodes.length}</b><span>Episodes</span></div>
-      <div class="stat"><b>${audio.length}</b><span>Audio</span></div>
+      <div class="stat"><b>${items.length}</b><span>${escapeHtml(text.totalItems)}</span></div>
+      <div class="stat"><b>${movies.length}</b><span>${escapeHtml(text.movies)}</span></div>
+      <div class="stat"><b>${episodes.length}</b><span>${escapeHtml(text.episodes)}</span></div>
+      <div class="stat"><b>${audio.length}</b><span>${escapeHtml(text.audio)}</span></div>
     </div>
   </div>
 </section>
 <main>
   <div class="tools">
-    <input id="search" placeholder="Search movies, series, audio..." autocomplete="off">
-    <select id="kind"><option value="">All media</option><option value="movie">Movies</option><option value="episode">Episodes</option><option value="audio">Audio</option></select>
-    <select id="view"><option value="all">All</option><option value="favorites">Favorites</option><option value="watchLater">Watch later</option><option value="continue">Continue watching</option></select>
-    <select id="sectionFilter"><option value="">All sections</option></select>
+    <input id="search" placeholder="${escapeHtml(text.search)}" autocomplete="off">
+    <select id="kind"><option value="">${escapeHtml(text.allMedia)}</option><option value="movie">${escapeHtml(text.movies)}</option><option value="episode">${escapeHtml(text.episodes)}</option><option value="audio">${escapeHtml(text.audio)}</option></select>
+    <select id="view"><option value="all">${escapeHtml(text.all)}</option><option value="favorites">${escapeHtml(text.favorites)}</option><option value="watchLater">${escapeHtml(text.watchLater)}</option><option value="continue">${escapeHtml(text.continue)}</option></select>
+    <select id="sectionFilter"><option value="">${escapeHtml(text.allSections)}</option></select>
   </div>
-  <section class="section" id="sectionBrowser"><div class="section-head"><div><h2>Sections</h2><small>Browse folders and categories</small></div></div><div class="rail" id="sectionRail"></div></section>
-  <section class="section" id="continueSection"><div class="section-head"><div><h2>Continue watching</h2><small>Resume where viewers stopped</small></div></div><div class="rail" id="continueRail"></div></section>
-  <section class="section" id="favoritesSection"><div class="section-head"><div><h2>Favorites</h2><small>Saved on this device</small></div></div><div class="rail" id="favoritesRail"></div></section>
-  <section class="section"><div class="section-head"><div><h2>Library</h2><small id="countLabel"></small></div></div><div class="grid" id="grid"></div><div class="empty" id="empty">No media was found yet. Add a library path from the desktop app, then scan the library.</div></section>
+  <section class="section" id="sectionBrowser"><div class="section-head"><div><h2>${escapeHtml(text.sections)}</h2><small>${escapeHtml(text.sectionsHint)}</small></div></div><div class="rail" id="sectionRail"></div></section>
+  <section class="section" id="continueSection"><div class="section-head"><div><h2>${escapeHtml(text.continue)}</h2><small>${escapeHtml(text.continueHint)}</small></div></div><div class="rail" id="continueRail"></div></section>
+  <section class="section" id="favoritesSection"><div class="section-head"><div><h2>${escapeHtml(text.favorites)}</h2><small>${escapeHtml(text.favoritesHint)}</small></div></div><div class="rail" id="favoritesRail"></div></section>
+  <section class="section"><div class="section-head"><div><h2>${escapeHtml(text.library)}</h2><small id="countLabel"></small></div></div><div class="grid" id="grid"></div><div class="empty" id="empty">${escapeHtml(text.empty)}</div></section>
 </main>
 <script>
 const media = JSON.parse(document.getElementById('mediaPayload').textContent || '[]');
 const viewer = JSON.parse(document.getElementById('viewerPayload').textContent || '{}');
 const sections = JSON.parse(document.getElementById('sectionPayload').textContent || '[]');
+const text = JSON.parse(document.getElementById('textPayload').textContent || '{}');
 const storeKey = 'manaraMediaStorage';
 const storage = {
   get(){ try { const local = JSON.parse(localStorage.getItem(storeKey)) || {}; return { favorites:[...(viewer.favorites||[]),...(local.favorites||[])], watchLater:[...(viewer.watchLater||[]),...(local.watchLater||[])] }; } catch { return { favorites:viewer.favorites||[], watchLater:viewer.watchLater||[] }; } },
@@ -754,7 +811,7 @@ function card(item){
   const p = pct(item);
   const icon = item.kind === 'audio' ? '♪' : '▶';
   return '<a class="tile" href="/player/'+item.id+'" data-title="'+esc(item.title).toLowerCase()+'" data-kind="'+esc(item.kind)+'">'+
-    '<div class="quick"><button type="button" title="Favorite" class="'+(storage.has('favorites',item.id)?'on':'')+'" data-fav="'+item.id+'">♥</button><button type="button" title="Watch later" class="'+(storage.has('watchLater',item.id)?'on':'')+'" data-watch="'+item.id+'">◷</button></div>'+
+    '<div class="quick"><button type="button" title="'+esc(text.favoriteTitle || 'Favorite')+'" class="'+(storage.has('favorites',item.id)?'on':'')+'" data-fav="'+item.id+'">♥</button><button type="button" title="'+esc(text.watchTitle || 'Watch later')+'" class="'+(storage.has('watchLater',item.id)?'on':'')+'" data-watch="'+item.id+'">◷</button></div>'+
     '<div class="poster '+(item.kind==='audio'?'audio':'')+'" '+(item.poster?'style="background-image:url(\\''+esc(item.poster)+'\\')"':'')+'>'+(item.poster?'':icon)+'</div>'+
     '<div class="meta"><div class="title">'+esc(item.title)+'</div><div class="sub">'+esc([item.year,item.rating?('★ '+item.rating):'',bytes(item.size)].filter(Boolean).join(' · '))+'</div></div>'+
     (p?'<div class="progress"><i style="width:'+p+'%"></i></div>':'')+'</a>';
@@ -775,16 +832,16 @@ function filtered(){
 }
 function render(){
   const list = filtered();
-  document.getElementById('countLabel').textContent = list.length + ' item(s)';
+  document.getElementById('countLabel').textContent = list.length + ' ' + (text.items || 'item(s)');
   document.getElementById('grid').innerHTML = list.map(card).join('');
   document.getElementById('empty').classList.toggle('hide', list.length > 0);
   bindQuick(document.getElementById('grid'));
   const cont = media.filter(item => pct(item) > 2).slice(0,18);
   document.getElementById('continueSection').classList.toggle('hide', !cont.length);
-  renderList(document.getElementById('continueRail'), cont, 'Nothing to resume yet.');
+  renderList(document.getElementById('continueRail'), cont, text.noResume || 'Nothing to resume yet.');
   const favs = media.filter(item => storage.has('favorites', item.id)).slice(0,18);
   document.getElementById('favoritesSection').classList.toggle('hide', !favs.length);
-  renderList(document.getElementById('favoritesRail'), favs, 'No favorites on this device yet.');
+  renderList(document.getElementById('favoritesRail'), favs, text.noFavorites || 'No favorites on this device yet.');
   const heroItem = cont[0] || media.find(x=>x.backdrop) || media[0];
   if(heroItem && heroItem.backdrop) document.getElementById('hero').style.setProperty('--hero','url('+heroItem.backdrop+')');
 }
@@ -814,6 +871,54 @@ function playerPage(id, req, res) {
   const streamUrl = `/media/${item.id}`;
   const downloadUrl = `/media/${item.id}?download=1`;
   const poster = item.backdrop_url || item.poster_url || '';
+  const isRtl = theme.direction === 'rtl';
+  const text = isRtl ? {
+    library: 'المكتبة',
+    channels: 'القنوات',
+    admin: 'الإدارة',
+    unsupportedTitle: 'الصيغة غير مدعومة',
+    unsupportedBody: 'لا يستطيع هذا المتصفح تشغيل هذه الصيغة. يمكنك تنزيل الملف أو فتحه بتطبيق خارجي.',
+    noOverview: 'لا يوجد وصف متاح لهذا المحتوى.',
+    download: 'تنزيل',
+    favorite: 'المفضلة',
+    removeFavorite: 'إزالة من المفضلة',
+    watchLater: 'مشاهدة لاحقاً',
+    removeWatchLater: 'إزالة من المشاهدة لاحقاً',
+    previous: 'السابق',
+    next: 'التالي',
+    openVlc: 'فتح في VLC',
+    openMx: 'فتح في MX Player',
+    playlist: 'القائمة',
+    noPlaylist: 'لا توجد عناصر أخرى في القائمة.',
+    stillWatching: 'هل ما زلت تشاهد؟',
+    stillWatchingBody: 'سيتم إيقاف التشغيل خلال',
+    secondsSuffix: 'ثانية إذا لم يكن هناك تفاعل.',
+    yes: 'نعم، أتابع',
+    stop: 'إيقاف الآن',
+  } : {
+    library: 'Library',
+    channels: 'Channels',
+    admin: 'Admin',
+    unsupportedTitle: 'Unsupported format',
+    unsupportedBody: 'This browser cannot play this format. You can download it or open it in an external player.',
+    noOverview: 'No description is available for this title.',
+    download: 'Download',
+    favorite: 'Favorite',
+    removeFavorite: 'Remove favorite',
+    watchLater: 'Watch later',
+    removeWatchLater: 'Remove watch later',
+    previous: 'Previous',
+    next: 'Next',
+    openVlc: 'Open VLC',
+    openMx: 'Open MX Player',
+    playlist: 'Playlist',
+    noPlaylist: 'No playlist items.',
+    stillWatching: 'Still watching?',
+    stillWatchingBody: 'Playback will stop in',
+    secondsSuffix: 'seconds if there is no activity.',
+    yes: 'Yes, continue',
+    stop: 'Stop now',
+  };
   const playlist = items.slice(Math.max(0, index - 12), index + 13);
   const metaJson = jsonForScript({
     id: item.id,
@@ -823,6 +928,7 @@ function playerPage(id, req, res) {
     streamUrl,
   });
   const viewerPayload = jsonForScript({ favorites: viewer.favorites || [], watchLater: viewer.watchLater || [] });
+  const textPayload = jsonForScript(text);
   const playlistHtml = playlist.map((row, i) => {
     const current = String(row.id) === String(item.id);
     const p = row.poster_url ? `style="background-image:url('${escapeHtml(row.poster_url)}')"` : '';
@@ -853,44 +959,46 @@ video,audio{width:100%;display:block;background:#000}video{aspect-ratio:16/9;max
 </head><body>
 <script id="mediaMeta" type="application/json">${metaJson}</script>
 <script id="viewerMeta" type="application/json">${viewerPayload}</script>
+<script id="textMeta" type="application/json">${textPayload}</script>
 <div class="wrap">
-  <div class="bar"><a href="/library">Library</a><div><a href="/">Channels</a> <a href="/admin">Admin</a></div></div>
+  <div class="bar"><a href="/library">${escapeHtml(text.library)}</a><div><a href="/">${escapeHtml(text.channels)}</a> <a href="/admin">${escapeHtml(text.admin)}</a></div></div>
   <div class="layout">
     <main>
       <div class="player">
         <div class="logo">${theme.logoUrl ? `<img src="${escapeHtml(theme.logoUrl)}" style="height:28px;vertical-align:middle;margin-inline-end:6px">` : ''}${escapeHtml(theme.brandName)}</div>
         ${type === 'audio' ? `<div class="audioBox"><audio id="media" controls autoplay src="${streamUrl}"></audio></div>` : ''}
         ${type === 'video' ? `<video id="media" controls autoplay playsinline crossorigin="anonymous" poster="${escapeHtml(item.backdrop_url || item.poster_url || '')}"><source src="${streamUrl}" type="${escapeHtml(MIME[path.extname(item.path || '').toLowerCase()] || 'video/mp4')}">${subtitleTracks}</video>` : ''}
-        ${type === 'unsupported' ? `<div class="unsupported"><div><h2>Unsupported format</h2><p>This browser cannot play ${escapeHtml(path.extname(item.path || '').slice(1).toUpperCase())}. Open it in VLC/MX Player or download it.</p></div></div>` : ''}
+        ${type === 'unsupported' ? `<div class="unsupported"><div><h2>${escapeHtml(text.unsupportedTitle)}</h2><p>${escapeHtml(text.unsupportedBody)}</p></div></div>` : ''}
       </div>
       <div class="info">
         <h1>${escapeHtml(title)}</h1>
-        <p>${escapeHtml(item.overview || path.basename(item.path || ''))}</p>
+        <p>${escapeHtml(item.overview || text.noOverview)}</p>
         <div class="actions">
-          <a class="btn" href="${downloadUrl}" download>Download</a>
-          <button class="btn" id="favBtn">Favorite</button>
-          <button class="btn" id="watchBtn">Watch later</button>
-          ${prev ? `<a class="btn" href="/player/${prev.id}">Previous</a>` : ''}
-          ${next ? `<a class="btn" href="/player/${next.id}">Next</a>` : ''}
-          <button class="btn" id="vlcBtn">Open VLC</button>
-          <button class="btn" id="mxBtn">Open MX Player</button>
+          <a class="btn" href="${downloadUrl}" download>${escapeHtml(text.download)}</a>
+          <button class="btn" id="favBtn">${escapeHtml(text.favorite)}</button>
+          <button class="btn" id="watchBtn">${escapeHtml(text.watchLater)}</button>
+          ${prev ? `<a class="btn" href="/player/${prev.id}">${escapeHtml(text.previous)}</a>` : ''}
+          ${next ? `<a class="btn" href="/player/${next.id}">${escapeHtml(text.next)}</a>` : ''}
+          <button class="btn" id="vlcBtn">${escapeHtml(text.openVlc)}</button>
+          <button class="btn" id="mxBtn">${escapeHtml(text.openMx)}</button>
         </div>
       </div>
     </main>
-    <aside class="side"><h2>Playlist</h2>${playlistHtml || '<p>No playlist items.</p>'}</aside>
+    <aside class="side"><h2>${escapeHtml(text.playlist)}</h2>${playlistHtml || `<p>${escapeHtml(text.noPlaylist)}</p>`}</aside>
   </div>
 </div>
-<div class="watch" id="watchPrompt"><div><h2>Still watching?</h2><p>The stream will stop on this device in <b id="countdown">60</b> seconds to save network resources.</p><button class="btn" id="yesBtn">Yes, continue</button> <button class="btn" id="stopBtn">Stop now</button></div></div>
+<div class="watch" id="watchPrompt"><div><h2>${escapeHtml(text.stillWatching)}</h2><p>${escapeHtml(text.stillWatchingBody)} <b id="countdown">60</b> ${escapeHtml(text.secondsSuffix)}</p><button class="btn" id="yesBtn">${escapeHtml(text.yes)}</button> <button class="btn" id="stopBtn">${escapeHtml(text.stop)}</button></div></div>
 <script>
 const meta = JSON.parse(document.getElementById('mediaMeta').textContent || '{}');
 const viewer = JSON.parse(document.getElementById('viewerMeta').textContent || '{}');
+const text = JSON.parse(document.getElementById('textMeta').textContent || '{}');
 const media = document.getElementById('media');
 const storeKey = 'manaraMediaStorage';
 function getStore(){ try { const local=JSON.parse(localStorage.getItem(storeKey)) || {}; return { favorites:[...(viewer.favorites||[]),...(local.favorites||[])], watchLater:[...(viewer.watchLater||[]),...(local.watchLater||[])] }; } catch { return { favorites:viewer.favorites||[], watchLater:viewer.watchLater||[] }; } }
 function setStore(v){ localStorage.setItem(storeKey, JSON.stringify(v)); }
 function toggle(type){ const s=getStore(); const key=String(meta.id); const arr=s[type]||[]; const i=arr.indexOf(key); const active=i<0; if(active) arr.push(key); else arr.splice(i,1); s[type]=arr; setStore(s); fetch('/api/viewer/list',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({list:type,mediaId:meta.id,active})}).catch(()=>{}); syncButtons(); }
 function has(type){ return (getStore()[type]||[]).includes(String(meta.id)); }
-function syncButtons(){ favBtn.textContent=has('favorites')?'Remove favorite':'Favorite'; watchBtn.textContent=has('watchLater')?'Remove watch later':'Watch later'; }
+function syncButtons(){ favBtn.textContent=has('favorites')?(text.removeFavorite || 'Remove favorite'):(text.favorite || 'Favorite'); watchBtn.textContent=has('watchLater')?(text.removeWatchLater || 'Remove watch later'):(text.watchLater || 'Watch later'); }
 favBtn.onclick=()=>toggle('favorites'); watchBtn.onclick=()=>toggle('watchLater'); syncButtons();
 if(media){
   media.addEventListener('loadedmetadata',()=>{ if(meta.position && meta.position < media.duration - 8) media.currentTime = meta.position; },{once:true});

@@ -7,29 +7,28 @@
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#070b1e;color:#eef2ff}
-  body{display:grid;place-items:center;padding:18px;background:radial-gradient(900px 480px at 80% -10%,rgba(37,99,235,.25),transparent 60%),#070b1e}
-  main{width:min(1080px,100%);border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);border-radius:12px;overflow:hidden}
+  body{display:grid;place-items:center;padding:18px;background:linear-gradient(180deg,#081126 0%,#070b1e 52%,#050816 100%)}
+  main{width:min(1080px,100%);border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.72);border-radius:8px;overflow:hidden;box-shadow:0 22px 70px rgba(0,0,0,.36)}
   header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.1)}
   .head-title{min-width:0}
   h1{font-size:16px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .sub{font-size:12px;color:#94a3b8;margin-top:3px}
-  a,.back{color:#bfdbfe;text-decoration:none;font-size:13px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.08);border-radius:999px;padding:8px 12px;font-weight:800}
+  a,.back{color:#dbeafe;text-decoration:none;font-size:13px;border:1px solid rgba(148,163,184,.24);background:rgba(255,255,255,.08);border-radius:8px;padding:8px 12px;font-weight:800}
   video{display:block;width:100%;max-height:72vh;background:#000}
-  .quality-bar{display:flex;gap:8px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.025)}
-  .quality-bar button{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.08);color:#e5e7eb;border-radius:999px;padding:8px 12px;font-weight:900;cursor:pointer}
+  .quality-bar{display:flex;gap:8px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid rgba(148,163,184,.16);background:rgba(255,255,255,.025)}
+  .quality-bar button{border:1px solid rgba(148,163,184,.24);background:rgba(255,255,255,.08);color:#e5e7eb;border-radius:8px;padding:8px 12px;font-weight:900;cursor:pointer}
   .quality-bar button.active{background:#2563eb;border-color:#60a5fa;color:#fff}
   .info{padding:14px 16px;font-size:13px;line-height:1.7;color:#cbd5e1}
   .error{margin-top:8px;padding:12px;border:1px solid rgba(248,113,113,.4);background:rgba(127,29,29,.22);border-radius:8px;color:#fecaca;display:none;text-align:right}
-  .hint{margin-top:8px;padding:11px 12px;border:1px solid rgba(59,130,246,.28);background:rgba(37,99,235,.11);border-radius:8px;color:#dbeafe}
+  .hint{padding:11px 12px;border:1px solid rgba(20,184,166,.28);background:rgba(20,184,166,.1);border-radius:8px;color:#ccfbf1}
   .watch-overlay{position:fixed;inset:0;background:rgba(3,7,18,.72);display:none;align-items:center;justify-content:center;padding:18px;z-index:20}
-  .watch-card{max-width:420px;width:100%;background:#101936;border:1px solid rgba(255,255,255,.16);border-radius:12px;padding:18px;text-align:center;box-shadow:0 18px 60px rgba(0,0,0,.35)}
+  .watch-card{max-width:420px;width:100%;background:#101936;border:1px solid rgba(255,255,255,.16);border-radius:8px;padding:18px;text-align:center;box-shadow:0 18px 60px rgba(0,0,0,.35)}
   .watch-card h2{font-size:20px;margin-bottom:8px}
   .watch-card p{color:#cbd5e1;line-height:1.7;margin-bottom:14px}
   .watch-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
   .watch-actions button{border:0;border-radius:8px;padding:10px 14px;font-weight:800;cursor:pointer;color:#fff}
   .watch-actions .primary{background:#2563eb}
   .watch-actions .ghost{background:#334155}
-  code{direction:ltr;unicode-bidi:bidi-override;word-break:break-all;color:#bfdbfe}
 </style>
 </head>
 <body>
@@ -38,22 +37,20 @@
     <a href="/" class="back">← القنوات</a>
     <div class="head-title">
       <h1 id="title">IPTV</h1>
-      <div id="subtitle" class="sub">عند الطلب عبر خادم Manara المحلي</div>
+      <div id="subtitle" class="sub">مشاهدة داخل الشبكة</div>
     </div>
   </header>
   <div id="qualityBar" class="quality-bar" style="display:none"></div>
   <video id="video" controls autoplay playsinline></video>
   <div class="info">
-    يعمل هذا البث عبر خادم Manara المحلي. يتم سحب مصدر IPTV عند الطلب فقط.
-    <div class="hint">إذا كانت القناة مفتوحة لكن لا توجد مباراة أو برنامج حالياً، سيظهر تنبيه واضح بدلاً من خطأ غامض.</div>
-    <div id="url"></div>
+    <div class="hint">اختر الجودة المناسبة. إذا لم تعمل جودة معينة، جرّب جودة أخرى أو حاول مرة أخرى بعد قليل.</div>
     <div id="error" class="error"></div>
   </div>
 </main>
 <div class="watch-overlay" id="watchOverlay">
   <div class="watch-card">
     <h2>هل ما زلت تشاهد؟</h2>
-    <p>سيتم إيقاف البث لهذا الجهاز خلال <strong id="watchCountdown">60</strong> ثانية لتقليل استهلاك الإنترنت.</p>
+    <p>سيتم إيقاف التشغيل خلال <strong id="watchCountdown">60</strong> ثانية إذا لم يكن هناك تفاعل.</p>
     <div class="watch-actions">
       <button class="primary" id="stillWatchingBtn">نعم، أتابع</button>
       <button class="ghost" id="stopWatchingBtn">إيقاف الآن</button>
@@ -78,6 +75,7 @@ let hls = null;
 let qualitySet = queryQualities.length ? queryQualities.map((id, idx) => ({ id, label: idx === 0 ? 'الأقل' : 'جودة ' + (idx + 1), name })) : [];
 
 function showError(message) {
+  if (message) console.warn('[Manara IPTV]', message);
   errorBox.style.display = 'block';
   errorBox.textContent = friendlyError(message);
 }
@@ -90,21 +88,21 @@ function clearError() {
 function friendlyError(message) {
   const text = String(message || '');
   if (/no playable|no broadcast|empty|no content|nothing playable|لا يوجد/i.test(text)) {
-    return 'لا يوجد محتوى متاح الآن لهذه القناة. المصدر يعمل، لكن لا توجد مقاطع قابلة للتشغيل حالياً. جرّب جودة أخرى أو عد لاحقاً.';
+    return 'القناة غير متاحة حالياً. جرّب جودة أخرى أو حاول مرة أخرى لاحقاً.';
   }
   if (/403|rejected|geo-blocked|token|subscription/i.test(text)) {
-    return 'رفض مزود IPTV تشغيل هذه الجودة. قد تحتاج القناة إلى اشتراك نشط أو توكن أو User-Agent خاص أو قد تكون محجوبة جغرافياً. التفاصيل: ' + text;
+    return 'لا يمكن تشغيل هذه الجودة حالياً. جرّب جودة أخرى أو حاول لاحقاً.';
   }
   if (/404|not found|gone|expired/i.test(text)) {
-    return 'رابط هذه الجودة غير موجود أو انتهت صلاحيته. التفاصيل: ' + text;
+    return 'هذه الجودة غير متاحة حالياً.';
   }
   if (/429|limit/i.test(text)) {
-    return 'تم إيقاف البث لأن حد النقل المحدد لهذه القناة وصل للنهاية. التفاصيل: ' + text;
+    return 'تم إيقاف هذه القناة مؤقتاً.';
   }
   if (/503|server failed|unavailable/i.test(text)) {
-    return 'القناة غير متاحة من المزود حالياً أو لا يوجد بث فعلي الآن. جرّب جودة أخرى أو انتظر قليلاً. التفاصيل: ' + text;
+    return 'البث غير متاح حالياً. حاول مرة أخرى بعد قليل.';
   }
-  return text || 'تعذر تشغيل IPTV. جرّب جودة أخرى أو تحقق من اشتراك المصدر.';
+  return 'تعذر تشغيل القناة. جرّب جودة أخرى أو حاول مرة أخرى لاحقاً.';
 }
 
 async function readProxyError(url) {
@@ -128,7 +126,7 @@ async function loadChannelMeta() {
     const found = channels.find(c => c.id === initialId || (Array.isArray(c.qualities) && c.qualities.some(q => q.id === initialId)));
     if (!found) return;
     document.getElementById('title').textContent = found.name || name;
-    document.getElementById('subtitle').textContent = found.description || 'IPTV عند الطلب';
+    document.getElementById('subtitle').textContent = found.description || 'مشاهدة عند الطلب';
     document.title = (found.name || name) + ' - IPTV';
     qualitySet = Array.isArray(found.qualities) && found.qualities.length
       ? found.qualities.map(q => ({ id:q.id, label:q.label || 'AUTO', name:q.name || found.name }))
@@ -162,7 +160,6 @@ function loadStream(id) {
   clearError();
   renderQualities();
   const streamUrl = '/iptv/' + encodeURIComponent(currentId);
-  document.getElementById('url').innerHTML = '<code>' + location.origin + streamUrl + '</code>';
   try { video.pause(); } catch {}
   destroyHls();
   video.removeAttribute('src');
@@ -177,14 +174,14 @@ function loadStream(id) {
       if (!data.fatal) return;
       const failedUrl = data?.context?.url || data?.frag?.url || streamUrl;
       const proxyMessage = await readProxyError(failedUrl);
-      showError(proxyMessage || 'تعذر تشغيل IPTV. المصدر قد يكون متوقفاً أو غير مدعوم على هذا الجهاز.');
+      showError(proxyMessage || 'تعذر فتح القناة.');
       if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
         try { hls.recoverMediaError(); } catch {}
       }
     });
   } else {
     video.src = streamUrl;
-    video.onerror = async () => showError(await readProxyError(streamUrl) || 'صيغة IPTV غير مدعومة على هذا المتصفح.');
+    video.onerror = async () => showError(await readProxyError(streamUrl) || 'تعذر فتح القناة على هذا الجهاز.');
     video.play().catch(() => {});
   }
 }
@@ -211,7 +208,7 @@ function stopStreamForThisViewer() {
   video.removeAttribute('src');
   try { video.load(); } catch {}
   watchOverlay.style.display = 'none';
-  showError('تم إيقاف البث لهذا الجهاز بسبب عدم وجود تفاعل. اضغط الرجوع واختر القناة مرة أخرى للتشغيل.');
+  showError('توقف التشغيل بسبب عدم وجود تفاعل. اختر القناة مرة أخرى للمتابعة.');
 }
 
 function hideStillWatching() {

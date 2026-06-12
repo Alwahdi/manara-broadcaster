@@ -3,8 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <title>Manara Broadcaster</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'; connect-src 'self' ws: wss: http: https:; media-src 'self' blob: http: https:; img-src 'self' data: blob:">
-<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ws: wss: http: https:; media-src 'self' blob: http: https:; img-src 'self' data: blob: http: https:;">
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -15,15 +14,15 @@
     <div class="logo-dot" id="logoDot">م</div>
     <div>
       <h1 id="brandTitle">Manara Broadcaster</h1>
-      <p class="sub" id="brandSub">بث محلي عبر شبكة Wi-Fi — بدون إنترنت</p>
+      <p class="sub" id="brandSub">منصة بث وإدارة للشبكة المحلية</p>
     </div>
   </div>
   <nav class="tabs">
     <button class="tab active" data-tab="channels">القنوات</button>
-    <button class="tab" data-tab="library">🎬 المكتبة</button>
+    <button class="tab" data-tab="library">المكتبة</button>
     <button class="tab" data-tab="branding">العلامة التجارية</button>
     <button class="tab" data-tab="settings">الإعدادات</button>
-    <button class="tab" data-tab="share">📡 المشاركة</button>
+    <button class="tab" data-tab="share">المشاركة</button>
   </nav>
   <div class="status" id="globalStatus"><span class="led off"></span> جاهز</div>
 </header>
@@ -34,33 +33,33 @@
     <div class="pane-head">
       <div>
         <h2>القنوات</h2>
-        <p class="muted">يمكنك إنشاء عدة قنوات وبث كل واحدة من مصدر مختلف بالتوازي</p>
+        <p class="muted">أنشئ قنوات مباشرة للمشاهدين داخل الشبكة، وابدأ أو أوقف كل قناة من هنا.</p>
       </div>
-      <button class="btn primary" id="addChannelBtn">+ قناة جديدة</button>
+      <button class="btn primary" id="addChannelBtn">قناة جديدة</button>
     </div>
     <div id="channelsList" class="channels-list"></div>
     <div id="channelsEmpty" class="empty-state" style="display:none">
-      <div class="big-icon">📡</div>
+      <div class="big-icon">—</div>
       <h3>لا توجد قنوات بعد</h3>
-      <p>أنشئ قناتك الأولى للبدء بالبث على شبكة Wi-Fi المحلية</p>
+      <p>ابدأ بإضافة قناة، ثم شارك رابط المشاهدة مع الأجهزة المتصلة بنفس الشبكة.</p>
     </div>
     <div class="section-divider"></div>
     <div class="pane-head iptv-head">
       <div>
         <h2>قنوات IPTV</h2>
-        <p class="muted">قنوات مخصصة وسحابية تعمل عند الطلب فقط. الجهاز يسحب المصدر مرة واحدة ثم يوزعه محلياً على شبكة LAN.</p>
+        <p class="muted">أدر قنوات IPTV الجاهزة والمخصصة. تظهر للمشاهدين فقط القنوات المفعّلة.</p>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn ghost" id="refreshCloudIptvBtn">تحديث السحابة</button>
-        <button class="btn primary" id="addIptvBtn">+ إضافة IPTV</button>
+        <button class="btn ghost" id="refreshCloudIptvBtn">تحديث القائمة</button>
+        <button class="btn primary" id="addIptvBtn">إضافة IPTV</button>
       </div>
     </div>
     <div id="iptvCloudStatus" class="hint" style="display:none;margin-bottom:12px"></div>
     <div id="iptvList" class="channels-list"></div>
     <div id="iptvEmpty" class="empty-state" style="display:none">
-      <div class="big-icon">📺</div>
+      <div class="big-icon">IPTV</div>
       <h3>لا توجد قنوات IPTV</h3>
-      <p>أضف قناة IPTV الأولى — يمكنك تجربتها فوراً عبر مشغّل مدمج، ومشاركتها مع شبكة LAN</p>
+      <p>أضف قناة أو حدّث القائمة السحابية، ثم فعّل ما تريد إتاحته للمشاهدين.</p>
     </div>
   </section>
 
@@ -69,11 +68,11 @@
     <div class="pane-head">
       <div>
         <h2>المكتبة المحلية</h2>
-        <p class="muted">أفلامك ومسلسلاتك على القرص — بمعلومات TMDB ومشغّل مدمج</p>
+        <p class="muted">نظّم الأفلام والمسلسلات والملفات الصوتية، واجعلها متاحة من صفحة مشاهدة واحدة.</p>
       </div>
       <div style="display:flex; gap:8px">
-        <button class="btn ghost" id="addLibFolderBtn">+ إضافة مجلد</button>
-        <button class="btn primary" id="scanLibBtn">🔄 فحص المكتبة</button>
+        <button class="btn ghost" id="addLibFolderBtn">إضافة مجلد</button>
+        <button class="btn primary" id="scanLibBtn">فحص المكتبة</button>
       </div>
     </div>
     <div id="libPathsList" class="muted small" style="margin-bottom:12px"></div>
@@ -90,9 +89,9 @@
     </div>
     <div id="libGrid" class="lib-grid"></div>
     <div id="libEmpty" class="empty-state" style="display:none">
-      <div class="big-icon">🎬</div>
+      <div class="big-icon">MEDIA</div>
       <h3>المكتبة فارغة</h3>
-      <p>أضف مجلداً يحتوي على ملفات الفيديو ثم اضغط "فحص المكتبة"</p>
+      <p>أضف مجلد الوسائط، ثم شغّل الفحص لتظهر العناصر للمشاهدين.</p>
     </div>
   </section>
 
@@ -126,7 +125,7 @@
         <div id="iptvProbeBox" class="hint" style="display:none;margin-top:8px"></div>
       </div>
       <div class="modal-foot">
-        <button class="btn ghost" id="iptvProbeBtn">🔍 اختبار الرابط</button>
+        <button class="btn ghost" id="iptvProbeBtn">اختبار الرابط</button>
         <button class="btn ghost" id="iptvModalCancelBtn">إلغاء</button>
         <button class="btn primary" id="iptvModalSaveBtn">حفظ</button>
       </div>
@@ -154,10 +153,10 @@
   <section class="tab-pane" id="tab-branding">
     <div class="card">
       <div class="card-title">العلامة التجارية</div>
-      <p class="muted small">خصص اسم الشبكة والألوان — سيظهر للمشاهدين على صفحة البث</p>
+      <p class="muted small">اضبط الاسم والألوان التي تظهر للمشاهدين في صفحات القنوات والمكتبة.</p>
       <div class="form-grid">
         <label class="field"><span>اسم الشبكة</span><input id="brandName" type="text" placeholder="TeraNet" /></label>
-        <label class="field"><span>الشعار (سطر تعريفي)</span><input id="brandTagline" type="text" placeholder="بث محلي عبر Wi-Fi" /></label>
+        <label class="field"><span>الشعار (سطر تعريفي)</span><input id="brandTagline" type="text" placeholder="خدمة مشاهدة داخل الشبكة" /></label>
         <label class="field"><span>اللون الرئيسي</span><input id="accent" type="color" /></label>
         <label class="field"><span>اللون الثانوي</span><input id="accent2" type="color" /></label>
       </div>
@@ -171,7 +170,7 @@
   <section class="tab-pane" id="tab-settings">
     <div class="card">
       <div class="card-title">الإقلاع التلقائي على ويندوز</div>
-      <p class="muted small">شغّل البرنامج تلقائياً عند بدء تشغيل الجهاز، واستأنف القنوات المفعّلة دون تدخّل</p>
+      <p class="muted small">اضبط طريقة تشغيل Manara عند فتح الجهاز، وما إذا كانت القنوات تبدأ تلقائياً.</p>
       <div class="toggles">
         <label class="toggle"><input type="checkbox" id="autoStartOnBoot" /><span></span><div><strong>تشغيل عند بدء تشغيل الجهاز</strong><small>يبدأ البرنامج تلقائياً مع ويندوز</small></div></label>
         <label class="toggle"><input type="checkbox" id="startMinimized" /><span></span><div><strong>بدء مخفياً في الـ System Tray</strong><small>لا تظهر النافذة عند الإقلاع</small></div></label>
@@ -192,7 +191,7 @@
 
     <div class="card">
       <div class="card-title">إدارة من المتصفح على الشبكة</div>
-      <p class="muted small">افتح صفحة الإدارة من أي جهاز على نفس الشبكة لتعديل IPTV والقنوات. غيّر كلمة المرور قبل الاستخدام الدائم.</p>
+      <p class="muted small">اسم مستخدم وكلمة مرور لإدارة القنوات والمكتبة من المتصفح داخل الشبكة.</p>
       <div class="form-grid">
         <label class="field"><span>اسم المستخدم</span><input id="adminUsername" type="text" maxlength="40" placeholder="admin" /></label>
         <label class="field"><span>كلمة المرور</span><input id="adminPassword" type="password" maxlength="80" placeholder="admin" /></label>
@@ -205,7 +204,7 @@
 
     <div class="card">
       <div class="card-title">حدود IPTV</div>
-      <p class="muted small">إذا وصل سحب IPTV من الإنترنت إلى الحد المحدد، يوقف الخادم المحلي القناة تلقائياً. اتركه 0 ليبقى بدون حد.</p>
+      <p class="muted small">ضع حد نقل اختياري لقنوات IPTV. اترك القيمة 0 إذا كنت لا تريد إيقافاً تلقائياً.</p>
       <label class="field"><span>حد جميع قنوات IPTV (MB)</span><input id="iptvGlobalLimitMb" type="number" min="0" step="1" placeholder="0" /></label>
       <div class="buttons end">
         <button class="btn primary" id="saveIptvLimitsBtn">حفظ حدود IPTV</button>
@@ -214,7 +213,7 @@
 
     <div class="card">
       <div class="card-title">مكتبة الوسائط (TMDB)</div>
-      <p class="muted small">أضف مفتاح TMDB لجلب البوسترات والملخصات تلقائياً عند الفحص.</p>
+      <p class="muted small">استخدم TMDB لإضافة الصور والملخصات تلقائياً إلى مكتبة الوسائط.</p>
       <div class="form-grid">
         <label class="field"><span>TMDB API Key</span><input id="tmdbKey" type="text" placeholder="v3 API key" /></label>
         <label class="field"><span>لغة الميتاداتا</span>
@@ -232,7 +231,7 @@
 
     <div class="card" id="platformCard">
       <div class="card-title">اشتراك المنصة وتفعيل السيرفر</div>
-      <p class="muted small">سجّل هذا السيرفر باسم الشبكة أو النشاط التجاري. بعد الموافقة من مالك المنصة سيتم تفعيل القنوات و IPTV والمكتبة حسب الخطة.</p>
+      <p class="muted small">اربط هذا السيرفر بحساب المنصة لتفعيل الخطة والميزات المتاحة لهذه الشبكة.</p>
       <div id="platformStatusBox" class="hint" style="margin:8px 0">جارٍ قراءة حالة الاشتراك…</div>
       <div class="form-grid">
         <label class="field"><span>اسم الشبكة / النشاط</span><input id="platformTenantName" type="text" maxlength="120" placeholder="مثال: فندق المنارة" /></label>
@@ -255,7 +254,7 @@
 
     <div class="card" id="licenseCard">
       <div class="card-title">الترخيص</div>
-      <p class="muted small">أدخل مفتاح الترخيص الذي زوّدك به فريق Manara. يتم ربط المفتاح بهذا الجهاز عند أول تفعيل.</p>
+      <p class="muted small">أدخل مفتاح الترخيص الخاص بهذا الجهاز لإبقاء الخدمة مفعّلة ومحدّثة.</p>
       <div id="licenseStatusBox" class="hint" style="margin:8px 0">جارٍ التحقق…</div>
       <div class="form-grid">
         <label class="field"><span>مفتاح الترخيص</span><input id="licenseKey" type="text" placeholder="MANARA-XXXX-XXXX-XXXX" /></label>
@@ -268,7 +267,7 @@
 
     <div class="card" id="updatesCard">
       <div class="card-title">التحديثات التلقائية</div>
-      <p class="muted small">يقوم التطبيق بتنزيل التحديثات تلقائياً من سحابة Manara — لا حاجة لإعادة التثبيت.</p>
+      <p class="muted small">يحصل التطبيق على التحديثات تلقائياً عندما تكون متاحة لقناة الإصدار الحالية.</p>
       <div id="updateStatusBox" class="hint" style="margin:8px 0">الإصدار الحالي: <span id="appVersion">—</span></div>
       <div class="buttons end">
         <button class="btn ghost" id="checkUpdateBtn">فحص التحديثات الآن</button>
@@ -281,9 +280,9 @@
   <section class="tab-pane" id="tab-share">
     <div class="card">
       <div class="card-title">شارك الرابط مع المشاهدين</div>
-      <p class="muted small">افتح أيًا من هذه الروابط على أي جهاز متصل بنفس شبكة Wi-Fi لمشاهدة القنوات</p>
+      <p class="muted small">افتح الرابط من هاتف أو تلفاز أو جهاز كمبيوتر متصل بنفس الشبكة.</p>
       <div id="ipList" class="ip-list"></div>
-      <p class="hint">💡 المشاهدون لا يستهلكون أي إنترنت — البث محلي 100%</p>
+      <p class="hint">لأفضل أداء، استخدم شبكة Wi‑Fi مستقرة أو اتصالاً سلكياً للجهاز الذي يشغّل Manara.</p>
     </div>
   </section>
 </main>
@@ -296,15 +295,15 @@
       <button class="modal-close" id="modalCloseBtn">×</button>
     </div>
     <div class="modal-body">
-      <label class="field"><span>اسم القناة *</span><input id="chName" type="text" maxlength="60" placeholder="مثال: تيرا 1" /></label>
+      <label class="field"><span>اسم القناة *</span><input id="chName" type="text" maxlength="60" placeholder="مثال: القاعة الرئيسية" /></label>
       <label class="field"><span>الوصف</span><input id="chDesc" type="text" maxlength="120" placeholder="وصف مختصر" /></label>
 
       <label class="field"><span>مصدر الفيديو</span>
         <select id="chVideoSource">
           <option value="">— اختر —</option>
           <optgroup id="chUsbGroup" label="USB / كاميرا"></optgroup>
-          <option value="__screen__">🖥️ التقاط شاشة</option>
-          <option value="__url__">🔗 رابط URL</option>
+          <option value="__screen__">التقاط شاشة</option>
+          <option value="__url__">رابط فيديو</option>
         </select>
       </label>
       <label class="field" id="chUrlField" style="display:none"><span>رابط الفيديو</span><input id="chVideoUrl" type="text" placeholder="https://.../stream.m3u8 أو .mp4" /></label>

@@ -118,14 +118,20 @@ function settingsPath() {
 const SETTINGS_FILE = settingsPath();
 console.log('[Manara] settings file:', SETTINGS_FILE);
 let lastSettingsSaveError = '';
+const DEFAULT_BRAND_TAGLINE = 'خدمة مشاهدة داخل الشبكة';
+const LEGACY_DEFAULT_BRAND_TAGLINES = new Set([
+  'بث محلي عبر شبكة Wi-Fi — بدون إنترنت',
+  'بث محلي عبر شبكة Wi-Fi',
+  'بث محلي عبر Wi-Fi',
+]);
 
 function defaultSettings() {
   return {
     schemaVersion: 5,
     brandName: 'Manara',
-    brandTagline: 'بث محلي عبر شبكة Wi-Fi — بدون إنترنت',
-    accent: '#3b82f6',
-    accent2: '#8b5cf6',
+    brandTagline: DEFAULT_BRAND_TAGLINE,
+    accent: '#2563eb',
+    accent2: '#14b8a6',
     port: 8080,
     autoStartOnBoot: false,
     startMinimized: false,
@@ -149,11 +155,23 @@ function defaultSettings() {
   };
 }
 
+function normalizeSettings(parsed) {
+  const merged = { ...defaultSettings(), ...(parsed && typeof parsed === 'object' ? parsed : {}) };
+  if (LEGACY_DEFAULT_BRAND_TAGLINES.has(String(merged.brandTagline || '').trim())) {
+    merged.brandTagline = DEFAULT_BRAND_TAGLINE;
+  }
+  if (merged.accent === '#3b82f6' && merged.accent2 === '#8b5cf6') {
+    merged.accent = '#2563eb';
+    merged.accent2 = '#14b8a6';
+  }
+  return merged;
+}
+
 function loadSettings() {
   try {
     const raw = fs.readFileSync(SETTINGS_FILE, 'utf8');
     const parsed = JSON.parse(raw);
-    return { ...defaultSettings(), ...(parsed && typeof parsed === 'object' ? parsed : {}) };
+    return normalizeSettings(parsed);
   } catch (e) {
     console.warn('[Manara] settings load fallback:', e?.message || e);
     try {
@@ -161,7 +179,7 @@ function loadSettings() {
       if (fs.existsSync(backup)) {
         const parsed = JSON.parse(fs.readFileSync(backup, 'utf8'));
         console.warn('[Manara] settings recovered from backup:', backup);
-        return { ...defaultSettings(), ...(parsed && typeof parsed === 'object' ? parsed : {}) };
+        return normalizeSettings(parsed);
       }
     } catch (backupError) {
       console.warn('[Manara] settings backup recovery failed:', backupError?.message || backupError);
@@ -425,6 +443,7 @@ function publicIptvChannels() {
       viewers: 0,
       live: true,
       source: c.source || 'local',
+      logo: c.logo || c.logo_url || '',
       quality: parseIptvQuality(c.name || ''),
       groupName: parseIptvGroupName(c.name || 'IPTV'),
       category: c.category || '',
@@ -446,6 +465,7 @@ function publicIptvChannels() {
       label: ch.quality,
       name: ch.name,
       source: ch.source,
+      logo: ch.logo || '',
     });
   }
   return [...grouped.values()].map((group) => {

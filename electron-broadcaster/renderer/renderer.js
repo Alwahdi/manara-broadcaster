@@ -190,9 +190,9 @@ function renderChannels() {
     card.innerHTML = `
       <div class="ch-preview">
         <video id="prev_${c.id}" autoplay playsinline muted style="${live?'':'display:none'}"></video>
-        ${!live?`<div class="placeholder">📺</div>`:''}
+        ${!live?`<div class="placeholder">CH</div>`:''}
         ${live?'<span class="badge-live"><span class="dot"></span>LIVE</span>':starting?'<span class="badge-off">يبدأ…</span>':'<span class="badge-off">متوقفة</span>'}
-        ${live?`<span class="viewers">👁 ${viewers}</span>`:''}
+        ${live?`<span class="viewers">${viewers} مشاهد</span>`:''}
       </div>
       <div class="ch-body">
         <h3>${escapeHtml(c.name)}</h3>
@@ -247,15 +247,15 @@ function renderChannels() {
 }
 function sourceLabel(c) {
   const k = c.source?.kind;
-  if (k === 'screen') return '🖥 شاشة';
-  if (k === 'url') return '🔗 URL';
-  if (k === 'cam') return '📷 كاميرا';
+  if (k === 'screen') return 'شاشة';
+  if (k === 'url') return 'URL';
+  if (k === 'cam') return 'كاميرا';
   return '—';
 }
 function updateGlobalStatus() {
   const liveCount = [...runtime.values()].filter(r => r.status === 'live').length;
   const totalViewers = [...runtime.values()].reduce((a,r) => a + (r.peers?.size||0), 0);
-  if (liveCount) $('globalStatus').innerHTML = `<span class="led live"></span> ${liveCount} قناة على الهواء • 👁 ${totalViewers}`;
+  if (liveCount) $('globalStatus').innerHTML = `<span class="led live"></span> ${liveCount} قناة على الهواء • ${totalViewers} مشاهد`;
   else $('globalStatus').innerHTML = '<span class="led off"></span> جاهز';
 }
 function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
@@ -451,7 +451,7 @@ async function startChannel(id) {
     ws.onmessage = (e) => handleSignal(c, JSON.parse(e.data));
     ws.onclose = () => { state.status = 'idle'; renderChannels(); };
     state.status = 'live';
-    toast(`📡 ${c.name} على الهواء`, 'ok');
+    toast(`${c.name} على الهواء`, 'ok');
     renderChannels();
   } catch (e) {
     console.error(e);
@@ -512,11 +512,11 @@ function stopChannel(id, silent=false) {
 function renderShare() {
   const ips = (serverInfo.ips || []);
   const list = $('ipList'); list.innerHTML = '';
-  if (!ips.length) { list.innerHTML = '<div class="hint">لم يتم اكتشاف شبكة Wi-Fi. تحقق من اتصالك.</div>'; return; }
+  if (!ips.length) { list.innerHTML = '<div class="hint">لم يتم اكتشاف عنوان شبكة محلي حالياً. تحقق من اتصال الجهاز بالشبكة.</div>'; return; }
   for (const ip of ips) {
     const url = `http://${ip}:${serverInfo.port}`;
     const d = document.createElement('div'); d.className = 'ip-item';
-    d.innerHTML = `<span>🌐</span><code>${url}</code><button>نسخ</button>`;
+    d.innerHTML = `<span>LAN</span><code>${url}</code><button>نسخ</button>`;
     d.querySelector('button').onclick = () => {
       navigator.clipboard.writeText(url);
       const b = d.querySelector('button'); b.textContent = '✓ تم'; setTimeout(()=>{b.textContent='نسخ'},1200);
@@ -757,7 +757,7 @@ async function refreshLibGrid() {
     const poster = it.poster_url ? `style="background-image:url('${it.poster_url}')"` : '';
     return `
       <div class="lib-card" data-id="${it.id}">
-        <div class="lib-poster" ${poster}>${it.poster_url ? '' : '🎬'}</div>
+        <div class="lib-poster" ${poster}>${it.poster_url ? '' : 'MEDIA'}</div>
         <div class="lib-meta">
           <div class="lib-title">${escapeHtml(it.title)}${it.season ? ` S${it.season}E${it.episode}` : ''}</div>
           <div class="lib-sub">${it.year || ''} ${it.rating ? '★ ' + it.rating.toFixed(1) : ''}</div>
@@ -1124,13 +1124,12 @@ function setIptvPlayerInfo(message, kind = '') {
 }
 
 function showIptvPlayerError(message, technical = '') {
-  const clean = String(message || 'تعذر تشغيل IPTV.');
-  const tech = String(technical || '').trim();
+  const clean = describeHlsError(null, message);
+  if (message || technical) console.warn('[Manara IPTV playback]', { message, technical });
   setIptvPlayerInfo(`
     <div class="iptv-error-box">
       <strong>تعذر تشغيل القناة</strong>
       <p>${escapeHtml(clean)}</p>
-      ${tech ? `<details><summary>التفاصيل التقنية</summary><code>${escapeHtml(tech)}</code></details>` : ''}
     </div>
   `, 'err');
 }
@@ -1140,13 +1139,26 @@ function describeHlsError(data, extraMessage = '') {
   const type = data?.type ? String(data.type) : '';
   const status = data?.response?.code || data?.response?.status;
   const text = data?.response?.text || data?.response?.statusText || '';
-  if (extraMessage) return extraMessage;
-  if (status) return `فشل تحميل IPTV من الخادم المحلي أو من مزود البث: HTTP ${status}${text ? ' - ' + text : ''}`;
-  if (details.includes('manifest')) return 'تعذر قراءة ملف HLS الرئيسي. غالباً الرابط منتهي، غير مباشر، أو يحتاج صلاحيات من مزود IPTV.';
-  if (details.includes('level')) return 'تعذر قراءة قائمة جودة HLS الفرعية. قد يكون الرابط يستخدم مسارات نسبية غير صالحة أو يحتاج صلاحيات إضافية.';
-  if (details.includes('frag')) return 'تعذر تحميل مقطع فيديو من IPTV. قد يكون المصدر متوقفاً، بطيئاً، أو يمنع هذا الجهاز.';
-  if (type === 'mediaError') return 'المتصفح لم يستطع تشغيل ترميز الفيديو/الصوت لهذا المصدر. جرّب رابط HLS آخر أو مصدر بترميز H.264/AAC.';
-  return `خطأ IPTV: ${escapeHtml(details || type || 'غير معروف')}`;
+  const raw = `${extraMessage || ''} ${status || ''} ${text || ''} ${details || ''} ${type || ''}`;
+  if (/no playable|no broadcast|empty|no content|nothing playable|لا يوجد/i.test(raw)) {
+    return 'القناة غير متاحة حالياً. جرّب جودة أخرى أو حاول مرة أخرى لاحقاً.';
+  }
+  if (/403|rejected|geo-blocked|token|subscription/i.test(raw)) {
+    return 'لا يمكن تشغيل هذه الجودة حالياً. جرّب جودة أخرى أو حاول لاحقاً.';
+  }
+  if (/404|not found|gone|expired/i.test(raw)) {
+    return 'هذه الجودة غير متاحة حالياً.';
+  }
+  if (/429|limit/i.test(raw)) {
+    return 'تم إيقاف هذه القناة مؤقتاً بعد الوصول إلى حد النقل المحدد.';
+  }
+  if (/503|server failed|unavailable/i.test(raw)) {
+    return 'البث غير متاح حالياً. حاول مرة أخرى بعد قليل.';
+  }
+  if (type === 'mediaError' || /media/i.test(raw)) {
+    return 'تعذر تشغيل صيغة هذه الجودة على هذا الجهاز. جرّب جودة أخرى.';
+  }
+  return 'تعذر تشغيل القناة. جرّب جودة أخرى أو حاول مرة أخرى لاحقاً.';
 }
 
 function renderPlayerQualityBar(current, qualities = []) {
@@ -1182,9 +1194,8 @@ async function loadIptvSource(ch) {
   renderPlayerQualityBar(ch, _iptvPlayerQualities);
   setIptvPlayerInfo(`
     <div class="player-status-panel">
-      <strong>بث محلي عند الطلب</strong>
-      <span>Manara يسحب هذه القناة مرة واحدة لهذا السيرفر ثم يوزّعها على أجهزة الشبكة المحلية.</span>
-      <code>${escapeHtml(proxyUrl)}</code>
+      <strong>جاري فتح القناة</strong>
+      <span>اختر الجودة المناسبة من الأعلى عند توفر أكثر من خيار.</span>
     </div>
   `);
   const video = $('iptvVideo');
@@ -1202,7 +1213,7 @@ async function loadIptvSource(ch) {
     const proxyMessage = await readProxyError(proxyUrl);
     const msg = proxyMessage || labels[code] || 'حدث خطأ غير معروف أثناء تشغيل IPTV.';
     showIptvPlayerError(msg, proxyUrl);
-    toast('تعذر تشغيل IPTV: ' + msg, 'err');
+    toast('تعذر تشغيل القناة. جرّب جودة أخرى أو حاول لاحقاً.', 'err');
   };
   $('iptvPlayerModal').style.display = 'flex';
   // Detect HLS
@@ -1219,8 +1230,7 @@ async function loadIptvSource(ch) {
       setIptvPlayerInfo(`
         <div class="player-status-panel ok">
           <strong>تم الاتصال بالبث</strong>
-          <span>المشاهدة تعمل عبر رابط LAN المحلي. يمكن نسخ الرابط للأجهزة الموجودة على نفس الشبكة.</span>
-          <code>${escapeHtml(proxyUrl)}</code>
+          <span>يمكنك تغيير الجودة من الأعلى أثناء المشاهدة.</span>
         </div>
       `);
       video.play().catch(() => {});
@@ -1231,7 +1241,7 @@ async function loadIptvSource(ch) {
       const proxyMessage = await readProxyError(failedUrl);
       const msg = describeHlsError(d, proxyMessage);
       showIptvPlayerError(msg, failedUrl);
-      toast(msg.replace(/<[^>]+>/g, ' '), 'err');
+      toast('تعذر تشغيل القناة. جرّب جودة أخرى أو حاول لاحقاً.', 'err');
       if (d.type === Hls.ErrorTypes.MEDIA_ERROR) {
         try { _hls.recoverMediaError(); } catch {}
       }
