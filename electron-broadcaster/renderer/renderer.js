@@ -887,15 +887,106 @@ async function refreshIptvList() {
   const status = await window.broadcaster.iptvStatus().catch(() => ({}));
   const root = $('iptvList'); root.innerHTML = '';
   $('iptvEmpty').style.display = list.length ? 'none' : 'block';
-  list.forEach((ch) => {
+  const cloud = list.filter((ch) => ch.source === 'cloud');
+  const local = list.filter((ch) => ch.source !== 'cloud');
+  renderCloudIptvGroups(root, cloud, status);
+  local.forEach((ch) => root.appendChild(renderIptvCard(ch, status)));
+}
+
+function qualityRank(q) {
+  const s = String(q || '').toUpperCase();
+  if (s === 'FHD') return 1;
+  if (s === 'HD') return 2;
+  if (s === 'SD') return 3;
+  if (s.includes('MAX')) return 4;
+  return 9;
+}
+
+function parseIptvName(name) {
+  let n = String(name || '').replace(/\s+/g, ' ').trim();
+  const quality = /\b(FHD|HD|SD|4K|UHD)\b/i.exec(n)?.[1]?.toUpperCase() || '';
+  n = n
+    .replace(/\b(FHD|HD|SD|4K|UHD)\b/ig, '')
+    .replace(/\bLOW|VERY LOW\b/ig, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return { group: n || name || 'IPTV', quality: quality || 'AUTO' };
+}
+
+function renderCloudIptvGroups(root, cloud, status) {
+  const groups = new Map();
+  for (const ch of cloud) {
+    const parsed = parseIptvName(ch.name);
+    const key = `${ch.category || ''}::${parsed.group}`;
+    if (!groups.has(key)) groups.set(key, { title: parsed.group, category: ch.category || '', items: [] });
+    groups.get(key).items.push({ ...ch, qualityLabel: parsed.quality });
+  }
+  for (const group of Array.from(groups.values()).sort((a, b) => a.title.localeCompare(b.title, 'ar'))) {
+    group.items.sort((a, b) => qualityRank(a.qualityLabel) - qualityRank(b.qualityLabel) || a.name.localeCompare(b.name, 'ar'));
+    const card = document.createElement('div');
+    card.className = 'channel-card iptv-group-card';
+    const activeCount = group.items.filter((ch) => ch.enabled !== false && ch.enabled !== 0).length;
+    const viewers = group.items.reduce((sum, ch) => sum + (Number(status[ch.id]?.viewers) || 0), 0);
+    const upstream = group.items.some((ch) => status[ch.id]?.upstreamOpen);
+    card.innerHTML = `
+      <div class="ch-head">
+        <div>
+          <div class="ch-name"><span class="badge badge-cloud">من السحابة</span>${escapeHtml(group.title)} ${group.category ? `<span class="muted small">· ${escapeHtml(group.category)}</span>` : ''}</div>
+          <div class="muted small" style="margin-top:4px">فعّل الجودة المطلوبة لهذا السيرفر فقط. الروابط الأصلية مخفية ومحميّة من المنصة.</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="led ${upstream ? 'on' : 'off'}"></span>
+          <span class="muted small">${viewers} مشاهد الآن · ${activeCount}/${group.items.length} مفعّل</span>
+        </div>
+      </div>
+      <div class="quality-list"></div>
+    `;
+    const holder = card.querySelector('.quality-list');
+    for (const ch of group.items) holder.appendChild(renderIptvQualityRow(ch, status[ch.id] || { viewers: 0, upstreamOpen: false }));
+    root.appendChild(card);
+  }
+}
+
+function renderIptvQualityRow(ch, st) {
+  const row = document.createElement('div');
+  row.className = `quality-row ${ch.enabled !== false && ch.enabled !== 0 ? 'on' : 'off'}`;
+  const isEnabled = ch.enabled !== false && ch.enabled !== 0;
+  const canPlayIptv = isEnabled && featureAllowed('iptv');
+  row.innerHTML = `
+    <div class="quality-main">
+      <strong>${escapeHtml(ch.qualityLabel || parseIptvName(ch.name).quality)}</strong>
+      <span>${escapeHtml(ch.name)}</span>
+    </div>
+    <div class="quality-stats">
+      <span>${st.viewers || 0} مشاهد</span>
+      <span>${st.upstreamOpen ? 'متصل' : 'عند الطلب'}</span>
+      <span>${formatBytes(st.totalUpstreamBytes || 0)}</span>
+    </div>
+    <div class="quality-actions">
+      <button class="btn ${isEnabled ? 'ghost' : 'primary'}" data-act="toggle">${isEnabled ? 'تعطيل' : 'تفعيل'}</button>
+      <button class="btn primary" data-act="play" ${canPlayIptv ? '' : 'disabled'}>تشغيل</button>
+      <button class="btn ghost" data-act="copy" ${isEnabled ? '' : 'disabled'}>نسخ</button>
+    </div>
+  `;
+  row.querySelector('[data-act="toggle"]').onclick = async () => {
+    await window.broadcaster.cloudIptvSetEnabled(ch.id, !isEnabled, ch.transferLimitBytes || 0);
+    toast(!isEnabled ? 'تم تفعيل الجودة لهذا السيرفر' : 'تم تعطيل الجودة', 'ok');
+    refreshIptvList();
+  };
+  row.querySelector('[data-act="play"]').onclick = () => playIptv(ch);
+  row.querySelector('[data-act="copy"]').onclick = async () => copyIptvLanUrl(ch.id);
+  return row;
+}
+
+function renderIptvCard(ch, status) {
     const st = status[ch.id] || { viewers: 0, upstreamOpen: false };
     const card = document.createElement('div');
     card.className = 'channel-card';
     const isCloud = ch.source === 'cloud';
     const isEnabled = ch.enabled !== false && ch.enabled !== 0;
     const canPlayIptv = isEnabled && featureAllowed('iptv');
-    const cloudBadge = isCloud ? '<span class="badge" style="background:#3b82f6;color:#fff;font-size:10px;padding:2px 6px;border-radius:6px;margin-right:4px">من السحابة</span>' : '';
-    const disabledBadge = isEnabled ? '' : '<span class="badge" style="background:#64748b;color:#fff;font-size:10px;padding:2px 6px;border-radius:6px;margin-right:4px">معطلة</span>';
+    const cloudBadge = isCloud ? '<span class="badge badge-cloud">من السحابة</span>' : '';
+    const disabledBadge = isEnabled ? '' : '<span class="badge badge-disabled">معطلة</span>';
     card.innerHTML = `
       <div class="ch-head">
         <div>
@@ -930,18 +1021,13 @@ async function refreshIptvList() {
       </details>
       <div class="ch-actions" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn primary" data-act="play" ${canPlayIptv ? '' : 'disabled'}>تشغيل</button>
-        <button class="btn ghost" data-act="copy">📋 نسخ رابط LAN</button>
+        <button class="btn ghost" data-act="copy">نسخ رابط LAN</button>
         ${isCloud ? '' : '<button class="btn ghost" data-act="edit">تعديل</button>'}
         ${isCloud ? '' : '<button class="btn ghost" data-act="del">حذف</button>'}
       </div>
     `;
     card.querySelector('[data-act="play"]').onclick = () => playIptv(ch);
-    card.querySelector('[data-act="copy"]').onclick = async () => {
-      const info = await window.broadcaster.iptvStreamUrl(ch.id);
-      const u = info.lanIps[0] || info.url;
-      await navigator.clipboard.writeText(u);
-      toast('تم نسخ الرابط: ' + u, 'ok');
-    };
+    card.querySelector('[data-act="copy"]').onclick = async () => copyIptvLanUrl(ch.id);
     if (!isCloud) {
       card.querySelector('[data-act="edit"]').onclick = () => openIptvModal(ch);
       card.querySelector('[data-act="del"]').onclick = async () => {
@@ -950,8 +1036,14 @@ async function refreshIptvList() {
         refreshIptvList();
       };
     }
-    root.appendChild(card);
-  });
+    return card;
+}
+
+async function copyIptvLanUrl(id) {
+  const info = await window.broadcaster.iptvStreamUrl(id);
+  const u = info.lanIps[0] || info.url;
+  await navigator.clipboard.writeText(u);
+  toast('تم نسخ الرابط: ' + u, 'ok');
 }
 
 function escapeHtml(s) { return String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
@@ -1045,7 +1137,13 @@ async function playIptv(ch) {
   const info = await window.broadcaster.iptvStreamUrl(ch.id);
   const proxyUrl = info.url; // local proxy
   $('iptvPlayerTitle').textContent = ch.name;
-  setIptvPlayerInfo(`يتم البث عبر الخادم المحلي عند الطلب. إذا شاهد عدة أجهزة نفس القناة فسيتم استخدام مصدر إنترنت واحد ثم توزيعه داخل LAN.<br/><span class="muted small">${escapeHtml(proxyUrl)}</span>`);
+  setIptvPlayerInfo(`
+    <div class="player-status-panel">
+      <strong>بث محلي عند الطلب</strong>
+      <span>Manara يسحب هذه القناة مرة واحدة لهذا السيرفر ثم يوزّعها على أجهزة الشبكة المحلية.</span>
+      <code>${escapeHtml(proxyUrl)}</code>
+    </div>
+  `);
   const video = $('iptvVideo');
   if (_hls) { try { _hls.destroy(); } catch {} _hls = null; }
   video.removeAttribute('src'); video.load();
@@ -1075,7 +1173,13 @@ async function playIptv(ch) {
     _hls.attachMedia(video);
     _hls.on(Hls.Events.MEDIA_ATTACHED, () => _hls.loadSource(proxyUrl));
     _hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      setIptvPlayerInfo(`تم الاتصال بالبث عبر الخادم المحلي.<br/><span class="muted small">${escapeHtml(proxyUrl)}</span>`);
+      setIptvPlayerInfo(`
+        <div class="player-status-panel ok">
+          <strong>تم الاتصال بالبث</strong>
+          <span>المشاهدة تعمل عبر رابط LAN المحلي. يمكن نسخ الرابط للأجهزة الموجودة على نفس الشبكة.</span>
+          <code>${escapeHtml(proxyUrl)}</code>
+        </div>
+      `);
       video.play().catch(() => {});
     });
     _hls.on(Hls.Events.ERROR, async (_e, d) => {
@@ -1112,6 +1216,7 @@ function setupIptv() {
   $('iptvModalCloseBtn')?.addEventListener('click', closeIptvModal);
   $('iptvModalCancelBtn')?.addEventListener('click', closeIptvModal);
   $('iptvPlayerCloseBtn')?.addEventListener('click', closeIptvPlayer);
+  $('iptvPlayerBackBtn')?.addEventListener('click', closeIptvPlayer);
 
   $('iptvProbeBtn')?.addEventListener('click', async () => {
     const url = $('iptvUrl').value.trim();

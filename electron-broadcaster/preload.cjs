@@ -91,6 +91,7 @@ contextBridge.exposeInMainWorld('broadcaster', {
   iptvProbe: (url) => ipcRenderer.invoke('iptv-probe', url),
   iptvStatus: () => ipcRenderer.invoke('iptv-status'),
   iptvStreamUrl: (id) => ipcRenderer.invoke('iptv-stream-url', id),
+  cloudIptvSetEnabled: (id, enabled, transferLimitBytes) => ipcRenderer.invoke('cloud-iptv-set-enabled', { id, enabled, transferLimitBytes }),
   cloudIptvRefresh: () => ipcRenderer.invoke('cloud-iptv-refresh'),
   cloudIptvStatus: () => ipcRenderer.invoke('cloud-iptv-status'),
   onCloudIptvUpdated: (cb) => {

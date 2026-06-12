@@ -134,13 +134,16 @@
   </div>
 
   <div class="modal" id="iptvPlayerModal" style="display:none">
-    <div class="modal-card" style="max-width:1080px;width:96vw">
-      <div class="modal-head">
+    <div class="modal-card player-card" style="max-width:1120px;width:96vw">
+      <div class="modal-head player-head">
+        <button class="modal-close back-btn" id="iptvPlayerBackBtn">←</button>
         <h3 id="iptvPlayerTitle">—</h3>
         <button class="modal-close" id="iptvPlayerCloseBtn">×</button>
       </div>
       <div class="modal-body">
-        <video id="iptvVideo" controls autoplay style="width:100%;max-height:70vh;background:#000;border-radius:10px"></video>
+        <div class="live-video-shell">
+          <video id="iptvVideo" controls autoplay playsinline></video>
+        </div>
         <div class="muted small" id="iptvPlayerInfo" style="margin-top:8px"></div>
       </div>
     </div>

@@ -143,6 +143,7 @@ function defaultSettings() {
     platformContactPhone: '',
     platformChannel: 'stable',
     iptvGlobalLimitBytes: 0,
+    cloudIptvOverrides: {},
     channels: [],
     localIptvChannels: [],
   };
@@ -367,6 +368,10 @@ function mediaServerOptions() {
     getIptvPolicy: () => ({
       iptvGlobalLimitBytes: Number(settings.iptvGlobalLimitBytes) || 0,
     }),
+    getCloudIptvChannel: (id) => {
+      const ch = cloudIptv.getById(normalizeCloudId(id));
+      return ch ? applyCloudIptvOverride(ch) : null;
+    },
     getLibraryConfig: () => ({
       tmdbKey: settings.tmdbKey || '',
       tmdbLang: settings.tmdbLang || 'ar',
@@ -405,7 +410,7 @@ function publicIptvChannels() {
   if (!platformFeatureAllowed('iptv')) return [];
   const rows = [];
   try {
-    rows.push(...cloudIptv.list());
+    rows.push(...cloudIptv.list().map(applyCloudIptvOverride));
   } catch {}
   try {
     rows.push(...libraryDb.listIptv().map((c) => ({ ...c, source: 'local' })));
@@ -421,6 +426,53 @@ function publicIptvChannels() {
       live: true,
       source: c.source || 'local',
     }));
+}
+
+function normalizeCloudId(id) {
+  return String(id || '').replace(/^cloud-/i, '');
+}
+
+function getCloudIptvOverride(id) {
+  const key = normalizeCloudId(id);
+  const overrides = settings.cloudIptvOverrides && typeof settings.cloudIptvOverrides === 'object'
+    ? settings.cloudIptvOverrides
+    : {};
+  return overrides[key] || null;
+}
+
+function applyCloudIptvOverride(channel) {
+  const rawId = normalizeCloudId(channel.id);
+  const override = getCloudIptvOverride(rawId);
+  return {
+    ...channel,
+    id: String(channel.id).startsWith('cloud-') ? channel.id : `cloud-${rawId}`,
+    enabled: override ? !!override.enabled : false,
+    ownerEnabled: override ? !!override.enabled : false,
+    transferLimitBytes: Math.max(0, Number(override?.transferLimitBytes ?? channel.transferLimitBytes) || 0),
+  };
+}
+
+function updateCloudIptvOverride(id, patch = {}) {
+  const rawId = normalizeCloudId(id);
+  if (!rawId) throw new Error('Missing cloud IPTV id');
+  const current = getCloudIptvOverride(rawId) || {};
+  const next = {
+    ...current,
+    enabled: patch.enabled == null ? !!current.enabled : !!patch.enabled,
+  };
+  if (patch.transferLimitBytes != null) {
+    next.transferLimitBytes = Math.max(0, Number(patch.transferLimitBytes) || 0);
+  }
+  settings = {
+    ...settings,
+    cloudIptvOverrides: {
+      ...(settings.cloudIptvOverrides || {}),
+      [rawId]: next,
+    },
+  };
+  saveSettingsAndBackup('cloud-iptv-override');
+  scheduleDeviceStatePush('cloud-iptv-override');
+  return applyCloudIptvOverride(cloudIptv.getById(rawId) || { id: rawId, name: rawId, url: '', source: 'cloud' });
 }
 
 function createAppIcon() {
@@ -746,7 +798,7 @@ ipcMain.handle('iptv-list', () => {
     console.error('[Manara] iptv-list local read failed:', e.message);
   }
   let cloud = [];
-  try { cloud = cloudIptv.list(); } catch (e) { console.error('[Manara] iptv-list cloud read failed:', e.message); }
+  try { cloud = cloudIptv.list().map(applyCloudIptvOverride); } catch (e) { console.error('[Manara] iptv-list cloud read failed:', e.message); }
   return [...cloud, ...local];
 });
 ipcMain.handle('iptv-add', (_e, payload) => {
@@ -773,6 +825,9 @@ ipcMain.handle('iptv-remove', (_e, id) => {
   refreshSettingsChannelMirror('iptv-remove');
   scheduleDeviceStatePush('iptv-remove');
   return true;
+});
+ipcMain.handle('cloud-iptv-set-enabled', (_e, { id, enabled, transferLimitBytes }) => {
+  return updateCloudIptvOverride(id, { enabled, transferLimitBytes });
 });
 ipcMain.handle('iptv-probe', async (_e, url) => iptv.probe(url));
 ipcMain.handle('iptv-status', () => iptv.status());

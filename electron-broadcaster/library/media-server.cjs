@@ -1257,8 +1257,10 @@ function createHandler(options = {}) {
         const sub = m[2] || '';
         let ch = null;
         if (rawId.startsWith('cloud-')) {
-          const cc = cloudIptv.getById(rawId.slice('cloud-'.length));
-          if (cc) ch = { id: rawId, url: cc.url, name: cc.name, enabled: 1, headers: cc.headers || {}, transferLimitBytes: cc.transferLimitBytes || 0 };
+          const cc = typeof options.getCloudIptvChannel === 'function'
+            ? options.getCloudIptvChannel(rawId)
+            : cloudIptv.getById(rawId.slice('cloud-'.length));
+          if (cc) ch = { id: rawId, url: cc.url, name: cc.name, enabled: cc.enabled !== false && cc.enabled !== 0, headers: cc.headers || {}, transferLimitBytes: cc.transferLimitBytes || 0 };
         } else {
           ch = db.getIptv(parseInt(rawId, 10));
         }
