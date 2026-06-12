@@ -728,12 +728,12 @@ async function refreshLibPaths() {
   const paths = await window.broadcaster.libraryPaths();
   const el = $('libPathsList');
   if (!paths || !paths.length) {
-    el.innerHTML = '<em>لم تتم إضافة أي مجلدات بعد.</em>';
+    el.innerHTML = '<div class="hint">لم تتم إضافة أي مجلدات بعد. أضف مجلداً ثم شغّل الفحص.</div>';
     return;
   }
   el.innerHTML = paths.map(p => `
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05)">
-      <span>📁 ${p.path} <small style="opacity:.6">(${p.kind})</small></span>
+    <div class="lib-path-row">
+      <span>${escapeHtml(p.path)} <small style="opacity:.6">(${escapeHtml(p.kind)})</small></span>
       ${p.locked ? '<span style="opacity:.5">🔒</span>' :
         `<button class="btn ghost" data-rmpath="${p.id}" style="padding:2px 8px;font-size:12px">إزالة</button>`}
     </div>
@@ -750,17 +750,22 @@ async function refreshLibGrid() {
   const q = $('libSearch')?.value || '';
   const kind = $('libKindFilter')?.value || '';
   libraryItems = await window.broadcaster.libraryList({ q, kind });
+  const sort = $('libSortFilter')?.value || 'recent';
+  const items = sortLibraryItems(libraryItems, sort);
+  renderLibStats(libraryItems);
   const grid = $('libGrid');
   $('libEmpty').style.display = libraryItems.length ? 'none' : 'block';
-  grid.innerHTML = libraryItems.map(it => {
+  grid.innerHTML = items.map(it => {
     const pct = it.position && it.wp_duration ? Math.min(100, (it.position / it.wp_duration) * 100) : 0;
     const poster = it.poster_url ? `style="background-image:url('${it.poster_url}')"` : '';
+    const kindLabel = libKindLabel(it.kind);
+    const meta = [it.year || '', it.rating ? '★ ' + Number(it.rating).toFixed(1) : '', formatFileSize(it.size)].filter(Boolean).join(' · ');
     return `
       <div class="lib-card" data-id="${it.id}">
-        <div class="lib-poster" ${poster}>${it.poster_url ? '' : 'MEDIA'}</div>
+        <div class="lib-poster" ${poster}>${it.poster_url ? '' : 'MEDIA'}<span class="lib-badge">${kindLabel}</span></div>
         <div class="lib-meta">
           <div class="lib-title">${escapeHtml(it.title)}${it.season ? ` S${it.season}E${it.episode}` : ''}</div>
-          <div class="lib-sub">${it.year || ''} ${it.rating ? '★ ' + it.rating.toFixed(1) : ''}</div>
+          <div class="lib-sub">${escapeHtml(meta)}</div>
         </div>
         ${pct > 0 ? `<div class="lib-progress"><i style="width:${pct}%"></i></div>` : ''}
       </div>`;
@@ -768,6 +773,49 @@ async function refreshLibGrid() {
   grid.querySelectorAll('.lib-card').forEach(c => {
     c.addEventListener('click', () => playMedia(parseInt(c.dataset.id, 10)));
   });
+}
+
+function libKindLabel(kind) {
+  if (kind === 'episode') return 'حلقة';
+  if (kind === 'audio') return 'صوت';
+  return 'فيلم';
+}
+
+function formatFileSize(value) {
+  const n = Number(value) || 0;
+  if (!n) return '';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB';
+  return (n / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+}
+
+function sortLibraryItems(items, sort) {
+  return (items || []).slice().sort((a, b) => {
+    if (sort === 'title') return String(a.title || '').localeCompare(String(b.title || ''), undefined, { numeric: true, sensitivity: 'base' });
+    if (sort === 'year') return (Number(b.year) || 0) - (Number(a.year) || 0);
+    if (sort === 'progress') {
+      const ap = a.position && a.wp_duration ? a.position / a.wp_duration : 0;
+      const bp = b.position && b.wp_duration ? b.position / b.wp_duration : 0;
+      return bp - ap;
+    }
+    return (Number(b.added_at) || Number(b.scanned_at) || 0) - (Number(a.added_at) || Number(a.scanned_at) || 0);
+  });
+}
+
+function renderLibStats(items = []) {
+  const el = $('libStats');
+  if (!el) return;
+  const total = items.length;
+  const movies = items.filter((it) => it.kind === 'movie').length;
+  const episodes = items.filter((it) => it.kind === 'episode').length;
+  const audio = items.filter((it) => it.kind === 'audio').length;
+  el.style.display = total ? 'grid' : 'none';
+  el.innerHTML = `
+    <div class="lib-stat"><b>${total}</b><span>كل المحتوى</span></div>
+    <div class="lib-stat"><b>${movies}</b><span>أفلام</span></div>
+    <div class="lib-stat"><b>${episodes}</b><span>حلقات</span></div>
+    <div class="lib-stat"><b>${audio}</b><span>صوتيات</span></div>
+  `;
 }
 
 function escapeHtml(s) {
@@ -799,6 +847,10 @@ async function playMedia(id) {
 }
 
 function setupLibrary() {
+  $('openWebLibraryBtn')?.addEventListener('click', async () => {
+    const port = await window.broadcaster.libraryPort?.().catch(() => settings.libraryPort || 8420);
+    window.broadcaster.openExternal(`http://127.0.0.1:${port || 8420}/library`);
+  });
   $('addLibFolderBtn')?.addEventListener('click', async () => {
     await window.broadcaster.libraryAddPath('movies');
     refreshLibPaths();
@@ -808,7 +860,7 @@ function setupLibrary() {
     box.style.display = 'block';
     box.textContent = 'جارٍ الفحص…';
     const r = await window.broadcaster.libraryScan();
-    box.textContent = r.ok ? `✅ تم فحص ${r.done} ملف` : `⚠️ ${r.error || 'فشل'}`;
+    box.textContent = r.ok ? `تم فحص ${r.done} ملف` : (r.error || 'تعذر فحص المكتبة');
     setTimeout(() => { box.style.display = 'none'; }, 4000);
     refreshLibGrid();
   });
@@ -819,6 +871,7 @@ function setupLibrary() {
   });
   $('libSearch')?.addEventListener('input', () => refreshLibGrid());
   $('libKindFilter')?.addEventListener('change', () => refreshLibGrid());
+  $('libSortFilter')?.addEventListener('change', () => refreshLibGrid());
   $('libPlayerCloseBtn')?.addEventListener('click', () => {
     const v = $('libVideo');
     v.pause(); v.removeAttribute('src'); v.load();

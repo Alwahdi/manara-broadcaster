@@ -70,11 +70,13 @@
         <h2>المكتبة المحلية</h2>
         <p class="muted">نظّم الأفلام والمسلسلات والملفات الصوتية، واجعلها متاحة من صفحة مشاهدة واحدة.</p>
       </div>
-      <div style="display:flex; gap:8px">
+      <div style="display:flex; gap:8px; flex-wrap:wrap">
+        <button class="btn ghost" id="openWebLibraryBtn">فتح صفحة المكتبة</button>
         <button class="btn ghost" id="addLibFolderBtn">إضافة مجلد</button>
         <button class="btn primary" id="scanLibBtn">فحص المكتبة</button>
       </div>
     </div>
+    <div id="libStats" class="lib-stats" style="display:none"></div>
     <div id="libPathsList" class="muted small" style="margin-bottom:12px"></div>
     <div id="libScanStatus" class="hint" style="display:none;margin-bottom:12px"></div>
     <div class="form-grid" style="margin-bottom:12px">
@@ -84,6 +86,15 @@
           <option value="">الكل</option>
           <option value="movie">أفلام</option>
           <option value="episode">حلقات</option>
+          <option value="audio">صوتيات</option>
+        </select>
+      </label>
+      <label class="field"><span>الترتيب</span>
+        <select id="libSortFilter">
+          <option value="recent">الأحدث</option>
+          <option value="title">الاسم</option>
+          <option value="year">السنة</option>
+          <option value="progress">التقدم</option>
         </select>
       </label>
     </div>
