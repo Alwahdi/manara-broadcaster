@@ -118,6 +118,15 @@ function formatBytes(bytes) {
   return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 
+function formatDataBytes(bytes) {
+  const n = Number(bytes) || 0;
+  if (n <= 0) return '0 B';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
 function formatDuration(seconds) {
   const total = Math.max(0, Math.floor(Number(seconds) || 0));
   if (!total) return '';
@@ -158,6 +167,17 @@ function accessActionLabel(action) {
     request: 'طلب',
     media: 'وسائط',
   }[action] || action || '';
+}
+
+function parseHeadersPayload(value) {
+  if (!value) return {};
+  if (typeof value === 'object' && !Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(String(value));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
 }
 
 function mediaType(item) {
@@ -375,10 +395,22 @@ function adminPage(options = {}) {
       <td>${ch.enabled ? 'مفعل' : 'متوقف'}</td>
       <td>${formatBytes(ch.transferLimitBytes)}</td>
       <td>${status[ch.id]?.viewers || 0}</td>
-      <td>${formatBytes(status[ch.id]?.totalUpstreamBytes || 0)}</td>
+      <td>${formatDataBytes(status[ch.id]?.totalUpstreamBytes || 0)}</td>
       <td>
         ${ch.readonly ? '<span class="muted">تدار من السحابة</span>' : `<button data-toggle="${ch.id}">${ch.enabled ? 'إيقاف' : 'تفعيل'}</button><button data-del="${ch.id}">حذف</button>`}
       </td>
+    </tr>`).join('');
+  const iptvAnalyticsRows = Object.values(status).sort((a, b) => String(a.id).localeCompare(String(b.id))).map((s) => `
+    <tr>
+      <td class="url">${escapeHtml(s.id)}</td>
+      <td>${escapeHtml(s.type || '')}</td>
+      <td>${Number(s.viewers || 0)} / ${Number(s.peakViewers || 0)}</td>
+      <td>${formatDataBytes(s.totalUpstreamBytes)}</td>
+      <td>${formatDataBytes(s.totalDownstreamBytes)}</td>
+      <td>${Number(s.cacheHitRate || 0)}% (${Number(s.cacheHits || 0)}/${Number(s.cacheMisses || 0)})</td>
+      <td>${Number(s.cacheEntries || 0)} · ${formatDataBytes(s.cacheBytes)}</td>
+      <td>${Number(s.slowClientsDropped || 0)}</td>
+      <td>${Number(s.errors || 0)}${s.lastError ? `<br><span class="muted">${escapeHtml(s.lastError)}</span>` : ''}</td>
     </tr>`).join('');
   const sessions = db.listSessions();
   const blocks = db.listBlocks();
@@ -532,10 +564,14 @@ td,th{border-bottom:1px solid rgba(255,255,255,.1);padding:8px;text-align:right;
     <label>الرابط الأصلي</label><input name="url" required placeholder="https://.../playlist.m3u8">
     <label>التصنيف</label><input name="category">
     <label>رابط الشعار</label><input name="logo">
+    <label>هيدرز المصدر (JSON اختياري)</label><textarea name="headers" placeholder='{"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"}'></textarea>
     <label>حد استهلاك الإنترنت (MB، 0 يعني بدون حد)</label><input name="transferLimitMb" type="number" min="0" step="1" value="0">
     <button>إضافة IPTV</button>
   </form>
   <table><thead><tr><th>الاسم</th><th>المصدر</th><th>التصنيف</th><th>الرابط</th><th>الحالة</th><th>الحد</th><th>المشاهدون</th><th>استهلاك الإنترنت</th><th>الإجراءات</th></tr></thead><tbody>${iptvRows || '<tr><td colspan="9">لا توجد قنوات IPTV مضافة بعد.</td></tr>'}</tbody></table>
+  <h3>تحليلات IPTV المتقدمة</h3>
+  <p class="muted">تقيس الفرق بين سحب الإنترنت والتوزيع داخل الشبكة، ونسبة استفادة الكاش، والأجهزة البطيئة التي تم فصلها لحماية الخادم.</p>
+  <table><thead><tr><th>القناة</th><th>النوع</th><th>الآن / أعلى</th><th>إنترنت</th><th>LAN</th><th>Cache hit</th><th>الكاش</th><th>Slow drops</th><th>الأخطاء</th></tr></thead><tbody>${iptvAnalyticsRows || '<tr><td colspan="9">لا توجد بيانات تشغيل IPTV بعد.</td></tr>'}</tbody></table>
 </section>
 <div class="grid">
 <section>
@@ -570,11 +606,16 @@ async function api(path, opts) {
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
+function parseJsonSafe(text) {
+  if (!String(text || '').trim()) return {};
+  try { return JSON.parse(text); } catch { return {}; }
+}
 document.getElementById('iptvForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const data = Object.fromEntries(new FormData(e.target).entries());
   data.transferLimitBytes = Math.max(0, Number(data.transferLimitMb || 0)) * 1024 * 1024;
   delete data.transferLimitMb;
+  data.headers = parseJsonSafe(data.headers || '{}');
   await api('/api/admin/iptv', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
   location.reload();
 });
@@ -1368,6 +1409,10 @@ function createHandler(options = {}) {
     if (u.pathname === '/api/admin/health') {
       if (!requireAdmin(req, res, options.getAdminAuth)) return;
       return sendJson(res, 200, healthDiagnostics());
+    }
+    if (u.pathname === '/api/admin/iptv-analytics') {
+      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      return sendJson(res, 200, { status: iptv.status() });
     }
     if (u.pathname === '/api/admin/reports/views.json') {
       if (!requireAdmin(req, res, options.getAdminAuth)) return;

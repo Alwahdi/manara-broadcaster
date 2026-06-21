@@ -897,6 +897,33 @@ $('saveTmdbBtn')?.addEventListener('click', async () => {
 // ================= IPTV =================
 let _iptvEditingId = null;
 
+function headersToText(headers) {
+  if (!headers || typeof headers !== 'object' || Array.isArray(headers) || !Object.keys(headers).length) return '';
+  return JSON.stringify(headers, null, 2);
+}
+
+function parseHeadersInput() {
+  const raw = $('iptvHeaders')?.value.trim() || '';
+  if (!raw) return {};
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error('الهيدرز يجب أن تكون JSON صحيح.');
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('الهيدرز يجب أن تكون كائناً مثل {"User-Agent":"..."}');
+  }
+  const out = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    const name = String(key || '').trim();
+    const text = String(value ?? '').trim();
+    if (!name || !text) continue;
+    out[name] = text;
+  }
+  return out;
+}
+
 function openIptvModal(ch) {
   _iptvEditingId = ch?.id || null;
   $('iptvModalTitle').textContent = ch ? 'تعديل قناة IPTV' : 'قناة IPTV جديدة';
@@ -905,6 +932,7 @@ function openIptvModal(ch) {
   $('iptvCategory').value = ch?.category || '';
   $('iptvLogo').value = ch?.logo || '';
   $('iptvTransferLimitMb').value = bytesToWholeMb(ch?.transferLimitBytes || 0);
+  if ($('iptvHeaders')) $('iptvHeaders').value = headersToText(ch?.headers);
   $('iptvEnabled').checked = ch ? (ch.enabled !== false && ch.enabled !== 0) : true;
   $('iptvProbeBox').style.display = 'none';
   $('iptvModal').style.display = 'flex';
@@ -1004,6 +1032,8 @@ function renderCloudIptvGroups(root, cloud, status) {
         <div><strong>${formatBytes(totalDown)}</strong><span>توزيع LAN</span></div>
         <div><strong>${errors}</strong><span>أخطاء</span></div>
         <div><strong>${defaultItem?.qualityLabel || parseIptvName(defaultItem?.name).quality}</strong><span>جودة البدء</span></div>
+        <div><strong>${Math.round(group.items.reduce((sum, ch) => sum + (Number(status[ch.id]?.cacheHitRate) || 0), 0) / Math.max(1, group.items.length))}%</strong><span>استفادة الكاش</span></div>
+        <div><strong>${group.items.reduce((sum, ch) => sum + (Number(status[ch.id]?.slowClientsDropped) || 0), 0)}</strong><span>فصل البطيء</span></div>
       </div>
       <div class="quality-list" aria-label="الجودات"></div>
       <div class="group-actions">
@@ -1086,6 +1116,9 @@ function renderIptvCard(ch, status) {
           <span>طلبات المصدر</span><b>${st.upstreamRequests || 0}</b>
           <span>طلبات Playlist</span><b>${st.playlistRequests || 0}</b>
           <span>طلبات Segments</span><b>${st.segmentRequests || 0}</b>
+          <span>Cache hit</span><b>${st.cacheHitRate || 0}% · ${st.cacheHits || 0}/${st.cacheMisses || 0}</b>
+          <span>حجم الكاش</span><b>${formatBytes(st.cacheBytes || 0)} · ${st.cacheEntries || 0} عنصر</b>
+          <span>فصل البطيء</span><b>${st.slowClientsDropped || 0}</b>
           <span>الأخطاء</span><b>${st.errors || 0}</b>
           ${st.lastError ? `<span>آخر خطأ</span><b class="error-text">${escapeHtml(st.lastError)}</b>` : ''}
         </div>
@@ -1356,7 +1389,10 @@ function setupIptv() {
     if (!url) { toast('أدخل رابطاً أولاً', 'err'); return; }
     const box = $('iptvProbeBox');
     box.style.display = 'block'; box.textContent = 'جارٍ الاختبار…';
-    const r = await window.broadcaster.iptvProbe(url);
+    let headers = {};
+    try { headers = parseHeadersInput(); }
+    catch (e) { box.innerHTML = `❌ ${escapeHtml(e.message)}`; return; }
+    const r = await window.broadcaster.iptvProbe(url, headers);
     if (r.ok) {
       box.innerHTML = `✅ الرابط يعمل — نوع: ${escapeHtml(r.contentType || (r.hls ? 'HLS' : 'TS'))} · ${r.bytes ? r.bytes + ' bytes' : ''}`;
     } else {
@@ -1365,11 +1401,15 @@ function setupIptv() {
   });
 
   $('iptvModalSaveBtn')?.addEventListener('click', async () => {
+    let headers = {};
+    try { headers = parseHeadersInput(); }
+    catch (e) { toast(e.message, 'err'); return; }
     const payload = {
       name: $('iptvName').value.trim(),
       url: $('iptvUrl').value.trim(),
       category: $('iptvCategory').value.trim(),
       logo: $('iptvLogo').value.trim(),
+      headers,
       transferLimitBytes: mbToBytes($('iptvTransferLimitMb').value),
       enabled: $('iptvEnabled').checked,
     };
@@ -1398,6 +1438,21 @@ function setupIptv() {
     } finally {
       btn.disabled = false;
       btn.textContent = 'تحديث السحابة';
+    }
+  });
+  $('enableAllCloudIptvBtn')?.addEventListener('click', async () => {
+    const btn = $('enableAllCloudIptvBtn');
+    btn.disabled = true;
+    btn.textContent = 'جارٍ التفعيل…';
+    try {
+      await window.broadcaster.cloudIptvSetAllEnabled(true);
+      await refreshIptvList();
+      toast('تم تفعيل كل قنوات IPTV السحابية لهذا السيرفر', 'ok');
+    } catch (e) {
+      toast('تعذر تفعيل السحابة: ' + (e?.message || e), 'err');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'تفعيل كل السحابة هنا';
     }
   });
   document.querySelector('[data-tab="channels"]')?.addEventListener('click', () => refreshIptvList());

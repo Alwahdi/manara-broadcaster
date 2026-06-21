@@ -548,6 +548,24 @@ function updateCloudIptvOverride(id, patch = {}) {
   return applyCloudIptvOverride(cloudIptv.getById(rawId) || { id: rawId, name: rawId, url: '', source: 'cloud' });
 }
 
+function setAllCloudIptvEnabled(enabled = true) {
+  const channels = cloudIptv.list();
+  const overrides = { ...(settings.cloudIptvOverrides || {}) };
+  for (const ch of channels) {
+    const rawId = normalizeCloudId(ch.id);
+    if (!rawId) continue;
+    overrides[rawId] = {
+      ...(overrides[rawId] || {}),
+      enabled: !!enabled,
+      transferLimitBytes: Math.max(0, Number(overrides[rawId]?.transferLimitBytes ?? ch.transferLimitBytes) || 0),
+    };
+  }
+  settings = { ...settings, cloudIptvOverrides: overrides };
+  saveSettingsAndBackup('cloud-iptv-enable-all');
+  scheduleDeviceStatePush('cloud-iptv-enable-all');
+  return cloudIptv.list().map(applyCloudIptvOverride);
+}
+
 function createAppIcon() {
   const iconPath = path.join(__dirname, 'assets', 'icon.ico');
   try {
@@ -902,7 +920,12 @@ ipcMain.handle('iptv-remove', (_e, id) => {
 ipcMain.handle('cloud-iptv-set-enabled', (_e, { id, enabled, transferLimitBytes }) => {
   return updateCloudIptvOverride(id, { enabled, transferLimitBytes });
 });
-ipcMain.handle('iptv-probe', async (_e, url) => iptv.probe(url));
+ipcMain.handle('cloud-iptv-set-all-enabled', (_e, enabled) => setAllCloudIptvEnabled(enabled));
+ipcMain.handle('iptv-probe', async (_e, payload) => {
+  const url = typeof payload === 'string' ? payload : payload?.url;
+  const headers = typeof payload === 'string' ? {} : (payload?.headers || {});
+  return iptv.probe(url, headers);
+});
 ipcMain.handle('iptv-status', () => iptv.status());
 ipcMain.handle('iptv-stream-url', (_e, id) => {
   const port = serverInfo?.port || settings.port || 8080;

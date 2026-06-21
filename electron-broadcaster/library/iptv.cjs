@@ -20,15 +20,21 @@ const { URL } = require('url');
 const TS_CHANNELS = new Map(); // id -> { clients:Set<res>, upstreamReq, idleTimer, contentType }
 const HLS_IDLE = new Map();    // id -> { lastHit, idleTimer }
 const METRICS = new Map();     // id -> detailed transfer/viewer counters
-const HLS_RESOURCE_CACHE = new Map(); // key -> { expiresAt, value, promise }
+const HLS_RESOURCE_CACHE = new Map(); // key -> { expiresAt, value, promise, channelId, bytes }
 
-const UA = { 'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20' };
+const DEFAULT_BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36';
+const UA = { 'User-Agent': DEFAULT_BROWSER_UA };
 const IDLE_MS = 5000;
 const HLS_VIEWER_TTL_MS = 25000;
 const RATE_WINDOW_MS = 30000;
 const HLS_PLAYLIST_CACHE_MS = 1200;
 const HLS_SEGMENT_CACHE_MS = 2 * 60 * 1000;
 const HLS_CACHE_MAX = 900;
+const HLS_CACHE_MAX_BYTES = 192 * 1024 * 1024;
+const HLS_CACHEABLE_MAX_BYTES = 32 * 1024 * 1024;
+const CLIENT_CHUNK_BYTES = 128 * 1024;
+const SLOW_CLIENT_MAX_BUFFER_BYTES = 4 * 1024 * 1024;
+const SLOW_CLIENT_DRAIN_MS = 8000;
 const MAX_REDIRECTS = 5;
 
 function libFor(u) { return u.startsWith('https') ? https : http; }
@@ -53,6 +59,11 @@ function metrics(id, type = 'unknown') {
       upstreamRequests: 0,
       playlistRequests: 0,
       segmentRequests: 0,
+      cacheHits: 0,
+      cacheMisses: 0,
+      cacheCoalesced: 0,
+      cacheEvictions: 0,
+      slowClientsDropped: 0,
       errors: 0,
       lastError: '',
       lastStatusCode: 0,
@@ -111,6 +122,8 @@ function snapshotMetrics(id) {
   const upstreamWindowBytes = m.rateEvents.reduce((sum, e) => sum + e.upstreamBytes, 0);
   const downstreamWindowBytes = m.rateEvents.reduce((sum, e) => sum + e.downstreamBytes, 0);
   const seconds = RATE_WINDOW_MS / 1000;
+  const cache = hlsCacheStatsFor(id);
+  const cacheTotal = m.cacheHits + m.cacheMisses;
   return {
     id: m.id,
     type: m.type,
@@ -125,6 +138,14 @@ function snapshotMetrics(id) {
     upstreamRequests: m.upstreamRequests,
     playlistRequests: m.playlistRequests,
     segmentRequests: m.segmentRequests,
+    cacheHits: m.cacheHits,
+    cacheMisses: m.cacheMisses,
+    cacheCoalesced: m.cacheCoalesced,
+    cacheEvictions: m.cacheEvictions,
+    cacheHitRate: cacheTotal ? Math.round((m.cacheHits / cacheTotal) * 100) : 0,
+    cacheEntries: cache.entries,
+    cacheBytes: cache.bytes,
+    slowClientsDropped: m.slowClientsDropped,
     errors: m.errors,
     lastError: m.lastError,
     lastStatusCode: m.lastStatusCode,
@@ -133,8 +154,20 @@ function snapshotMetrics(id) {
   };
 }
 
+function safeHeaderObject(headers) {
+  if (!headers || typeof headers !== 'object' || Array.isArray(headers)) return {};
+  const out = {};
+  for (const [key, value] of Object.entries(headers)) {
+    const name = String(key || '').trim();
+    if (!name || /[\r\n:]/.test(name)) continue;
+    const text = String(value ?? '').replace(/[\r\n]/g, ' ').trim();
+    if (text) out[name] = text;
+  }
+  return out;
+}
+
 function upstreamHeaders(channel, extra = {}) {
-  return { ...UA, ...(channel.headers || {}), ...extra };
+  return { ...UA, ...safeHeaderObject(channel.headers), ...safeHeaderObject(extra) };
 }
 
 function explainHttp(statusCode, targetUrl) {
@@ -178,6 +211,45 @@ function sendIptvError(res, statusCode, message) {
     'X-Manara-Error': encodeURIComponent(message).slice(0, 900),
   });
   res.end(message);
+}
+
+function writeBufferToClient(channel, res, body) {
+  return new Promise((resolve) => {
+    if (!body || !body.length) { res.end(); resolve(true); return; }
+    let offset = 0;
+    let settled = false;
+    function finish(ok) {
+      if (settled) return;
+      settled = true;
+      resolve(ok);
+    }
+    function closeSlowClient() {
+      metrics(channel.id).slowClientsDropped += 1;
+      try { res.destroy(new Error('slow client')); } catch {}
+      finish(false);
+    }
+    function pump() {
+      if (settled || res.destroyed || res.writableEnded) return finish(false);
+      while (offset < body.length) {
+        if (Number(res.writableLength) > SLOW_CLIENT_MAX_BUFFER_BYTES) return closeSlowClient();
+        const next = Math.min(offset + CLIENT_CHUNK_BYTES, body.length);
+        const ok = res.write(body.subarray(offset, next));
+        offset = next;
+        if (!ok) {
+          const timer = setTimeout(closeSlowClient, SLOW_CLIENT_DRAIN_MS);
+          res.once('drain', () => {
+            clearTimeout(timer);
+            setImmediate(pump);
+          });
+          return;
+        }
+      }
+      try { res.end(); } catch {}
+      finish(true);
+    }
+    res.once('close', () => finish(false));
+    pump();
+  });
 }
 
 function formatLimitBytes(bytes) {
@@ -267,7 +339,16 @@ function startTsUpstream(channel, s, policy = {}, targetUrl = channel.url, redir
         stopTsUpstream(channel, s);
         return;
       }
-      for (const c of s.clients) { try { c.write(chunk); } catch {} }
+      for (const c of s.clients) {
+        try {
+          if (c.destroyed || c.writableEnded) continue;
+          const ok = c.write(chunk);
+          if (!ok && Number(c.writableLength) > SLOW_CLIENT_MAX_BUFFER_BYTES) {
+            metrics(channel.id).slowClientsDropped += 1;
+            c.destroy(new Error('slow client'));
+          }
+        } catch {}
+      }
     });
     up.on('end', () => stopTsUpstream(channel, s));
     up.on('error', () => stopTsUpstream(channel, s));
@@ -353,13 +434,47 @@ async function readAll(stream) {
 function pruneHlsCache() {
   const now = Date.now();
   for (const [key, entry] of HLS_RESOURCE_CACHE) {
-    if (!entry.promise && entry.expiresAt <= now) HLS_RESOURCE_CACHE.delete(key);
+    if (!entry.promise && entry.expiresAt <= now) evictHlsCacheEntry(key);
   }
   while (HLS_RESOURCE_CACHE.size > HLS_CACHE_MAX) {
     const first = HLS_RESOURCE_CACHE.keys().next().value;
     if (!first) break;
-    HLS_RESOURCE_CACHE.delete(first);
+    evictHlsCacheEntry(first);
   }
+  while (hlsCacheBytes() > HLS_CACHE_MAX_BYTES) {
+    let evicted = false;
+    for (const [key, entry] of HLS_RESOURCE_CACHE) {
+      if (entry.promise) continue;
+      evictHlsCacheEntry(key);
+      evicted = true;
+      break;
+    }
+    if (!evicted) break;
+  }
+}
+
+function evictHlsCacheEntry(key) {
+  const entry = HLS_RESOURCE_CACHE.get(key);
+  if (entry?.channelId) metrics(entry.channelId).cacheEvictions += 1;
+  HLS_RESOURCE_CACHE.delete(key);
+}
+
+function hlsCacheBytes() {
+  let bytes = 0;
+  for (const entry of HLS_RESOURCE_CACHE.values()) bytes += Number(entry.bytes) || 0;
+  return bytes;
+}
+
+function hlsCacheStatsFor(id) {
+  const channelId = String(id);
+  let entries = 0;
+  let bytes = 0;
+  for (const entry of HLS_RESOURCE_CACHE.values()) {
+    if (String(entry.channelId) !== channelId) continue;
+    entries += 1;
+    bytes += Number(entry.bytes) || 0;
+  }
+  return { entries, bytes };
 }
 
 async function fetchCachedHlsResource(channel, targetUrl, headers, ttlMs) {
@@ -369,13 +484,18 @@ async function fetchCachedHlsResource(channel, targetUrl, headers, ttlMs) {
   const now = Date.now();
   const existing = HLS_RESOURCE_CACHE.get(key);
   if (existing?.value && existing.expiresAt > now) {
+    metrics(channel.id, 'hls').cacheHits += 1;
+    HLS_RESOURCE_CACHE.delete(key);
+    HLS_RESOURCE_CACHE.set(key, existing);
     return { ...existing.value, fromCache: true };
   }
   if (existing?.promise) {
+    metrics(channel.id, 'hls').cacheCoalesced += 1;
     const value = await existing.promise;
     return { ...value, fromCache: true };
   }
   const m = metrics(channel.id, 'hls');
+  m.cacheMisses += 1;
   m.upstreamRequests += 1;
   m.upstreamOpen = true;
   const promise = (async () => {
@@ -390,14 +510,20 @@ async function fetchCachedHlsResource(channel, targetUrl, headers, ttlMs) {
       body,
     };
   })();
-  HLS_RESOURCE_CACHE.set(key, { expiresAt: now + ttlMs, promise });
+  HLS_RESOURCE_CACHE.set(key, { expiresAt: now + ttlMs, promise, channelId: String(channel.id), bytes: 0 });
   try {
     const value = await promise;
     if (value.statusCode >= 400) {
       HLS_RESOURCE_CACHE.delete(key);
       return { ...value, fromCache: false };
     }
-    HLS_RESOURCE_CACHE.set(key, { expiresAt: Date.now() + ttlMs, value });
+    const bytes = Buffer.isBuffer(value.body) ? value.body.length : 0;
+    if (bytes > HLS_CACHEABLE_MAX_BYTES) {
+      HLS_RESOURCE_CACHE.delete(key);
+      return { ...value, fromCache: false };
+    }
+    HLS_RESOURCE_CACHE.set(key, { expiresAt: Date.now() + ttlMs, value, channelId: String(channel.id), bytes });
+    pruneHlsCache();
     return { ...value, fromCache: false };
   } catch (e) {
     HLS_RESOURCE_CACHE.delete(key);
@@ -562,7 +688,7 @@ async function serveHlsSegment(channel, segUrl, baseProxyUrl, req, res, policy =
     if (up.headers['content-range']) headers['Content-Range'] = up.headers['content-range'];
     if (up.headers['accept-ranges']) headers['Accept-Ranges'] = up.headers['accept-ranges'];
     res.writeHead(up.statusCode || 200, headers);
-    res.end(body);
+    await writeBufferToClient(channel, res, body);
   } catch (e) {
     const message = e.message === 'timeout'
       ? `Timed out while loading an IPTV segment. URL: ${segUrl}`
@@ -602,9 +728,9 @@ function status() {
 }
 
 // Probe a URL — fetch a few bytes/playlist to confirm it's reachable.
-async function probe(channelUrl) {
+async function probe(channelUrl, headers = {}) {
   try {
-    const up = await fetchUpstream(channelUrl);
+    const up = await fetchUpstream(channelUrl, upstreamHeaders({ headers }));
     const ct = up.headers['content-type'] || '';
     const status = up.statusCode || 0;
     if (status >= 400) {

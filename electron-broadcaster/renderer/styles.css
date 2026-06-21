@@ -98,8 +98,9 @@ h1{font-size:16px;font-weight:900;letter-spacing:-.3px}
 .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
 .field{display:block;margin-bottom:12px}
 .field>span{display:block;font-size:11px;font-weight:800;opacity:.7;margin-bottom:6px;letter-spacing:.3px}
-.field input,.field select{width:100%;padding:11px 13px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#fff;font-family:inherit;font-size:13px;font-weight:600;outline:none;transition:.15s}
-.field input:focus,.field select:focus{border-color:var(--accent);background:rgba(59,130,246,.08)}
+.field input,.field select,.field textarea{width:100%;padding:11px 13px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#fff;font-family:inherit;font-size:13px;font-weight:600;outline:none;transition:.15s}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent);background:rgba(59,130,246,.08)}
+.field textarea{resize:vertical;min-height:92px;direction:ltr;text-align:left;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.55}
 .field input[type=color]{height:46px;padding:5px;cursor:pointer}
 .field select option,.field select optgroup{background:#0f172a;color:#fff}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}

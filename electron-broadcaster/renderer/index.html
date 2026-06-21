@@ -51,6 +51,7 @@
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn ghost" id="refreshCloudIptvBtn">تحديث القائمة</button>
+        <button class="btn ghost" id="enableAllCloudIptvBtn">تفعيل كل السحابة هنا</button>
         <button class="btn primary" id="addIptvBtn">إضافة IPTV</button>
       </div>
     </div>
@@ -132,6 +133,7 @@
         <label class="field"><span>التصنيف</span><input id="iptvCategory" type="text" maxlength="40" placeholder="رياضة، أخبار، أطفال…" /></label>
         <label class="field"><span>شعار (URL)</span><input id="iptvLogo" type="text" placeholder="https://.../logo.png" /></label>
         <label class="field"><span>حد السحب من الإنترنت لهذه القناة (MB، 0 = بدون حد)</span><input id="iptvTransferLimitMb" type="number" min="0" step="1" placeholder="0" /></label>
+        <label class="field"><span>هيدرز المصدر (JSON اختياري)</span><textarea id="iptvHeaders" rows="4" spellcheck="false" placeholder='{"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"}'></textarea></label>
         <label class="toggle row-toggle"><input type="checkbox" id="iptvEnabled" checked /><span></span><div><strong>مفعّلة للمشاهدة على الشبكة</strong></div></label>
         <div id="iptvProbeBox" class="hint" style="display:none;margin-top:8px"></div>
       </div>

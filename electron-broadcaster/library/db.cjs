@@ -789,7 +789,27 @@ function cleanLimitBytes(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function addIptv({ name, url, logo, category, enabled, transferLimitBytes }) {
+function cleanHeaders(value) {
+  let raw = value;
+  if (typeof raw === 'string') {
+    try { raw = JSON.parse(raw); }
+    catch { raw = {}; }
+  }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const blocked = new Set(['host', 'connection', 'content-length', 'transfer-encoding', 'range']);
+  const out = {};
+  for (const [key, val] of Object.entries(raw)) {
+    const name = String(key || '').trim();
+    if (!/^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/.test(name)) continue;
+    if (blocked.has(name.toLowerCase())) continue;
+    const text = String(val ?? '').replace(/[\r\n]/g, ' ').trim();
+    if (!text) continue;
+    out[name] = text.slice(0, 500);
+  }
+  return out;
+}
+
+function addIptv({ name, url, logo, category, enabled, transferLimitBytes, headers }) {
   const nextId = _channels.iptv.reduce((m, r) => Math.max(m, Number(r.id) || 0), 0) + 1;
   const row = {
     id: nextId,
@@ -797,6 +817,7 @@ function addIptv({ name, url, logo, category, enabled, transferLimitBytes }) {
     url,
     logo: logo || null,
     category: category || null,
+    headers: cleanHeaders(headers),
     transferLimitBytes: cleanLimitBytes(transferLimitBytes),
     enabled: enabled === false || enabled === 0 ? 0 : 1,
     added_at: Date.now(),
@@ -816,6 +837,7 @@ function updateIptv(id, patch) {
       url: next.url,
       logo: next.logo || null,
       category: next.category || null,
+      headers: cleanHeaders(next.headers),
       transferLimitBytes: cleanLimitBytes(next.transferLimitBytes),
       enabled: next.enabled === false || next.enabled === 0 ? 0 : 1,
     }
@@ -896,6 +918,7 @@ function replaceAllChannels({ broadcast, iptv } = {}) {
       url: c.url || '',
       logo: c.logo || null,
       category: c.category || null,
+      headers: cleanHeaders(c.headers),
       transferLimitBytes: cleanLimitBytes(c.transferLimitBytes),
       enabled: c.enabled === false || c.enabled === 0 ? 0 : 1,
       added_at: Number(c.added_at) || Date.now(),
