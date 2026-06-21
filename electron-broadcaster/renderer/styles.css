@@ -178,18 +178,20 @@ h1{font-size:16px;font-weight:900;letter-spacing:-.3px}
 @keyframes toastIn{from{opacity:0;transform:translate(-50%,10px)}}
 
 /* Library grid */
-.lib-stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin:0 0 12px; }
-.lib-stat { border:1px solid rgba(255,255,255,.1); background:rgba(15,23,42,.72); border-radius:8px; padding:11px 12px; }
-.lib-stat b { display:block; font-size:20px; }
-.lib-stat span { color:rgba(255,255,255,.58); font-size:11px; font-weight:800; }
-.lib-path-row { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,.06); }
+.lib-stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin:0 0 14px; }
+.lib-stat { border:1px solid rgba(255,255,255,.1); background:linear-gradient(180deg,rgba(20,184,166,.08),rgba(15,23,42,.72)); border-radius:8px; padding:13px 14px; box-shadow:0 14px 36px -30px rgba(0,0,0,.8); }
+.lib-stat b { display:block; font-size:22px; line-height:1.1; }
+.lib-stat span { color:rgba(255,255,255,.62); font-size:11px; font-weight:800; }
+.lib-path-row { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:9px 0; border-bottom:1px solid rgba(255,255,255,.06); }
 .lib-path-row span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.lib-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:14px; }
-.lib-card { position:relative; background:rgba(15,23,42,.72); border:1px solid rgba(255,255,255,.08); border-radius:8px; overflow:hidden; cursor:pointer; transition:transform .15s, border-color .15s, background .15s; }
-.lib-card:hover { transform:translateY(-3px); border-color:var(--accent2); background:rgba(15,23,42,.92); }
-.lib-poster { aspect-ratio:2/3; background:#1f2937 center/cover no-repeat; display:flex; align-items:center; justify-content:center; font-size:28px; font-weight:900; color:rgba(255,255,255,.28); position:relative; }
-.lib-badge { position:absolute; bottom:8px; left:8px; background:rgba(0,0,0,.58); border:1px solid rgba(255,255,255,.14); border-radius:6px; padding:3px 7px; font-size:10px; font-weight:900; color:#e5e7eb; }
-.lib-meta { padding:8px 10px; }
+.lib-path-lock { flex:0 0 auto; border:1px solid rgba(148,163,184,.2); border-radius:7px; padding:3px 8px; color:#cbd5e1; font-size:11px; font-weight:900; }
+.lib-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(166px,1fr)); gap:14px; }
+.lib-card { position:relative; background:rgba(15,23,42,.72); border:1px solid rgba(255,255,255,.08); border-radius:8px; overflow:hidden; cursor:pointer; transition:transform .15s, border-color .15s, background .15s, box-shadow .15s; box-shadow:0 10px 30px -28px rgba(0,0,0,.9); }
+.lib-card:hover { transform:translateY(-3px); border-color:var(--accent2); background:rgba(15,23,42,.94); box-shadow:0 18px 42px -28px rgba(0,0,0,.9); }
+.lib-poster { aspect-ratio:2/3; background:#1f2937 center/cover no-repeat; display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:900; color:rgba(255,255,255,.3); position:relative; }
+.lib-poster::after { content:''; position:absolute; inset:auto 0 0; height:42%; background:linear-gradient(180deg,transparent,rgba(0,0,0,.72)); }
+.lib-badge { position:absolute; bottom:8px; left:8px; background:rgba(0,0,0,.62); border:1px solid rgba(255,255,255,.14); border-radius:6px; padding:3px 7px; font-size:10px; font-weight:900; color:#e5e7eb; z-index:1; }
+.lib-meta { padding:10px 11px; }
 .lib-title { font-size:13px; font-weight:900; line-height:1.35; min-height:2.7em; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
 .lib-sub { font-size:11px; color:rgba(255,255,255,.56); margin-top:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .lib-progress { height:3px; background:rgba(255,255,255,.1); position:relative; }

@@ -107,7 +107,7 @@ function requireAdmin(req, res, getAdminAuth) {
 }
 
 function adminLoginPage(error = '') {
-  return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>لوحة إدارة منارة</title><style>:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at 70% 10%,rgba(37,99,235,.18),transparent 34%),linear-gradient(180deg,#081126,#070b1e);color:#eef2ff;font-family:system-ui,-apple-system,Segoe UI,Tahoma,sans-serif}.card{width:min(430px,92vw);border:1px solid rgba(148,163,184,.22);background:rgba(15,23,42,.9);border-radius:8px;padding:24px;box-shadow:0 24px 70px rgba(0,0,0,.38)}h1{font-size:24px;margin:0 0 6px}.lead{color:#94a3b8;line-height:1.7;margin:0 0 18px;font-size:13px}label{display:block;color:#cbd5e1;font-size:12px;font-weight:800;margin-top:12px}input{width:100%;box-sizing:border-box;margin:7px 0 2px;padding:12px;border-radius:8px;border:1px solid rgba(148,163,184,.24);background:#111936;color:#fff;font:inherit}button{width:100%;padding:12px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-weight:900;margin-top:16px;cursor:pointer}.err{color:#fecaca;background:rgba(127,29,29,.26);border:1px solid rgba(248,113,113,.34);border-radius:8px;padding:10px;font-size:13px}</style></head><body><form class="card" method="post" action="/admin/login"><h1>لوحة إدارة منارة</h1><p class="lead">ادخل لإدارة القنوات، IPTV، مكتبة الوسائط، المشاهدين، والتقارير داخل الشبكة المحلية.</p>${error ? `<p class="err">${escapeHtml(error)}</p>` : ''}<label>اسم المستخدم<input name="username" autocomplete="username" autofocus></label><label>كلمة المرور<input name="password" type="password" autocomplete="current-password"></label><button>دخول</button></form></body></html>`;
+  return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>دخول إدارة منارة</title><style>:root{color-scheme:dark;--bg:#070b16;--panel:#101827;--line:rgba(226,232,240,.14);--text:#f8fafc;--muted:#9ca3af;--accent:#2563eb;--accent2:#14b8a6}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:linear-gradient(180deg,rgba(7,11,22,.96),rgba(8,13,24,1)),repeating-linear-gradient(90deg,rgba(255,255,255,.035) 0 1px,transparent 1px 76px);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;padding:22px}.login{width:min(430px,100%)}.mark{display:flex;align-items:center;gap:10px;margin-bottom:14px}.dot{width:42px;height:42px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;font-weight:900}.brand b{display:block;font-size:16px}.brand span{display:block;color:var(--muted);font-size:12px;margin-top:2px}.card{border:1px solid var(--line);background:rgba(16,24,39,.92);border-radius:8px;padding:22px;box-shadow:0 26px 80px rgba(0,0,0,.36)}h1{font-size:23px;margin:0 0 7px;letter-spacing:0}.lead{color:#cbd5e1;line-height:1.7;margin:0 0 18px;font-size:13px}label{display:block;color:#dbeafe;font-size:12px;font-weight:900;margin-top:12px}input{width:100%;margin:7px 0 2px;padding:13px 14px;border-radius:8px;border:1px solid rgba(148,163,184,.24);background:#0b1220;color:#fff;font:inherit;outline:none}input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.18)}button{width:100%;min-height:46px;padding:12px;border:0;border-radius:8px;background:linear-gradient(135deg,var(--accent),#1d4ed8);color:#fff;font-weight:900;margin-top:16px;cursor:pointer;font:inherit}.err{color:#fecaca;background:rgba(127,29,29,.26);border:1px solid rgba(248,113,113,.34);border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.6}.note{margin:12px 0 0;color:var(--muted);font-size:12px;line-height:1.7;text-align:center}</style></head><body><main class="login"><div class="mark"><div class="dot">م</div><div class="brand"><b>Manara</b><span>إدارة الشبكة المحلية</span></div></div><form class="card" method="post" action="/admin/login"><h1>تسجيل الدخول</h1><p class="lead">ادخل بكلمة مرور الإدارة لإدارة القنوات، IPTV، المكتبة، والمشاهدين.</p>${error ? `<p class="err">${escapeHtml(error)}</p>` : ''}<label>اسم المستخدم<input name="username" autocomplete="username" placeholder="admin" required autofocus></label><label>كلمة المرور<input name="password" type="password" autocomplete="current-password" placeholder="كلمة المرور" required></label><button>دخول إلى اللوحة</button><p class="note">بعد الدخول ستبقى الجلسة محفوظة على هذا الجهاز لمدة أسبوع.</p></form></main></body></html>`;
 }
 
 function formatBytes(bytes) {
@@ -486,30 +486,34 @@ function adminPage(options = {}) {
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>لوحة إدارة منارة</title>
 <style>
-body{font-family:system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;margin:0;background:radial-gradient(circle at 76% 4%,rgba(37,99,235,.16),transparent 30%),linear-gradient(180deg,#081126,#070b1e);color:#eef2ff}
-main{max-width:1280px;margin:auto;padding:24px}
-h1{font-size:24px;margin:0 0 6px}.lead{color:#94a3b8;line-height:1.6;margin:0 0 18px}.shell-head{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:18px}.shell-head a{color:#bfdbfe;text-decoration:none;font-size:13px;font-weight:800}
-section{border:1px solid rgba(148,163,184,.18);background:rgba(15,23,42,.72);border-radius:8px;padding:16px;margin-bottom:14px;box-shadow:0 18px 54px rgba(0,0,0,.18)}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-label{display:block;font-size:12px;color:#cbd5e1;margin:10px 0 5px}
-input,textarea,select{width:100%;box-sizing:border-box;border:1px solid rgba(148,163,184,.22);border-radius:8px;padding:9px;background:#111936;color:#fff}
-textarea{min-height:240px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;direction:ltr;text-align:left}
-button{border:0;border-radius:8px;padding:8px 11px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer;margin:4px 4px 4px 0}
-button.secondary{background:#334155}
-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
-td,th{border-bottom:1px solid rgba(255,255,255,.1);padding:8px;text-align:right;vertical-align:top}
-.url{word-break:break-all;color:#bfdbfe;direction:ltr;text-align:left}
-.msg{color:#86efac;font-size:13px;margin-top:8px}
-.muted{color:#94a3b8;font-size:12px}
-.statcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:10px 0 12px}.statcard{border:1px solid rgba(148,163,184,.16);background:rgba(0,0,0,.18);border-radius:8px;padding:12px}.statcard b{display:block;font-size:22px}.statcard span{font-size:12px;color:#94a3b8}
-@media (max-width:900px){.grid{grid-template-columns:1fr}table{display:block;overflow:auto}}
-@media (max-width:700px){.statcards{grid-template-columns:1fr 1fr}}
+:root{color-scheme:dark;--bg:#070b16;--panel:#101827;--panel2:#0b1220;--line:rgba(226,232,240,.12);--line2:rgba(148,163,184,.2);--text:#f8fafc;--muted:#9ca3af;--accent:#2563eb;--accent2:#14b8a6;--good:#22c55e;--warn:#f59e0b;--danger:#ef4444}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{font-family:system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;margin:0;background:linear-gradient(180deg,rgba(7,11,22,.96),rgba(8,13,24,1)),repeating-linear-gradient(90deg,rgba(255,255,255,.035) 0 1px,transparent 1px 76px);color:var(--text)}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;background:linear-gradient(90deg,rgba(37,99,235,.08),transparent 36%,rgba(20,184,166,.06));z-index:-1}
+main{max-width:1440px;margin:auto;padding:22px}
+h1{font-size:28px;margin:0 0 7px;letter-spacing:0}h2{font-size:18px;margin:0 0 12px}h3{font-size:15px;margin:20px 0 9px;color:#dbeafe}.lead{color:#b6c2d6;line-height:1.7;margin:0}
+.eyebrow{display:inline-flex;margin-bottom:8px;padding:5px 8px;border:1px solid rgba(20,184,166,.26);background:rgba(20,184,166,.1);border-radius:7px;color:#ccfbf1;font-size:11px;font-weight:900}
+.shell-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:14px}.head-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.head-actions a,.admin-nav a{color:#e0f2fe;text-decoration:none;font-size:12px;font-weight:900;border:1px solid var(--line);background:rgba(255,255,255,.06);border-radius:8px;padding:9px 11px}.head-actions a.primary{background:var(--accent);border-color:transparent;color:#fff}
+.admin-nav{position:sticky;top:0;z-index:5;display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px;padding:10px 0;background:linear-gradient(180deg,rgba(7,11,22,.98),rgba(7,11,22,.86));backdrop-filter:blur(16px)}
+section{border:1px solid var(--line);background:linear-gradient(180deg,rgba(16,24,39,.88),rgba(15,23,42,.72));border-radius:8px;padding:18px;margin-bottom:16px;box-shadow:0 20px 60px rgba(0,0,0,.22)}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+label{display:block;font-size:12px;color:#dbeafe;font-weight:850;margin:10px 0 6px}
+input,textarea,select{width:100%;box-sizing:border-box;border:1px solid var(--line2);border-radius:8px;padding:11px 12px;background:var(--panel2);color:#fff;font:inherit;outline:none}input:focus,textarea:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.16)}
+textarea{min-height:220px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;direction:ltr;text-align:left;line-height:1.55}
+button{border:0;border-radius:8px;padding:9px 12px;background:var(--accent);color:#fff;font-weight:850;cursor:pointer;margin:4px 4px 4px 0;font-family:inherit}button:hover{filter:brightness(1.08)}button.secondary{background:#334155}button.danger{background:#dc2626}
+table{width:100%;border-collapse:separate;border-spacing:0;margin-top:10px;font-size:13px;overflow:hidden;border:1px solid rgba(255,255,255,.06);border-radius:8px}
+thead th{position:sticky;top:0;background:rgba(15,23,42,.96);color:#dbeafe;font-size:11px;text-transform:none;z-index:1}td,th{border-bottom:1px solid rgba(255,255,255,.075);padding:10px;text-align:right;vertical-align:top}tbody tr:hover{background:rgba(255,255,255,.035)}tbody tr:last-child td{border-bottom:0}
+a{color:#93c5fd}.url{word-break:break-all;color:#bfdbfe;direction:ltr;text-align:left}.msg{color:#86efac;font-size:13px;margin-top:8px}.muted{color:var(--muted);font-size:12px;line-height:1.7}
+.statcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:10px 0 12px}.statcard{border:1px solid var(--line);background:rgba(0,0,0,.2);border-radius:8px;padding:13px}.statcard b{display:block;font-size:24px;line-height:1.1}.statcard span{font-size:12px;color:var(--muted);font-weight:800}
+.table-wrap{width:100%;overflow:auto}.section-note{display:flex;gap:8px;align-items:center;color:#bfdbfe;background:rgba(37,99,235,.08);border:1px solid rgba(37,99,235,.22);border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12px;line-height:1.7}.pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:rgba(255,255,255,.055);border-radius:7px;padding:4px 8px;color:#dbeafe;font-size:11px;font-weight:900}
+@media (max-width:980px){.grid{grid-template-columns:1fr}.shell-head{align-items:flex-start;flex-direction:column}.head-actions{justify-content:flex-start}table{display:block;overflow:auto}.admin-nav{position:static}}
+@media (max-width:720px){main{padding:14px}.statcards{grid-template-columns:1fr 1fr}.head-actions a,.admin-nav a{flex:1;text-align:center}.shell-head h1{font-size:24px}}
 </style>
 </head>
 <body><main>
-<div class="shell-head"><div><h1>لوحة إدارة منارة</h1><p class="lead">إدارة تجربة المشاهدة المحلية، القنوات، IPTV، مكتبة الوسائط، صلاحيات المشاهدين، والتقارير من صفحة واحدة.</p></div><a href="/">فتح صفحة المشاهدة</a></div>
+<div class="shell-head"><div><span class="eyebrow">Manara LAN Admin</span><h1>لوحة إدارة منارة</h1><p class="lead">تحكم واضح في المشاهدة داخل الشبكة: القنوات، IPTV، مكتبة الوسائط، المشاهدين، التقارير، والتخصيص.</p></div><div class="head-actions"><a class="primary" href="/">فتح صفحة المشاهدة</a><a href="/library">فتح المكتبة</a><a href="/admin/logout">تسجيل الخروج</a></div></div>
+<nav class="admin-nav"><a href="#media">المكتبة</a><a href="#viewers">المشاهدون</a><a href="#iptv">IPTV</a><a href="#security">الحظر</a><a href="#logs">السجل</a><a href="#broadcast">قنوات البث</a></nav>
 <script id="mediaAdminPayload" type="application/json">${mediaPayload}</script>
-<section>
+<section id="media">
   <h2>مكتبة الوسائط</h2>
   <div class="statcards">
     <div class="statcard"><b>${mediaStats.total}</b><span>كل المحتوى</span></div>
@@ -529,7 +533,7 @@ td,th{border-bottom:1px solid rgba(255,255,255,.1);padding:8px;text-align:right;
     <label>النوع</label><select name="kind"><option value="movies">أفلام</option><option value="tv">مسلسلات / حلقات</option><option value="audio">صوتيات</option></select>
     <button>إضافة المجلد</button><button type="button" id="scanNowBtn">فحص الآن</button>
   </form>
-  <table><thead><tr><th>المسار</th><th>النوع</th><th>الإجراء</th></tr></thead><tbody>${pathRows || '<tr><td colspan="3">لم تتم إضافة أي مجلدات بعد.</td></tr>'}</tbody></table>
+  <div class="table-wrap"><table><thead><tr><th>المسار</th><th>النوع</th><th>الإجراء</th></tr></thead><tbody>${pathRows || '<tr><td colspan="3">لم تتم إضافة أي مجلدات بعد.</td></tr>'}</tbody></table></div>
   <h3>التخصيص</h3>
   <form id="themeForm" class="grid">
     <label>اسم الواجهة<input name="brandName" value="${escapeHtml(mediaTheme.brandName)}"></label>
@@ -546,18 +550,18 @@ td,th{border-bottom:1px solid rgba(255,255,255,.1);padding:8px;text-align:right;
     <label>النوع</label><select name="kind"><option value="movie">فيلم</option><option value="episode">حلقة</option><option value="audio">صوتيات</option></select>
     <button>رفع الملف</button>
   </form>
-  <p class="muted">التقارير: <a href="/api/admin/reports/views.csv">CSV</a> · <a href="/api/admin/reports/views.json">JSON</a> · <a href="/api/admin/health">فحص الصحة</a></p>
+  <p class="section-note">التقارير جاهزة للتصدير: <a href="/api/admin/reports/views.csv">CSV</a> · <a href="/api/admin/reports/views.json">JSON</a> · <a href="/api/admin/health">فحص الصحة</a></p>
   <p class="muted">الحالة: ${health.missingFiles.length} ملفات مفقودة، ${health.unsupportedFormats.length} صيغ غير مدعومة، ${health.brokenSubtitles.length} مشاكل ترجمة.</p>
   <h3>الأكثر مشاهدة</h3>
-  <table><thead><tr><th>العنوان</th><th>النوع</th><th>مرات التشغيل</th><th>البيانات المنقولة</th><th>آخر مشاهدة</th></tr></thead><tbody>${topMediaRows || '<tr><td colspan="5">لا توجد مشاهدات بعد.</td></tr>'}</tbody></table>
+  <div class="table-wrap"><table><thead><tr><th>العنوان</th><th>النوع</th><th>مرات التشغيل</th><th>البيانات المنقولة</th><th>آخر مشاهدة</th></tr></thead><tbody>${topMediaRows || '<tr><td colspan="5">لا توجد مشاهدات بعد.</td></tr>'}</tbody></table></div>
   <h3 style="margin-top:18px">محتوى المكتبة</h3>
-  <table><thead><tr><th>العنوان</th><th>النوع</th><th>الحجم</th><th>المدة</th><th>الملف</th><th>الإجراءات</th></tr></thead><tbody>${mediaRows || '<tr><td colspan="6">لم تتم فهرسة أي وسائط بعد. أضف مجلداً ثم شغل الفحص.</td></tr>'}</tbody></table>
+  <div class="table-wrap"><table><thead><tr><th>العنوان</th><th>النوع</th><th>الحجم</th><th>المدة</th><th>الملف</th><th>الإجراءات</th></tr></thead><tbody>${mediaRows || '<tr><td colspan="6">لم تتم فهرسة أي وسائط بعد. أضف مجلداً ثم شغل الفحص.</td></tr>'}</tbody></table></div>
 </section>
-<section>
+<section id="viewers">
   <h2>المشاهدون النشطون</h2>
-  <table><thead><tr><th>IP</th><th>يشاهد</th><th>البيانات المنقولة</th><th>الطلبات</th><th>الجهاز</th><th>الإجراء</th></tr></thead><tbody>${sessionRows || '<tr><td colspan="6">لا يوجد مشاهدون نشطون حالياً.</td></tr>'}</tbody></table>
+  <div class="table-wrap"><table><thead><tr><th>IP</th><th>يشاهد</th><th>البيانات المنقولة</th><th>الطلبات</th><th>الجهاز</th><th>الإجراء</th></tr></thead><tbody>${sessionRows || '<tr><td colspan="6">لا يوجد مشاهدون نشطون حالياً.</td></tr>'}</tbody></table></div>
 </section>
-<section>
+<section id="iptv">
   <h2>قنوات IPTV</h2>
   <form id="iptvForm">
     <label>اسم القناة</label><input name="name" required>
@@ -568,13 +572,13 @@ td,th{border-bottom:1px solid rgba(255,255,255,.1);padding:8px;text-align:right;
     <label>حد استهلاك الإنترنت (MB، 0 يعني بدون حد)</label><input name="transferLimitMb" type="number" min="0" step="1" value="0">
     <button>إضافة IPTV</button>
   </form>
-  <table><thead><tr><th>الاسم</th><th>المصدر</th><th>التصنيف</th><th>الرابط</th><th>الحالة</th><th>الحد</th><th>المشاهدون</th><th>استهلاك الإنترنت</th><th>الإجراءات</th></tr></thead><tbody>${iptvRows || '<tr><td colspan="9">لا توجد قنوات IPTV مضافة بعد.</td></tr>'}</tbody></table>
+  <div class="table-wrap"><table><thead><tr><th>الاسم</th><th>المصدر</th><th>التصنيف</th><th>الرابط</th><th>الحالة</th><th>الحد</th><th>المشاهدون</th><th>استهلاك الإنترنت</th><th>الإجراءات</th></tr></thead><tbody>${iptvRows || '<tr><td colspan="9">لا توجد قنوات IPTV مضافة بعد.</td></tr>'}</tbody></table></div>
   <h3>تحليلات IPTV المتقدمة</h3>
   <p class="muted">تقيس الفرق بين سحب الإنترنت والتوزيع داخل الشبكة، ونسبة استفادة الكاش، والأجهزة البطيئة التي تم فصلها لحماية الخادم.</p>
-  <table><thead><tr><th>القناة</th><th>النوع</th><th>الآن / أعلى</th><th>إنترنت</th><th>LAN</th><th>Cache hit</th><th>الكاش</th><th>Slow drops</th><th>الأخطاء</th></tr></thead><tbody>${iptvAnalyticsRows || '<tr><td colspan="9">لا توجد بيانات تشغيل IPTV بعد.</td></tr>'}</tbody></table>
+  <div class="table-wrap"><table><thead><tr><th>القناة</th><th>النوع</th><th>الآن / أعلى</th><th>إنترنت</th><th>LAN</th><th>Cache hit</th><th>الكاش</th><th>Slow drops</th><th>الأخطاء</th></tr></thead><tbody>${iptvAnalyticsRows || '<tr><td colspan="9">لا توجد بيانات تشغيل IPTV بعد.</td></tr>'}</tbody></table></div>
 </section>
 <div class="grid">
-<section>
+<section id="security">
   <h2>الحظر</h2>
   <form id="blockForm">
     <label>النوع</label><select name="type"><option value="ip">عنوان IP</option><option value="userAgent">الجهاز / المتصفح يحتوي على</option></select>
@@ -584,14 +588,14 @@ td,th{border-bottom:1px solid rgba(255,255,255,.1);padding:8px;text-align:right;
   </form>
   <label>الرسالة التي تظهر للمشاهد</label><input id="blockedMessage" value="${escapeHtml(db.blockedMessage())}">
   <button id="saveBlockedMessage">حفظ الرسالة</button>
-  <table><thead><tr><th>النوع</th><th>المعرف</th><th>السبب</th><th>الإجراء</th></tr></thead><tbody>${blockRows || '<tr><td colspan="4">لا توجد أجهزة محظورة.</td></tr>'}</tbody></table>
+  <div class="table-wrap"><table><thead><tr><th>النوع</th><th>المعرف</th><th>السبب</th><th>الإجراء</th></tr></thead><tbody>${blockRows || '<tr><td colspan="4">لا توجد أجهزة محظورة.</td></tr>'}</tbody></table></div>
 </section>
-<section>
+<section id="logs">
   <h2>سجل الوصول</h2>
-  <table><thead><tr><th>الوقت</th><th>الإجراء</th><th>IP</th><th>الهدف</th><th>البيانات</th><th>الحالة</th></tr></thead><tbody>${logRows || '<tr><td colspan="6">لا توجد سجلات حتى الآن.</td></tr>'}</tbody></table>
+  <div class="table-wrap"><table><thead><tr><th>الوقت</th><th>الإجراء</th><th>IP</th><th>الهدف</th><th>البيانات</th><th>الحالة</th></tr></thead><tbody>${logRows || '<tr><td colspan="6">لا توجد سجلات حتى الآن.</td></tr>'}</tbody></table></div>
 </section>
 </div>
-<section>
+<section id="broadcast">
   <h2>قنوات البث المحفوظة</h2>
   <p class="muted">محرر متقدم لقائمة قنوات البث التي يستخدمها تطبيق سطح المكتب.</p>
   <textarea id="broadcastJson">${broadcastJson}</textarea>
@@ -750,7 +754,6 @@ function libraryPage(req, res) {
   const text = isRtl ? {
     pageTitle: 'مكتبة Manara',
     channels: 'القنوات',
-    admin: 'الإدارة',
     totalItems: 'كل المحتوى',
     movies: 'أفلام',
     episodes: 'حلقات',
@@ -773,7 +776,7 @@ function libraryPage(req, res) {
     continueHint: 'أكمل من آخر نقطة مشاهدة',
     favoritesHint: 'محفوظة لهذا الجهاز',
     library: 'المكتبة',
-    empty: 'لا يوجد محتوى متاح حالياً.',
+    empty: 'لا يوجد محتوى متاح حالياً. ستظهر المكتبة هنا عند توفر المحتوى.',
     items: 'عنصر',
     sortRecent: 'الأحدث',
     sortTitle: 'الاسم',
@@ -794,7 +797,6 @@ function libraryPage(req, res) {
   } : {
     pageTitle: 'Manara Media Library',
     channels: 'Channels',
-    admin: 'Admin',
     totalItems: 'Total items',
     movies: 'Movies',
     episodes: 'Episodes',
@@ -817,7 +819,7 @@ function libraryPage(req, res) {
     continueHint: 'Resume where you stopped',
     favoritesHint: 'Saved on this device',
     library: 'Library',
-    empty: 'No media is available right now.',
+    empty: 'No media is available right now. The library will appear here when content is available.',
     items: 'item(s)',
     sortRecent: 'Newest',
     sortTitle: 'Title',
@@ -845,24 +847,25 @@ function libraryPage(req, res) {
 <title>${escapeHtml(text.pageTitle)}</title>
 <style>
 :root{color-scheme:dark;--bg:#080a12;--panel:#111827;--panel2:#0f172a;--line:rgba(226,232,240,.12);--text:#f8fafc;--muted:#9ca3af;--accent:${escapeHtml(theme.accent)};--accent2:${escapeHtml(theme.accent2)}}
-*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:linear-gradient(180deg,#080a12,#0b1020 46%,#080a12);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,sans-serif}
-.hero{min-height:58vh;padding:22px;background:linear-gradient(90deg,rgba(8,10,18,.98),rgba(8,10,18,.76) 48%,rgba(8,10,18,.36)),var(--hero,linear-gradient(135deg,#111827,#0f172a));background-size:cover;background-position:center;display:flex;align-items:flex-end}
-.hero-inner{width:100%;max-width:1280px;margin:auto}.top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:52px}.brand{display:flex;align-items:center;gap:10px;font-weight:900;font-size:18px}.brand img{max-height:36px;border-radius:8px}.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a,.btn{border:1px solid var(--line);background:rgba(255,255,255,.08);color:#fff;text-decoration:none;border-radius:8px;padding:10px 13px;font-weight:850;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px}.btn.primary,.nav a.primary{background:var(--accent);border-color:transparent}.btn.ghost{background:rgba(255,255,255,.06)}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:linear-gradient(180deg,#080a12,#0b1020 48%,#070a12);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,sans-serif;-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;background:repeating-linear-gradient(90deg,rgba(255,255,255,.026) 0 1px,transparent 1px 86px);opacity:.8;z-index:-1}
+.hero{min-height:56vh;padding:24px;background:linear-gradient(90deg,rgba(8,10,18,.98),rgba(8,10,18,.74) 50%,rgba(8,10,18,.32)),var(--hero,linear-gradient(135deg,#111827,#0f172a));background-size:cover;background-position:center;display:flex;align-items:flex-end;box-shadow:inset 0 -120px 140px rgba(8,10,18,.84)}
+.hero-inner{width:100%;max-width:1320px;margin:auto}.top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:50px}.brand{display:flex;align-items:center;gap:10px;font-weight:950;font-size:18px;letter-spacing:0}.brand img{max-height:38px;border-radius:8px}.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a,.btn{border:1px solid var(--line);background:rgba(255,255,255,.08);color:#fff;text-decoration:none;border-radius:8px;padding:10px 13px;font-weight:850;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px}.btn.primary,.nav a.primary{background:var(--accent);border-color:transparent;box-shadow:0 16px 34px rgba(37,99,235,.25)}.btn.ghost{background:rgba(255,255,255,.06)}
 .eyebrow{display:inline-flex;margin-bottom:10px;color:#ccfbf1;background:rgba(20,184,166,.12);border:1px solid rgba(20,184,166,.28);border-radius:8px;padding:6px 9px;font-size:12px;font-weight:900}.hero h1{font-size:clamp(34px,6vw,70px);line-height:1;margin:0 0 12px;letter-spacing:0;max-width:900px}.hero p{max-width:760px;color:#d1d5db;line-height:1.75;margin:0 0 18px}.hero-actions{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:18px}
 .stats{display:flex;gap:10px;flex-wrap:wrap}.stat{border:1px solid var(--line);background:rgba(0,0,0,.26);border-radius:8px;padding:10px 12px;min-width:96px}.stat b{display:block;font-size:18px}.stat span{font-size:12px;color:var(--muted)}
-main{max-width:1280px;margin:auto;padding:18px 22px 42px}.tools{position:sticky;top:0;z-index:4;display:grid;grid-template-columns:minmax(220px,1.6fr) 150px 150px 150px 132px;gap:10px;margin:0 0 22px;padding:12px 0;background:linear-gradient(180deg,rgba(8,10,18,.98),rgba(8,10,18,.88));backdrop-filter:blur(16px)}
-input,select{width:100%;border:1px solid var(--line);background:#111827;color:#fff;border-radius:8px;padding:11px 12px;font:inherit;min-height:44px}
-.section{margin:28px 0}.section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:12px}.section h2{font-size:21px;margin:0}.section small{color:var(--muted)}
-.rail{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(154px,190px);gap:12px;overflow-x:auto;overscroll-behavior-x:contain;padding-bottom:10px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(156px,1fr));gap:14px}.grid.compact{grid-template-columns:1fr}
-.tile{position:relative;display:block;min-width:0;text-decoration:none;color:#fff;background:rgba(17,24,39,.72);border:1px solid var(--line);border-radius:8px;overflow:hidden;transition:transform .16s,border-color .16s,background .16s;outline:none}.tile:hover,.tile:focus-visible{transform:translateY(-3px);border-color:rgba(20,184,166,.58);background:rgba(17,24,39,.92)}
-.poster{aspect-ratio:2/3;background:#1f2937 center/cover no-repeat;display:grid;place-items:center;color:rgba(255,255,255,.38);font-size:38px;font-weight:900}.poster.audio{aspect-ratio:1;background:linear-gradient(135deg,#1f2937,#0f3d42)}.kind-badge{position:absolute;bottom:8px;left:8px;border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.58);border-radius:6px;padding:4px 7px;font-size:10px;font-weight:900;color:#e5e7eb}
+main{max-width:1320px;margin:auto;padding:18px 22px 42px}.tools{position:sticky;top:0;z-index:4;display:grid;grid-template-columns:minmax(240px,1.55fr) repeat(5,minmax(126px,1fr));gap:10px;margin:0 0 22px;padding:12px;background:rgba(8,10,18,.76);border:1px solid rgba(226,232,240,.08);border-radius:8px;backdrop-filter:blur(16px)}
+input,select{width:100%;border:1px solid var(--line);background:#111827;color:#fff;border-radius:8px;padding:11px 12px;font:inherit;min-height:44px;outline:none}input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.18)}
+.section{margin:30px 0}.section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:12px}.section h2{font-size:21px;margin:0}.section small{color:var(--muted)}
+.rail{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(160px,198px);gap:12px;overflow-x:auto;overscroll-behavior-x:contain;padding-bottom:10px;scrollbar-width:thin}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(164px,1fr));gap:14px}.grid.compact{grid-template-columns:1fr}
+.tile{position:relative;display:block;min-width:0;text-decoration:none;color:#fff;background:rgba(17,24,39,.72);border:1px solid var(--line);border-radius:8px;overflow:hidden;transition:transform .16s,border-color .16s,background .16s,box-shadow .16s;outline:none}.tile:hover,.tile:focus-visible{transform:translateY(-3px);border-color:rgba(20,184,166,.58);background:rgba(17,24,39,.94);box-shadow:0 18px 44px rgba(0,0,0,.26)}
+.poster{aspect-ratio:2/3;background:#1f2937 center/cover no-repeat;display:grid;place-items:center;color:rgba(255,255,255,.38);font-size:38px;font-weight:900;position:relative}.poster::after{content:"";position:absolute;inset:auto 0 0 0;height:42%;background:linear-gradient(180deg,transparent,rgba(0,0,0,.72))}.poster.audio{aspect-ratio:1;background:linear-gradient(135deg,#1f2937,#0f3d42)}.kind-badge{position:absolute;bottom:8px;left:8px;border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.58);border-radius:6px;padding:4px 7px;font-size:10px;font-weight:900;color:#e5e7eb;z-index:1}
 .meta{padding:10px}.title{font-size:13px;font-weight:900;line-height:1.35;min-height:36px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.sub{font-size:11px;color:var(--muted);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.overview{display:none;color:#cbd5e1;font-size:12px;line-height:1.55;margin-top:7px}
 .progress{height:4px;background:rgba(255,255,255,.12)}.progress i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2))}
-.quick{position:absolute;top:8px;right:8px;display:flex;gap:5px}.quick button{width:32px;height:32px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.58);color:#fff;border-radius:8px;cursor:pointer;font-weight:900}.quick button.on{background:#dc2626}
+.quick{position:absolute;top:8px;right:8px;display:flex;gap:5px;z-index:2}.quick button{width:32px;height:32px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.58);color:#fff;border-radius:8px;cursor:pointer;font-weight:900}.quick button.on{background:#dc2626}
 .grid.compact .tile{display:grid;grid-template-columns:92px minmax(0,1fr);min-height:118px}.grid.compact .poster{aspect-ratio:2/3;height:118px}.grid.compact .meta{padding:12px 14px}.grid.compact .title{font-size:15px;min-height:0}.grid.compact .overview{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.grid.compact .progress{position:absolute;left:92px;right:0;bottom:0}
-.empty{border:1px dashed var(--line);background:rgba(255,255,255,.045);border-radius:8px;padding:26px;color:var(--muted);line-height:1.7;text-align:center}.empty strong{display:block;color:#fff;margin-bottom:4px}.hide{display:none!important}
-@media(max-width:980px){.tools{position:static;grid-template-columns:1fr 1fr}.hero{min-height:52vh}.top{margin-bottom:38px}}
-@media(max-width:640px){.hero{min-height:48vh;padding:16px}.top{align-items:flex-start;margin-bottom:30px}.nav a{padding:8px 10px}.hero h1{font-size:34px}.stats{display:grid;grid-template-columns:1fr 1fr}.tools{grid-template-columns:1fr}.rail{grid-auto-columns:minmax(132px,160px)}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}main{padding:14px 12px 30px}.grid.compact .tile{grid-template-columns:82px minmax(0,1fr)}.grid.compact .poster{height:108px}.grid.compact .progress{left:82px}}
+.empty{border:1px dashed var(--line);background:rgba(255,255,255,.045);border-radius:8px;padding:30px;color:var(--muted);line-height:1.8;text-align:center}.empty strong{display:block;color:#fff;margin-bottom:4px}.hide{display:none!important}
+@media(max-width:1100px){.tools{position:static;grid-template-columns:1fr 1fr 1fr}.hero{min-height:52vh}.top{margin-bottom:38px}}
+@media(max-width:640px){.hero{min-height:48vh;padding:16px}.top{align-items:flex-start;margin-bottom:30px}.nav a{padding:8px 10px}.hero h1{font-size:34px}.stats{display:grid;grid-template-columns:1fr 1fr}.tools{grid-template-columns:1fr;padding:10px}.rail{grid-auto-columns:minmax(132px,164px)}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}main{padding:14px 12px 30px}.grid.compact .tile{grid-template-columns:82px minmax(0,1fr)}.grid.compact .poster{height:108px}.grid.compact .progress{left:82px}}
 </style>
 </head>
 <body><main>
@@ -875,7 +878,7 @@ input,select{width:100%;border:1px solid var(--line);background:#111827;color:#f
   <div class="hero-inner">
     <div class="top">
       <div class="brand">${theme.logoUrl ? `<img src="${escapeHtml(theme.logoUrl)}" style="height:32px;vertical-align:middle;margin-inline-end:8px">` : ''}${escapeHtml(theme.brandName)}</div>
-      <nav class="nav"><a href="/" class="primary">${escapeHtml(text.channels)}</a><a href="/admin">${escapeHtml(text.admin)}</a></nav>
+      <nav class="nav"><a href="/" class="primary">${escapeHtml(text.channels)}</a></nav>
     </div>
     <span class="eyebrow" id="heroKind">${escapeHtml(text.featured)}</span>
     <h1 id="heroTitle">${escapeHtml(theme.brandName)}</h1>
@@ -1032,7 +1035,6 @@ function playerPage(id, req, res) {
   const text = isRtl ? {
     library: 'المكتبة',
     channels: 'القنوات',
-    admin: 'الإدارة',
     unsupportedTitle: 'الصيغة غير مدعومة',
     unsupportedBody: 'لا يستطيع هذا المتصفح تشغيل هذه الصيغة. يمكنك تنزيل الملف أو فتحه بتطبيق خارجي.',
     noOverview: 'لا يوجد وصف متاح لهذا المحتوى.',
@@ -1061,7 +1063,6 @@ function playerPage(id, req, res) {
   } : {
     library: 'Library',
     channels: 'Channels',
-    admin: 'Admin',
     unsupportedTitle: 'Unsupported format',
     unsupportedBody: 'This browser cannot play this format. You can download it or open it in an external player.',
     noOverview: 'No description is available for this title.',
@@ -1139,7 +1140,7 @@ body.theater .wrap{max-width:1600px}body.theater .layout{grid-template-columns:1
 <script id="viewerMeta" type="application/json">${viewerPayload}</script>
 <script id="textMeta" type="application/json">${textPayload}</script>
 <div class="wrap">
-  <div class="bar"><a href="/library">${escapeHtml(text.library)}</a><div><a href="/">${escapeHtml(text.channels)}</a> <a href="/admin">${escapeHtml(text.admin)}</a></div></div>
+  <div class="bar"><a href="/library">${escapeHtml(text.library)}</a><div><a href="/">${escapeHtml(text.channels)}</a></div></div>
   <div class="layout">
     <main>
       <div class="player">
@@ -1269,6 +1270,12 @@ function createHandler(options = {}) {
     if (u.pathname === '/admin/login' && req.method === 'GET') {
       return send(res, 200, adminLoginPage(), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     }
+    if (u.pathname === '/admin/logout') {
+      return send(res, 302, '', {
+        'Location': '/admin/login',
+        'Set-Cookie': 'manara_admin=; Path=/admin; HttpOnly; SameSite=Lax; Max-Age=0',
+      });
+    }
     if (u.pathname === '/admin/login' && req.method === 'POST') {
       const auth = typeof options.getAdminAuth === 'function' ? options.getAdminAuth() : {};
       const body = await readBody(req);
@@ -1281,7 +1288,7 @@ function createHandler(options = {}) {
           'Set-Cookie': `manara_admin=${Buffer.from(`${username}:${password}`).toString('base64')}; Path=/admin; HttpOnly; SameSite=Lax; Max-Age=604800`,
         });
       }
-      return send(res, 401, adminLoginPage('Invalid username or password.'), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      return send(res, 401, adminLoginPage('اسم المستخدم أو كلمة المرور غير صحيحة.'), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     }
     if (u.pathname === '/admin') {
       if (!requireAdmin(req, res, options.getAdminAuth)) return;

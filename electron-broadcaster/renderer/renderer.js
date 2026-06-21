@@ -734,7 +734,7 @@ async function refreshLibPaths() {
   el.innerHTML = paths.map(p => `
     <div class="lib-path-row">
       <span>${escapeHtml(p.path)} <small style="opacity:.6">(${escapeHtml(p.kind)})</small></span>
-      ${p.locked ? '<span style="opacity:.5">🔒</span>' :
+      ${p.locked ? '<span class="lib-path-lock">مثبت</span>' :
         `<button class="btn ghost" data-rmpath="${p.id}" style="padding:2px 8px;font-size:12px">إزالة</button>`}
     </div>
   `).join('');
@@ -762,7 +762,7 @@ async function refreshLibGrid() {
     const meta = [it.year || '', it.rating ? '★ ' + Number(it.rating).toFixed(1) : '', formatFileSize(it.size)].filter(Boolean).join(' · ');
     return `
       <div class="lib-card" data-id="${it.id}">
-        <div class="lib-poster" ${poster}>${it.poster_url ? '' : 'MEDIA'}<span class="lib-badge">${kindLabel}</span></div>
+        <div class="lib-poster" ${poster}>${it.poster_url ? '' : 'وسائط'}<span class="lib-badge">${kindLabel}</span></div>
         <div class="lib-meta">
           <div class="lib-title">${escapeHtml(it.title)}${it.season ? ` S${it.season}E${it.episode}` : ''}</div>
           <div class="lib-sub">${escapeHtml(meta)}</div>
