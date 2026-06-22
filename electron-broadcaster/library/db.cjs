@@ -8,6 +8,7 @@
 //   reset is harmless.
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 let Database;
 try { Database = require('better-sqlite3'); } catch (e) { Database = null; }
@@ -529,6 +530,8 @@ let _adminStatePath = null;
 let _adminState = {
   sessions: {},
   viewers: {},
+  viewerAccounts: {},
+  viewerMessages: [],
   blocks: [],
   logs: [],
   blockedMessage: 'البث غير متاح حالياً.',
@@ -557,6 +560,8 @@ function normalizeAdminState(raw = {}) {
   return {
     sessions: raw.sessions && typeof raw.sessions === 'object' ? raw.sessions : {},
     viewers: raw.viewers && typeof raw.viewers === 'object' ? raw.viewers : {},
+    viewerAccounts: raw.viewerAccounts && typeof raw.viewerAccounts === 'object' ? raw.viewerAccounts : {},
+    viewerMessages: Array.isArray(raw.viewerMessages) ? raw.viewerMessages.slice(-1000) : [],
     blocks: Array.isArray(raw.blocks) ? raw.blocks : [],
     logs: Array.isArray(raw.logs) ? raw.logs.slice(-600) : [],
     blockedMessage,
@@ -589,6 +594,76 @@ function saveAdminState() {
 
 function cleanSessionKey(value) {
   return String(value || '').trim().slice(0, 160) || 'unknown';
+}
+
+function randomId(prefix = 'id') {
+  return prefix + '_' + Date.now().toString(36) + crypto.randomBytes(5).toString('hex');
+}
+
+function cleanEmail(value) {
+  return String(value || '').trim().toLowerCase().slice(0, 180);
+}
+
+function cleanDisplayName(value, fallback = '') {
+  return String(value || fallback || '').trim().replace(/\s+/g, ' ').slice(0, 80);
+}
+
+function publicViewerAccount(account) {
+  if (!account) return null;
+  return {
+    id: account.id,
+    viewerId: account.viewerId,
+    name: account.name || '',
+    email: account.email || '',
+    disabled: !!account.disabled,
+    createdAt: Number(account.createdAt) || 0,
+    updatedAt: Number(account.updatedAt) || 0,
+    lastSeenAt: Number(account.lastSeenAt) || 0,
+  };
+}
+
+function makePasswordRecord(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(String(password || ''), salt, 120000, 32, 'sha256').toString('hex');
+  return { salt, hash };
+}
+
+function verifyPassword(password, account) {
+  if (!account?.passwordHash || !account?.passwordSalt) return false;
+  const hash = crypto.pbkdf2Sync(String(password || ''), account.passwordSalt, 120000, 32, 'sha256');
+  const saved = Buffer.from(String(account.passwordHash), 'hex');
+  return saved.length === hash.length && crypto.timingSafeEqual(saved, hash);
+}
+
+function findViewerAccountByEmail(email) {
+  const clean = cleanEmail(email);
+  return Object.values(_adminState.viewerAccounts || {}).find((account) => account.email === clean) || null;
+}
+
+function mergeUnique(left = [], right = []) {
+  return Array.from(new Set([...(Array.isArray(left) ? left : []), ...(Array.isArray(right) ? right : [])].map(String))).slice(-1000);
+}
+
+function mergeViewerState(fromViewerId, toViewerId) {
+  const fromId = cleanSessionKey(fromViewerId);
+  const toId = cleanSessionKey(toViewerId);
+  if (!fromId || !toId || fromId === toId) return viewerState(toId);
+  const from = viewerState(fromId);
+  const to = viewerState(toId);
+  to.favorites = mergeUnique(to.favorites, from.favorites);
+  to.watchLater = mergeUnique(to.watchLater, from.watchLater);
+  const rows = [...(Array.isArray(to.history) ? to.history : []), ...(Array.isArray(from.history) ? from.history : [])]
+    .reduce((acc, row) => {
+      const key = String(row.mediaId || '');
+      if (!key) return acc;
+      const current = acc.get(key);
+      if (!current || Number(row.updatedAt || 0) > Number(current.updatedAt || 0)) acc.set(key, { ...row, mediaId: key });
+      return acc;
+    }, new Map());
+  to.history = Array.from(rows.values()).sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0)).slice(0, 500);
+  to.updatedAt = Date.now();
+  saveAdminState();
+  return to;
 }
 
 function addAccessLog(entry = {}) {
@@ -663,6 +738,125 @@ function listViewers() {
   return Object.values(_adminState.viewers)
     .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))
     .slice(0, 500);
+}
+
+function createViewerAccount({ name, email, password, fromViewerId } = {}) {
+  const clean = cleanEmail(email);
+  const displayName = cleanDisplayName(name, clean.split('@')[0]);
+  if (!clean || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) throw new Error('email_required');
+  if (String(password || '').length < 4) throw new Error('password_too_short');
+  if (findViewerAccountByEmail(clean)) throw new Error('account_exists');
+  const id = randomId('user');
+  const viewerId = `account_${id}`;
+  const passwordRecord = makePasswordRecord(password);
+  const now = Date.now();
+  const account = {
+    id,
+    viewerId,
+    name: displayName,
+    email: clean,
+    passwordSalt: passwordRecord.salt,
+    passwordHash: passwordRecord.hash,
+    sessions: {},
+    disabled: false,
+    createdAt: now,
+    updatedAt: now,
+    lastSeenAt: now,
+  };
+  _adminState.viewerAccounts[id] = account;
+  viewerState(viewerId);
+  if (fromViewerId) mergeViewerState(fromViewerId, viewerId);
+  saveAdminState();
+  return publicViewerAccount(account);
+}
+
+function startViewerAccountSession(accountId) {
+  const account = _adminState.viewerAccounts[String(accountId)];
+  if (!account || account.disabled) return null;
+  const token = crypto.randomBytes(32).toString('base64url');
+  const now = Date.now();
+  account.sessions = account.sessions && typeof account.sessions === 'object' ? account.sessions : {};
+  account.sessions[token] = { createdAt: now, lastSeenAt: now };
+  const entries = Object.entries(account.sessions).sort((a, b) => Number(b[1].lastSeenAt || 0) - Number(a[1].lastSeenAt || 0)).slice(0, 8);
+  account.sessions = Object.fromEntries(entries);
+  account.lastSeenAt = now;
+  account.updatedAt = now;
+  saveAdminState();
+  return { token, account: publicViewerAccount(account) };
+}
+
+function authenticateViewerAccount({ email, password, fromViewerId } = {}) {
+  const account = findViewerAccountByEmail(email);
+  if (!account || account.disabled || !verifyPassword(password, account)) throw new Error('invalid_credentials');
+  if (fromViewerId) mergeViewerState(fromViewerId, account.viewerId);
+  return startViewerAccountSession(account.id);
+}
+
+function viewerAccountBySession(token) {
+  const clean = String(token || '').trim();
+  if (!clean) return null;
+  for (const account of Object.values(_adminState.viewerAccounts || {})) {
+    if (account.disabled || !account.sessions?.[clean]) continue;
+    account.sessions[clean].lastSeenAt = Date.now();
+    account.lastSeenAt = Date.now();
+    return publicViewerAccount(account);
+  }
+  return null;
+}
+
+function clearViewerAccountSession(token) {
+  const clean = String(token || '').trim();
+  if (!clean) return false;
+  let changed = false;
+  for (const account of Object.values(_adminState.viewerAccounts || {})) {
+    if (account.sessions?.[clean]) {
+      delete account.sessions[clean];
+      account.updatedAt = Date.now();
+      changed = true;
+    }
+  }
+  if (changed) saveAdminState();
+  return changed;
+}
+
+function listViewerAccounts() {
+  return Object.values(_adminState.viewerAccounts || {})
+    .map(publicViewerAccount)
+    .sort((a, b) => Number(b.lastSeenAt || b.updatedAt || 0) - Number(a.lastSeenAt || a.updatedAt || 0))
+    .slice(0, 1000);
+}
+
+function addViewerMessage(viewerId, patch = {}) {
+  const state = viewerState(viewerId);
+  const row = {
+    id: randomId('msg'),
+    viewerId: state.id,
+    name: cleanDisplayName(patch.name, ''),
+    email: cleanEmail(patch.email),
+    message: String(patch.message || '').trim().slice(0, 1200),
+    context: String(patch.context || '').slice(0, 220),
+    status: 'new',
+    createdAt: Date.now(),
+  };
+  if (!row.message) throw new Error('message_required');
+  _adminState.viewerMessages.unshift(row);
+  _adminState.viewerMessages = _adminState.viewerMessages.slice(0, 1000);
+  saveAdminState();
+  return row;
+}
+
+function listViewerMessages(limit = 200) {
+  return (_adminState.viewerMessages || []).slice(0, Math.max(1, Number(limit) || 200));
+}
+
+function updateViewerMessageStatus(id, status = 'read') {
+  const cleanStatus = ['new', 'read', 'done'].includes(status) ? status : 'read';
+  const row = (_adminState.viewerMessages || []).find((msg) => String(msg.id) === String(id));
+  if (!row) return null;
+  row.status = cleanStatus;
+  row.updatedAt = Date.now();
+  saveAdminState();
+  return row;
 }
 
 function mediaTheme() {
@@ -957,6 +1151,8 @@ module.exports = {
   listBroadcastChannels, upsertBroadcastChannel, setBroadcastChannels, removeBroadcastChannel,
   touchSession, addSessionBytes, addAccessLog, listSessions, listAccessLogs,
   viewerState, updateViewerList, recordViewerHistory, listViewers,
+  createViewerAccount, authenticateViewerAccount, viewerAccountBySession, clearViewerAccountSession,
+  listViewerAccounts, addViewerMessage, listViewerMessages, updateViewerMessageStatus,
   mediaTheme, setMediaTheme,
   listBlocks, addBlock, removeBlock, isBlocked, blockedMessage, setBlockedMessage,
   replaceAllChannels, exportChannels,

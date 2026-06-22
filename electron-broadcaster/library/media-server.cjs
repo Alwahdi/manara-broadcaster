@@ -74,13 +74,46 @@ function randomId(prefix = 'id') {
   return prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 }
 
+function appendCookie(res, cookie) {
+  const existing = res.getHeader('Set-Cookie');
+  if (!existing) return res.setHeader('Set-Cookie', cookie);
+  if (Array.isArray(existing)) return res.setHeader('Set-Cookie', [...existing, cookie]);
+  return res.setHeader('Set-Cookie', [existing, cookie]);
+}
+
 function getViewerId(req, res) {
   const cookies = parseCookies(req);
   const existing = cookies.manara_viewer;
   if (existing) return existing;
   const id = randomId('viewer');
-  res.setHeader('Set-Cookie', `manara_viewer=${encodeURIComponent(id)}; Path=/; SameSite=Lax; Max-Age=31536000`);
+  appendCookie(res, `manara_viewer=${encodeURIComponent(id)}; Path=/; SameSite=Lax; Max-Age=31536000`);
   return id;
+}
+
+function getViewerContext(req, res) {
+  const cookies = parseCookies(req);
+  const account = db.viewerAccountBySession(cookies.manara_user || '');
+  if (account?.viewerId) {
+    appendCookie(res, `manara_viewer=${encodeURIComponent(account.viewerId)}; Path=/; SameSite=Lax; Max-Age=31536000`);
+    return { viewerId: account.viewerId, account, signedIn: true };
+  }
+  const viewerId = getViewerId(req, res);
+  return { viewerId, account: null, signedIn: false };
+}
+
+function viewerAuthErrorMessage(code) {
+  return {
+    email_required: 'أدخل بريداً إلكترونياً صحيحاً.',
+    password_too_short: 'كلمة المرور يجب أن تكون 4 أحرف على الأقل.',
+    account_exists: 'يوجد حساب بهذا البريد بالفعل.',
+    invalid_credentials: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.',
+    message_required: 'اكتب الرسالة أولاً.',
+  }[code] || 'تعذر تنفيذ الطلب حالياً.';
+}
+
+function setViewerAccountCookies(res, token, viewerId) {
+  appendCookie(res, `manara_user=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000`);
+  appendCookie(res, `manara_viewer=${encodeURIComponent(viewerId)}; Path=/; SameSite=Lax; Max-Age=31536000`);
 }
 
 function requireAdmin(req, res, getAdminAuth) {
@@ -413,6 +446,8 @@ function adminPage(options = {}) {
       <td>${Number(s.errors || 0)}${s.lastError ? `<br><span class="muted">${escapeHtml(s.lastError)}</span>` : ''}</td>
     </tr>`).join('');
   const sessions = db.listSessions();
+  const viewerAccounts = db.listViewerAccounts();
+  const viewerMessages = db.listViewerMessages(120);
   const blocks = db.listBlocks();
   const logs = db.listAccessLogs(80);
   const mediaStats = db.mediaStats();
@@ -428,6 +463,29 @@ function adminPage(options = {}) {
       <td>${Number(s.requests || 0)}</td>
       <td class="url">${escapeHtml(s.userAgent || '')}</td>
       <td><button data-block-ip="${escapeHtml(s.ip)}">حظر العنوان</button></td>
+    </tr>`).join('');
+  const accountRows = viewerAccounts.map((account) => {
+    const state = db.viewerState(account.viewerId);
+    return `
+    <tr>
+      <td>${escapeHtml(account.name || '')}</td>
+      <td class="url">${escapeHtml(account.email || '')}</td>
+      <td>${Number(state.favorites?.length || 0)}</td>
+      <td>${Number(state.watchLater?.length || 0)}</td>
+      <td>${Number(state.history?.length || 0)}</td>
+      <td>${account.lastSeenAt ? new Date(account.lastSeenAt).toLocaleString() : '-'}</td>
+    </tr>`;
+  }).join('');
+  const messageRows = viewerMessages.map((msg) => `
+    <tr>
+      <td>${new Date(msg.createdAt).toLocaleString()}</td>
+      <td>${escapeHtml(msg.name || '')}<br><span class="muted">${escapeHtml(msg.email || '')}</span></td>
+      <td>${escapeHtml(msg.message || '')}${msg.context ? `<br><span class="muted">${escapeHtml(msg.context)}</span>` : ''}</td>
+      <td><span class="pill">${escapeHtml(msg.status || 'new')}</span></td>
+      <td>
+        <button data-message-status="${escapeHtml(msg.id)}" data-status-value="read">تمت القراءة</button>
+        <button data-message-status="${escapeHtml(msg.id)}" data-status-value="done">تم الحل</button>
+      </td>
     </tr>`).join('');
   const blockRows = blocks.map((b) => `
     <tr>
@@ -560,6 +618,10 @@ a{color:#93c5fd}.url{word-break:break-all;color:#bfdbfe;direction:ltr;text-align
 <section id="viewers">
   <h2>المشاهدون النشطون</h2>
   <div class="table-wrap"><table><thead><tr><th>IP</th><th>يشاهد</th><th>البيانات المنقولة</th><th>الطلبات</th><th>الجهاز</th><th>الإجراء</th></tr></thead><tbody>${sessionRows || '<tr><td colspan="6">لا يوجد مشاهدون نشطون حالياً.</td></tr>'}</tbody></table></div>
+  <h3>حسابات المشاهدين</h3>
+  <div class="table-wrap"><table><thead><tr><th>الاسم</th><th>البريد</th><th>المفضلة</th><th>لاحقاً</th><th>السجل</th><th>آخر ظهور</th></tr></thead><tbody>${accountRows || '<tr><td colspan="6">لا توجد حسابات مشاهدين بعد.</td></tr>'}</tbody></table></div>
+  <h3>رسائل المشاهدين</h3>
+  <div class="table-wrap"><table><thead><tr><th>الوقت</th><th>المشاهد</th><th>الرسالة</th><th>الحالة</th><th>الإجراء</th></tr></thead><tbody>${messageRows || '<tr><td colspan="5">لا توجد رسائل حتى الآن.</td></tr>'}</tbody></table></div>
 </section>
 <section id="iptv">
   <h2>قنوات IPTV</h2>
@@ -709,12 +771,21 @@ document.querySelectorAll('[data-delete-media]').forEach((b) => b.onclick = asyn
   await api('/api/admin/media/' + b.dataset.deleteMedia, { method:'DELETE' });
   location.reload();
 });
+document.querySelectorAll('[data-message-status]').forEach((b) => b.onclick = async () => {
+  await api('/api/admin/viewer-messages/' + b.dataset.messageStatus + '/status', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ status:b.dataset.statusValue })
+  });
+  location.reload();
+});
 </script>
 </main></body></html>`;
 }
 
 function libraryPage(req, res) {
-  const viewerId = getViewerId(req, res);
+  const viewerContext = getViewerContext(req, res);
+  const viewerId = viewerContext.viewerId;
   const viewer = db.viewerState(viewerId);
   const theme = db.mediaTheme();
   const items = listLibraryItems({ limit: 1200 });
@@ -745,6 +816,7 @@ function libraryPage(req, res) {
   })));
   const viewerPayload = jsonForScript({
     id: viewer.id,
+    account: viewerContext.account,
     favorites: viewer.favorites || [],
     watchLater: viewer.watchLater || [],
     history: viewer.history || [],
@@ -794,6 +866,20 @@ function libraryPage(req, res) {
     movie: 'فيلم',
     episode: 'حلقة',
     audioItem: 'صوت',
+    accountTitle: 'حساب المشاهد',
+    accountHint: 'سجّل الدخول لحفظ المفضلة والمشاهدة لاحقاً والتاريخ على هذا الحساب.',
+    signedInAs: 'متصل باسم',
+    signIn: 'دخول',
+    signUp: 'إنشاء حساب',
+    signOut: 'خروج',
+    name: 'الاسم',
+    email: 'البريد الإلكتروني',
+    password: 'كلمة المرور',
+    messageAdmin: 'مراسلة الإدارة',
+    messagePlaceholder: 'اكتب ملاحظة أو طلباً للإدارة...',
+    sendMessage: 'إرسال الرسالة',
+    accountSaved: 'تم الحفظ.',
+    accountError: 'تعذر تنفيذ الطلب. تأكد من البيانات وحاول مرة أخرى.',
   } : {
     pageTitle: 'Manara Media Library',
     channels: 'Channels',
@@ -837,6 +923,20 @@ function libraryPage(req, res) {
     movie: 'Movie',
     episode: 'Episode',
     audioItem: 'Audio',
+    accountTitle: 'Viewer account',
+    accountHint: 'Sign in to keep favorites, watch later, and history on this account.',
+    signedInAs: 'Signed in as',
+    signIn: 'Sign in',
+    signUp: 'Create account',
+    signOut: 'Sign out',
+    name: 'Name',
+    email: 'Email',
+    password: 'Password',
+    messageAdmin: 'Message admin',
+    messagePlaceholder: 'Write a note or request for the admin...',
+    sendMessage: 'Send message',
+    accountSaved: 'Saved.',
+    accountError: 'Could not complete the request. Check the details and try again.',
   };
   const textPayload = jsonForScript(text);
   return `<!doctype html>
@@ -855,6 +955,7 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;background:re
 .stats{display:flex;gap:10px;flex-wrap:wrap}.stat{border:1px solid var(--line);background:rgba(0,0,0,.26);border-radius:8px;padding:10px 12px;min-width:96px}.stat b{display:block;font-size:18px}.stat span{font-size:12px;color:var(--muted)}
 main{max-width:1320px;margin:auto;padding:18px 22px 42px}.tools{position:sticky;top:0;z-index:4;display:grid;grid-template-columns:minmax(240px,1.55fr) repeat(5,minmax(126px,1fr));gap:10px;margin:0 0 22px;padding:12px;background:rgba(8,10,18,.76);border:1px solid rgba(226,232,240,.08);border-radius:8px;backdrop-filter:blur(16px)}
 input,select{width:100%;border:1px solid var(--line);background:#111827;color:#fff;border-radius:8px;padding:11px 12px;font:inherit;min-height:44px;outline:none}input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.18)}
+.account-panel{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,1.3fr);gap:14px;align-items:center;border:1px solid rgba(226,232,240,.1);background:linear-gradient(180deg,rgba(17,24,39,.72),rgba(15,23,42,.62));border-radius:8px;padding:14px;margin:0 0 24px}.account-panel h2{margin:0 0 4px;font-size:18px}.account-panel p{margin:0;color:var(--muted);line-height:1.7;font-size:12px}.account-forms{display:grid;grid-template-columns:1fr 1fr;gap:10px}.account-forms form,.account-signed{display:grid;gap:8px}.account-signed{grid-template-columns:auto minmax(180px,1fr) auto;align-items:center}.account-signed form{display:grid;grid-template-columns:minmax(160px,1fr) auto;gap:8px}.account-chip{display:grid;gap:2px;border:1px solid var(--line);background:rgba(255,255,255,.055);border-radius:8px;padding:8px 10px}.account-chip span{color:var(--muted);font-size:11px}.account-chip strong{font-size:13px}.account-status{grid-column:1/-1;color:#bfdbfe;font-size:12px;min-height:1em}.section-card{border:1px solid var(--line);background:rgba(255,255,255,.055);border-radius:8px;padding:12px;text-align:start;color:#fff;min-height:104px}.section-main{width:100%;border:0;background:transparent;color:#fff;text-align:start;padding:0;font:inherit;cursor:pointer}.section-main strong{display:block;font-size:15px}.section-main span{display:block;color:var(--muted);font-size:12px;margin-top:4px}.folder-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.folder-row button{border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.22);color:#dbeafe;border-radius:7px;padding:5px 8px;font:inherit;font-size:11px;font-weight:850;cursor:pointer}
 .section{margin:30px 0}.section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:12px}.section h2{font-size:21px;margin:0}.section small{color:var(--muted)}
 .rail{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(160px,198px);gap:12px;overflow-x:auto;overscroll-behavior-x:contain;padding-bottom:10px;scrollbar-width:thin}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(164px,1fr));gap:14px}.grid.compact{grid-template-columns:1fr}
 .tile{position:relative;display:block;min-width:0;text-decoration:none;color:#fff;background:rgba(17,24,39,.72);border:1px solid var(--line);border-radius:8px;overflow:hidden;transition:transform .16s,border-color .16s,background .16s,box-shadow .16s;outline:none}.tile:hover,.tile:focus-visible{transform:translateY(-3px);border-color:rgba(20,184,166,.58);background:rgba(17,24,39,.94);box-shadow:0 18px 44px rgba(0,0,0,.26)}
@@ -864,8 +965,8 @@ input,select{width:100%;border:1px solid var(--line);background:#111827;color:#f
 .quick{position:absolute;top:8px;right:8px;display:flex;gap:5px;z-index:2}.quick button{width:32px;height:32px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.58);color:#fff;border-radius:8px;cursor:pointer;font-weight:900}.quick button.on{background:#dc2626}
 .grid.compact .tile{display:grid;grid-template-columns:92px minmax(0,1fr);min-height:118px}.grid.compact .poster{aspect-ratio:2/3;height:118px}.grid.compact .meta{padding:12px 14px}.grid.compact .title{font-size:15px;min-height:0}.grid.compact .overview{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.grid.compact .progress{position:absolute;left:92px;right:0;bottom:0}
 .empty{border:1px dashed var(--line);background:rgba(255,255,255,.045);border-radius:8px;padding:30px;color:var(--muted);line-height:1.8;text-align:center}.empty strong{display:block;color:#fff;margin-bottom:4px}.hide{display:none!important}
-@media(max-width:1100px){.tools{position:static;grid-template-columns:1fr 1fr 1fr}.hero{min-height:52vh}.top{margin-bottom:38px}}
-@media(max-width:640px){.hero{min-height:48vh;padding:16px}.top{align-items:flex-start;margin-bottom:30px}.nav a{padding:8px 10px}.hero h1{font-size:34px}.stats{display:grid;grid-template-columns:1fr 1fr}.tools{grid-template-columns:1fr;padding:10px}.rail{grid-auto-columns:minmax(132px,164px)}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}main{padding:14px 12px 30px}.grid.compact .tile{grid-template-columns:82px minmax(0,1fr)}.grid.compact .poster{height:108px}.grid.compact .progress{left:82px}}
+@media(max-width:1100px){.tools{position:static;grid-template-columns:1fr 1fr 1fr}.hero{min-height:52vh}.top{margin-bottom:38px}.account-panel{grid-template-columns:1fr}.account-signed{grid-template-columns:1fr}.account-signed form{grid-template-columns:1fr}}
+@media(max-width:640px){.hero{min-height:48vh;padding:16px}.top{align-items:flex-start;margin-bottom:30px}.nav a{padding:8px 10px}.hero h1{font-size:34px}.stats{display:grid;grid-template-columns:1fr 1fr}.tools{grid-template-columns:1fr;padding:10px}.account-forms{grid-template-columns:1fr}.rail{grid-auto-columns:minmax(160px,210px)}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}main{padding:14px 12px 30px}.grid.compact .tile{grid-template-columns:82px minmax(0,1fr)}.grid.compact .poster{height:108px}.grid.compact .progress{left:82px}}
 </style>
 </head>
 <body><main>
@@ -904,6 +1005,34 @@ input,select{width:100%;border:1px solid var(--line);background:#111827;color:#f
     <select id="layout"><option value="poster">${escapeHtml(text.viewPoster)}</option><option value="compact">${escapeHtml(text.viewCompact)}</option></select>
     <select id="sectionFilter"><option value="">${escapeHtml(text.allSections)}</option></select>
   </div>
+  <section class="account-panel" id="accountPanel">
+    <div>
+      <h2>${escapeHtml(text.accountTitle)}</h2>
+      <p>${escapeHtml(text.accountHint)}</p>
+    </div>
+    <div class="account-forms" id="guestAccount">
+      <form id="signinForm">
+        <input name="email" type="email" autocomplete="email" placeholder="${escapeHtml(text.email)}" required>
+        <input name="password" type="password" autocomplete="current-password" placeholder="${escapeHtml(text.password)}" required>
+        <button class="btn primary">${escapeHtml(text.signIn)}</button>
+      </form>
+      <form id="signupForm">
+        <input name="name" autocomplete="name" placeholder="${escapeHtml(text.name)}">
+        <input name="email" type="email" autocomplete="email" placeholder="${escapeHtml(text.email)}" required>
+        <input name="password" type="password" autocomplete="new-password" placeholder="${escapeHtml(text.password)}" required>
+        <button class="btn ghost">${escapeHtml(text.signUp)}</button>
+      </form>
+    </div>
+    <div class="account-signed" id="signedAccount" hidden>
+      <div class="account-chip"><span>${escapeHtml(text.signedInAs)}</span><strong id="accountName"></strong></div>
+      <form id="messageForm">
+        <input name="message" placeholder="${escapeHtml(text.messagePlaceholder)}" maxlength="1200" required>
+        <button class="btn ghost">${escapeHtml(text.sendMessage)}</button>
+      </form>
+      <button class="btn ghost" id="signoutBtn" type="button">${escapeHtml(text.signOut)}</button>
+    </div>
+    <div class="account-status" id="accountStatus"></div>
+  </section>
   <section class="section" id="sectionBrowser"><div class="section-head"><div><h2>${escapeHtml(text.sections)}</h2><small>${escapeHtml(text.sectionsHint)}</small></div></div><div class="rail" id="sectionRail"></div></section>
   <section class="section" id="continueSection"><div class="section-head"><div><h2>${escapeHtml(text.continue)}</h2><small>${escapeHtml(text.continueHint)}</small></div></div><div class="rail" id="continueRail"></div></section>
   <section class="section" id="favoritesSection"><div class="section-head"><div><h2>${escapeHtml(text.favorites)}</h2><small>${escapeHtml(text.favoritesHint)}</small></div></div><div class="rail" id="favoritesRail"></div></section>
@@ -922,6 +1051,45 @@ const storage = {
   toggle(type, id){ const s=this.get(); const arr=s[type] || []; const key=String(id); const i=arr.indexOf(key); const active=i<0; if(active) arr.push(key); else arr.splice(i,1); s[type]=arr; this.set(s); fetch('/api/viewer/list',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({list:type,mediaId:id,active})}).catch(()=>{}); render(); },
   has(type, id){ return (this.get()[type] || []).includes(String(id)); }
 };
+async function postJson(path, data = {}) {
+  const r = await fetch(path, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.message || j.error || 'request_failed');
+  return j;
+}
+function setAccountStatus(message, ok = true) {
+  const el = document.getElementById('accountStatus');
+  el.textContent = message || '';
+  el.style.color = ok ? '#bfdbfe' : '#fecaca';
+}
+function syncAccountUi() {
+  const guest = document.getElementById('guestAccount');
+  const signed = document.getElementById('signedAccount');
+  const name = document.getElementById('accountName');
+  const account = viewer.account;
+  guest.hidden = !!account;
+  signed.hidden = !account;
+  if (account) name.textContent = account.name || account.email || '';
+}
+async function handleAccountForm(form, path) {
+  try {
+    const data = Object.fromEntries(new FormData(form).entries());
+    const r = await postJson(path, data);
+    viewer.account = r.account || null;
+    if (r.viewer) {
+      viewer.favorites = r.viewer.favorites || [];
+      viewer.watchLater = r.viewer.watchLater || [];
+      viewer.history = r.viewer.history || [];
+    }
+    form.reset();
+    localStorage.removeItem(storeKey);
+    syncAccountUi();
+    render();
+    setAccountStatus(text.accountSaved || 'Saved.');
+  } catch {
+    setAccountStatus(text.accountError || 'Could not complete the request.', false);
+  }
+}
 function esc(s){ return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 function bytes(n){ n=Number(n)||0; if(!n) return ''; if(n<1048576) return (n/1024).toFixed(1)+' KB'; if(n<1073741824) return (n/1048576).toFixed(1)+' MB'; return (n/1073741824).toFixed(2)+' GB'; }
 function pct(item){ return item.position && item.duration ? Math.max(0,Math.min(100,(item.position/item.duration)*100)) : 0; }
@@ -1005,18 +1173,38 @@ function render(){
   renderList(document.getElementById('recentRail'), recent, text.empty || 'No media is available right now.');
   updateHero();
 }
+document.getElementById('signinForm').addEventListener('submit', (e)=>{ e.preventDefault(); handleAccountForm(e.target, '/api/viewer/signin'); });
+document.getElementById('signupForm').addEventListener('submit', (e)=>{ e.preventDefault(); handleAccountForm(e.target, '/api/viewer/signup'); });
+document.getElementById('signoutBtn').onclick = async () => { await postJson('/api/viewer/logout', {}).catch(()=>{}); location.reload(); };
+document.getElementById('messageForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  try {
+    const data = Object.fromEntries(new FormData(e.target).entries());
+    await postJson('/api/viewer/message', { ...data, context: location.pathname });
+    e.target.reset();
+    setAccountStatus(text.accountSaved || 'Saved.');
+  } catch { setAccountStatus(text.accountError || 'Could not complete the request.', false); }
+});
 const sectionFilter = document.getElementById('sectionFilter');
-sections.forEach(sec => { const opt=document.createElement('option'); opt.value=sec.name; opt.textContent=sec.name+' ('+sec.count+')'; sectionFilter.appendChild(opt); });
-document.getElementById('sectionRail').innerHTML = sections.map(sec => '<button class="btn" data-section="'+esc(sec.name)+'">'+esc(sec.name)+' · '+sec.count+'</button>').join('');
-document.querySelectorAll('[data-section]').forEach(btn=>btn.onclick=()=>{ sectionFilter.value=btn.dataset.section; render(); });
+sections.forEach(sec => {
+  const opt=document.createElement('option'); opt.value=sec.name; opt.textContent=sec.name+' ('+sec.count+')'; sectionFilter.appendChild(opt);
+  (sec.folders || []).forEach(folder => {
+    if (!folder.name || folder.name === sec.name) return;
+    const f=document.createElement('option'); f.value=folder.name; f.textContent=sec.name+' / '+folder.name+' ('+folder.count+')'; sectionFilter.appendChild(f);
+  });
+});
+document.getElementById('sectionRail').innerHTML = sections.map(sec => '<div class="section-card"><button class="section-main" data-section="'+esc(sec.name)+'"><strong>'+esc(sec.name)+'</strong><span>'+sec.count+' '+(text.items || '')+'</span></button><div class="folder-row">'+(sec.folders||[]).slice(0,6).map(folder => '<button type="button" data-folder="'+esc(folder.name)+'">'+esc(folder.name)+' · '+folder.count+'</button>').join('')+'</div></div>').join('');
+document.querySelectorAll('[data-section],[data-folder]').forEach(btn=>btn.onclick=()=>{ sectionFilter.value=btn.dataset.section || btn.dataset.folder; render(); });
 ['search','kind','view','sort','layout','sectionFilter'].forEach(id=>document.getElementById(id).addEventListener('input', render));
+syncAccountUi();
 render();
 </script>
 </body></html>`;
 }
 
 function playerPage(id, req, res) {
-  const viewerId = getViewerId(req, res);
+  const viewerContext = getViewerContext(req, res);
+  const viewerId = viewerContext.viewerId;
   const viewer = db.viewerState(viewerId);
   const theme = db.mediaTheme();
   const item = db.getMedia(parseInt(id, 10));
@@ -1329,6 +1517,8 @@ function createHandler(options = {}) {
         media: db.listMedia({ limit: 500 }),
         mediaStats: db.mediaStats(),
         sessions: db.listSessions(),
+        viewerAccounts: db.listViewerAccounts(),
+        viewerMessages: db.listViewerMessages(200),
         blocks: db.listBlocks(),
         logs: db.listAccessLogs(200),
         blockedMessage: db.blockedMessage(),
@@ -1390,6 +1580,16 @@ function createHandler(options = {}) {
       try {
         const body = await parseJsonBody(req);
         return sendJson(res, 200, { message: db.setBlockedMessage(body.message) });
+      } catch (e) { return sendJson(res, 500, { error: e.message }); }
+    }
+    adminMatch = /^\/api\/admin\/viewer-messages\/([^/]+)\/status$/.exec(u.pathname);
+    if (adminMatch && req.method === 'POST') {
+      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      try {
+        const body = await parseJsonBody(req);
+        const message = db.updateViewerMessageStatus(decodeURIComponent(adminMatch[1]), body.status);
+        if (!message) return sendJson(res, 404, { error: 'not found' });
+        return sendJson(res, 200, { message });
       } catch (e) { return sendJson(res, 500, { error: e.message }); }
     }
     adminMatch = /^\/api\/admin\/media\/(\d+)$/.exec(u.pathname);
@@ -1485,12 +1685,55 @@ function createHandler(options = {}) {
       } catch (e) { return sendJson(res, 500, { error: e.message }); }
     }
     if (u.pathname === '/api/viewer/state') {
-      const viewerId = getViewerId(req, res);
-      return sendJson(res, 200, db.viewerState(viewerId));
+      const ctx = getViewerContext(req, res);
+      return sendJson(res, 200, { ...db.viewerState(ctx.viewerId), account: ctx.account });
+    }
+    if (u.pathname === '/api/viewer/signup' && req.method === 'POST') {
+      try {
+        const anonymousViewerId = getViewerId(req, res);
+        const body = await parseJsonBody(req);
+        db.createViewerAccount({ ...body, fromViewerId: anonymousViewerId });
+        const session = db.authenticateViewerAccount({ email: body.email, password: body.password, fromViewerId: anonymousViewerId });
+        setViewerAccountCookies(res, session.token, session.account.viewerId);
+        return sendJson(res, 200, { ok: true, account: session.account, viewer: db.viewerState(session.account.viewerId) });
+      } catch (e) {
+        return sendJson(res, 400, { ok: false, error: e.message, message: viewerAuthErrorMessage(e.message) });
+      }
+    }
+    if (u.pathname === '/api/viewer/signin' && req.method === 'POST') {
+      try {
+        const anonymousViewerId = getViewerId(req, res);
+        const body = await parseJsonBody(req);
+        const session = db.authenticateViewerAccount({ ...body, fromViewerId: anonymousViewerId });
+        setViewerAccountCookies(res, session.token, session.account.viewerId);
+        return sendJson(res, 200, { ok: true, account: session.account, viewer: db.viewerState(session.account.viewerId) });
+      } catch (e) {
+        return sendJson(res, 401, { ok: false, error: e.message, message: viewerAuthErrorMessage(e.message) });
+      }
+    }
+    if (u.pathname === '/api/viewer/logout' && req.method === 'POST') {
+      const cookies = parseCookies(req);
+      db.clearViewerAccountSession(cookies.manara_user || '');
+      appendCookie(res, 'manara_user=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
+      return sendJson(res, 200, { ok: true });
+    }
+    if (u.pathname === '/api/viewer/message' && req.method === 'POST') {
+      try {
+        const ctx = getViewerContext(req, res);
+        const body = await parseJsonBody(req);
+        const msg = db.addViewerMessage(ctx.viewerId, {
+          ...body,
+          name: body.name || ctx.account?.name || '',
+          email: body.email || ctx.account?.email || '',
+        });
+        return sendJson(res, 200, { ok: true, message: msg });
+      } catch (e) {
+        return sendJson(res, 400, { ok: false, error: e.message, message: viewerAuthErrorMessage(e.message) });
+      }
     }
     if (u.pathname === '/api/viewer/list' && req.method === 'POST') {
       try {
-        const viewerId = getViewerId(req, res);
+        const viewerId = getViewerContext(req, res).viewerId;
         const body = await parseJsonBody(req);
         const list = body.list === 'watchLater' ? 'watchLater' : 'favorites';
         return sendJson(res, 200, db.updateViewerList(viewerId, list, body.mediaId, !!body.active));
@@ -1504,8 +1747,9 @@ function createHandler(options = {}) {
         if (!item) return sendJson(res, 404, { error: 'not found' });
         if (denyIfBlocked(req, res, { targetType: 'media', targetId: item.id, targetName: item.title })) return;
         const body = await parseJsonBody(req);
+        const ctx = getViewerContext(req, res);
         db.setProgress(item.id, body.position, body.duration);
-        db.recordViewerHistory(getViewerId(req, res), item.id, body);
+        db.recordViewerHistory(ctx.viewerId, item.id, body);
         db.addAccessLog({
           ip: clientIp(req),
           userAgent: req.headers['user-agent'] || '',
