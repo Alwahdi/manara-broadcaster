@@ -1,12 +1,12 @@
 {
-  "name": "manara-broadcaster",
-  "productName": "Manara",
-  "version": "2.5.25",
-  "description": "Manara — Local LAN broadcaster + media library. Zero-internet streaming for hotel/hospital/cafe networks.",
+  "name": "wiva-agent",
+  "productName": "WIVA",
+  "version": "2.6.0",
+  "description": "WIVA — Local network live TV, IPTV, and media library agent for hotels, hospitals, cafes, and private networks.",
   "main": "main.cjs",
   "author": {
-    "name": "Manara",
-    "email": "support@manara.app"
+    "name": "WIVA",
+    "email": "support@wiva.app"
   },
   "license": "MIT",
   "scripts": {
@@ -32,8 +32,8 @@
     "electron-builder": "^26.8.1"
   },
   "build": {
-    "appId": "app.manara.broadcaster",
-    "productName": "Manara",
+    "appId": "app.wiva.agent",
+    "productName": "WIVA",
     "asar": true,
     "asarUnpack": [
       "**/node_modules/better-sqlite3/**"
@@ -41,6 +41,7 @@
     "files": [
       "main.cjs",
       "preload.cjs",
+      "assets/**/*",
       "library/**/*",
       "licensing/**/*",
       "renderer/**/*",
@@ -64,7 +65,7 @@
           ]
         }
       ],
-      "artifactName": "Manara-${version}-${arch}.${ext}"
+      "artifactName": "WIVA-${version}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -72,7 +73,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Manara"
+      "shortcutName": "WIVA"
     },
     "publish": {
       "provider": "github",

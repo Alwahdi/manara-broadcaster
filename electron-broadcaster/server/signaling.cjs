@@ -7,14 +7,14 @@ const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
 
-function startSignalingServer({ port = 8080, mediaHandler = null, getIptvChannels = null, getFeatureAllowed = null } = {}) {
+function startSignalingServer({ port = 8787, mediaHandler = null, getIptvChannels = null, getFeatureAllowed = null } = {}) {
   const viewerHtml = fs.readFileSync(path.join(__dirname, 'viewer.html'), 'utf8');
   const watchHtml = fs.readFileSync(path.join(__dirname, 'watch.html'), 'utf8');
   const iptvPlayerHtml = fs.readFileSync(path.join(__dirname, 'iptv-player.html'), 'utf8');
   const hlsJs = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'hls.min.js'), 'utf8');
 
   let brand = {
-    brandName: 'TeraNet',
+    brandName: 'WIVA',
     brandTagline: 'خدمة مشاهدة داخل الشبكة',
     accent: '#2563eb',
     accent2: '#14b8a6',
@@ -76,7 +76,7 @@ function startSignalingServer({ port = 8080, mediaHandler = null, getIptvChannel
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true })); return;
     }
-    if (mediaHandler && /^(\/iptv\/|\/admin(?:\/|\?|$)|\/api\/admin\/|\/library(?:\?|$)|\/api\/library(?:\?|$)|\/player\/|\/api\/media\/|\/api\/viewer\/|\/media\/|\/sub\/)/.test(url)) {
+    if (mediaHandler && /^(\/favicon\.ico|\/wiva-logo\.png|\/iptv\/|\/setup(?:\/|\?|$)|\/api\/setup\/|\/agent(?:\/|\?|$)|\/api\/agent\/|\/admin(?:\/|\?|$)|\/api\/admin\/|\/library(?:\?|$)|\/api\/library(?:\?|$)|\/player\/|\/api\/media\/|\/api\/viewer\/|\/media\/|\/sub\/)/.test(url)) {
       return mediaHandler(req, res);
     }
     res.writeHead(404); res.end('Not Found');
@@ -194,7 +194,7 @@ function startSignalingServer({ port = 8080, mediaHandler = null, getIptvChannel
     });
   });
 
-  server.listen(port, '0.0.0.0', () => console.log('[TeraNet] signaling on :' + port));
+  server.listen(port, '0.0.0.0', () => console.log('[WIVA] signaling on :' + port));
 
   return {
     port,

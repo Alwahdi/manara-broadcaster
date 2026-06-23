@@ -1,4 +1,4 @@
-// Manara — local HTTP media server with Range support + IPTV proxy
+// WIVA — local HTTP media server with Range support + IPTV proxy
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -116,7 +116,7 @@ function setViewerAccountCookies(res, token, viewerId) {
   appendCookie(res, `manara_viewer=${encodeURIComponent(viewerId)}; Path=/; SameSite=Lax; Max-Age=31536000`);
 }
 
-function requireAdmin(req, res, getAdminAuth) {
+function requireAdmin(req, res, getAdminAuth, basePath = '/admin') {
   const auth = typeof getAdminAuth === 'function' ? getAdminAuth() : {};
   const username = auth.username || 'admin';
   const password = auth.password || 'admin';
@@ -128,19 +128,42 @@ function requireAdmin(req, res, getAdminAuth) {
   if (provided === `${username}:${password}` || cookieToken === Buffer.from(`${username}:${password}`).toString('base64')) return true;
   if (String(req.headers.accept || '').includes('text/html')) {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-    res.end(adminLoginPage());
+    res.end(adminLoginPage('', basePath));
     return false;
   }
   res.writeHead(401, {
-    'WWW-Authenticate': 'Basic realm="Manara LAN Admin"',
+    'WWW-Authenticate': 'Basic realm="WIVA LAN Admin"',
     'Content-Type': 'text/plain; charset=utf-8',
   });
   res.end('تسجيل الدخول مطلوب');
   return false;
 }
 
-function adminLoginPage(error = '') {
-  return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>دخول إدارة منارة</title><style>:root{color-scheme:dark;--bg:#070b16;--panel:#101827;--line:rgba(226,232,240,.14);--text:#f8fafc;--muted:#9ca3af;--accent:#2563eb;--accent2:#14b8a6}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:linear-gradient(180deg,rgba(7,11,22,.96),rgba(8,13,24,1)),repeating-linear-gradient(90deg,rgba(255,255,255,.035) 0 1px,transparent 1px 76px);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;padding:22px}.login{width:min(430px,100%)}.mark{display:flex;align-items:center;gap:10px;margin-bottom:14px}.dot{width:42px;height:42px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;font-weight:900}.brand b{display:block;font-size:16px}.brand span{display:block;color:var(--muted);font-size:12px;margin-top:2px}.card{border:1px solid var(--line);background:rgba(16,24,39,.92);border-radius:8px;padding:22px;box-shadow:0 26px 80px rgba(0,0,0,.36)}h1{font-size:23px;margin:0 0 7px;letter-spacing:0}.lead{color:#cbd5e1;line-height:1.7;margin:0 0 18px;font-size:13px}label{display:block;color:#dbeafe;font-size:12px;font-weight:900;margin-top:12px}input{width:100%;margin:7px 0 2px;padding:13px 14px;border-radius:8px;border:1px solid rgba(148,163,184,.24);background:#0b1220;color:#fff;font:inherit;outline:none}input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.18)}button{width:100%;min-height:46px;padding:12px;border:0;border-radius:8px;background:linear-gradient(135deg,var(--accent),#1d4ed8);color:#fff;font-weight:900;margin-top:16px;cursor:pointer;font:inherit}.err{color:#fecaca;background:rgba(127,29,29,.26);border:1px solid rgba(248,113,113,.34);border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.6}.note{margin:12px 0 0;color:var(--muted);font-size:12px;line-height:1.7;text-align:center}</style></head><body><main class="login"><div class="mark"><div class="dot">م</div><div class="brand"><b>Manara</b><span>إدارة الشبكة المحلية</span></div></div><form class="card" method="post" action="/admin/login"><h1>تسجيل الدخول</h1><p class="lead">ادخل بكلمة مرور الإدارة لإدارة القنوات، IPTV، المكتبة، والمشاهدين.</p>${error ? `<p class="err">${escapeHtml(error)}</p>` : ''}<label>اسم المستخدم<input name="username" autocomplete="username" placeholder="admin" required autofocus></label><label>كلمة المرور<input name="password" type="password" autocomplete="current-password" placeholder="كلمة المرور" required></label><button>دخول إلى اللوحة</button><p class="note">بعد الدخول ستبقى الجلسة محفوظة على هذا الجهاز لمدة أسبوع.</p></form></main></body></html>`;
+function adminLoginPage(error = '', basePath = '/admin') {
+  return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>دخول إدارة WIVA</title><style>:root{color-scheme:dark;--bg:#07090f;--panel:#111827;--line:rgba(226,232,240,.14);--text:#f8fafc;--muted:#9ca3af;--accent:#2563eb;--accent2:#14b8a6}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at top right,rgba(37,99,235,.24),transparent 34%),linear-gradient(180deg,#080a12,#0b1020);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;padding:22px}.login{width:min(430px,100%)}.mark{display:flex;align-items:center;gap:12px;margin-bottom:14px}.mark img{height:38px;max-width:120px;object-fit:contain}.brand b{display:block;font-size:16px}.brand span{display:block;color:var(--muted);font-size:12px;margin-top:2px}.card{border:1px solid var(--line);background:rgba(16,24,39,.92);border-radius:8px;padding:22px;box-shadow:0 26px 80px rgba(0,0,0,.36)}h1{font-size:23px;margin:0 0 7px;letter-spacing:0}.lead{color:#cbd5e1;line-height:1.7;margin:0 0 18px;font-size:13px}label{display:block;color:#dbeafe;font-size:12px;font-weight:900;margin-top:12px}input{width:100%;margin:7px 0 2px;padding:13px 14px;border-radius:8px;border:1px solid rgba(148,163,184,.24);background:#0b1220;color:#fff;font:inherit;outline:none}input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.18)}button{width:100%;min-height:46px;padding:12px;border:0;border-radius:8px;background:linear-gradient(135deg,var(--accent),#1d4ed8);color:#fff;font-weight:900;margin-top:16px;cursor:pointer;font:inherit}.err{color:#fecaca;background:rgba(127,29,29,.26);border:1px solid rgba(248,113,113,.34);border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.6}.note{margin:12px 0 0;color:var(--muted);font-size:12px;line-height:1.7;text-align:center}</style></head><body><main class="login"><div class="mark"><img src="/wiva-logo.png" alt="WIVA"><div class="brand"><b>WIVA</b><span>إدارة الشبكة المحلية</span></div></div><form class="card" method="post" action="${escapeHtml(basePath)}/login"><h1>تسجيل الدخول</h1><p class="lead">ادخل ببيانات الإدارة لإدارة القنوات، IPTV، المكتبة، المشاهدين، والتقارير.</p>${error ? `<p class="err">${escapeHtml(error)}</p>` : ''}<label>اسم المستخدم<input name="username" autocomplete="username" placeholder="admin" required autofocus></label><label>كلمة المرور<input name="password" type="password" autocomplete="current-password" placeholder="كلمة المرور" required></label><button>دخول إلى اللوحة</button><p class="note">الجلسة محفوظة على هذا الجهاز لمدة أسبوع.</p></form></main></body></html>`;
+}
+
+function setupPage(options = {}) {
+  const state = typeof options.getSetupState === 'function' ? options.getSetupState() : {};
+  const payload = jsonForScript(state);
+  return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>إعداد WIVA</title><style>
+:root{color-scheme:dark;--bg:#07090f;--panel:#111827;--panel2:#0f172a;--line:rgba(226,232,240,.12);--text:#f8fafc;--muted:#9ca3af;--accent:#2563eb;--accent2:#14b8a6;--good:#22c55e;--warn:#f59e0b;--danger:#ef4444}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top right,rgba(37,99,235,.24),transparent 30%),linear-gradient(180deg,#080a12,#0a0f1d 55%,#07090f);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;-webkit-font-smoothing:antialiased}main{width:min(1180px,100%);margin:auto;padding:24px}.hero{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:20px;align-items:end;margin-bottom:18px}.brand{display:flex;align-items:center;gap:12px;margin-bottom:18px}.brand img{height:46px;max-width:150px;object-fit:contain}.eyebrow{display:inline-flex;margin-bottom:10px;border:1px solid rgba(20,184,166,.28);background:rgba(20,184,166,.1);color:#ccfbf1;border-radius:8px;padding:6px 9px;font-size:12px;font-weight:900}h1{font-size:clamp(32px,6vw,64px);line-height:1;margin:0 0 10px;letter-spacing:0}.lead{color:#d1d5db;line-height:1.8;margin:0;max-width:760px}.status{border:1px solid var(--line);background:rgba(17,24,39,.72);border-radius:8px;padding:16px;display:grid;gap:9px}.status div{display:flex;justify-content:space-between;gap:8px;color:#cbd5e1;font-size:13px}.status b{color:#fff;direction:ltr}.shell{display:grid;grid-template-columns:240px minmax(0,1fr);gap:16px}.steps{position:sticky;top:14px;align-self:start;border:1px solid var(--line);background:rgba(17,24,39,.72);border-radius:8px;padding:10px}.step{width:100%;min-height:44px;border:0;border-radius:8px;background:transparent;color:#cbd5e1;font:inherit;font-weight:850;text-align:start;padding:10px;cursor:pointer}.step.active{background:rgba(37,99,235,.18);color:#fff}.card{display:none;border:1px solid var(--line);background:rgba(17,24,39,.78);border-radius:8px;padding:20px;box-shadow:0 22px 70px rgba(0,0,0,.22)}.card.active{display:block}.card h2{font-size:23px;margin:0 0 6px}.card p{color:#aebacd;line-height:1.75;margin:0 0 16px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}label{display:block;color:#dbeafe;font-size:12px;font-weight:900;margin:0 0 6px}input,select{width:100%;min-height:46px;border:1px solid rgba(148,163,184,.22);background:#0b1220;color:#fff;border-radius:8px;padding:12px;font:inherit;outline:none}input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.16)}.choice-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}.choice{border:1px solid rgba(148,163,184,.22);background:rgba(255,255,255,.045);border-radius:8px;padding:14px;cursor:pointer}.choice input{display:none}.choice:has(input:checked){border-color:rgba(20,184,166,.7);background:rgba(20,184,166,.12)}.choice strong{display:block}.choice span{display:block;color:#9ca3af;font-size:12px;line-height:1.6;margin-top:4px}.port-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end}.hint{font-size:12px;color:#aebacd;margin-top:7px;line-height:1.6}.ok{color:#86efac}.bad{color:#fca5a5}.actions{display:flex;justify-content:space-between;gap:10px;margin-top:18px}.btn{min-height:44px;border:0;border-radius:8px;padding:11px 16px;color:#fff;font:inherit;font-weight:900;cursor:pointer;background:rgba(255,255,255,.08);border:1px solid var(--line)}.btn.primary{background:linear-gradient(135deg,var(--accent),#1d4ed8);border-color:transparent}.btn:disabled{opacity:.55;cursor:not-allowed}.preview{border:1px solid var(--line);background:rgba(0,0,0,.22);border-radius:8px;padding:14px;margin-top:12px;display:flex;align-items:center;gap:12px}.preview img{max-height:52px;max-width:140px;object-fit:contain}.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);border:1px solid var(--line);background:#101827;color:#fff;border-radius:8px;padding:11px 16px;font-weight:850;box-shadow:0 18px 44px rgba(0,0,0,.34)}@media(max-width:880px){main{padding:14px}.hero,.shell{grid-template-columns:1fr}.steps{position:static;display:grid;grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.status{display:none}}
+</style></head><body><main><script id="state" type="application/json">${payload}</script><section class="hero"><div><div class="brand"><img src="/wiva-logo.png" alt="WIVA"><strong>WIVA Agent</strong></div><span class="eyebrow">إعداد الشبكة</span><h1>جهّز تجربة المشاهدة داخل شبكتك</h1><p class="lead">خطوات قصيرة لتسجيل الشبكة، اختيار المنافذ، تخصيص الهوية، وتشغيل الإدارة من المتصفح على نفس الشبكة.</p></div><aside class="status" id="agentStatus"></aside></section><section class="shell"><nav class="steps" id="steps"></nav><form id="setupForm"><section class="card active" data-step="0"><h2>الحساب</h2><p>سجّل بيانات مالك الشبكة. ربط Neon Auth/Google يحتاج مفاتيح المشروع النهائية؛ هذه النسخة تحفظ الإعداد المحلي وتجهّز الواجهة له.</p><div class="grid"><div><label>البريد الإلكتروني</label><input name="ownerEmail" type="email" autocomplete="email" placeholder="owner@example.com"></div><div><label>كلمة المرور</label><input name="ownerPassword" type="password" autocomplete="new-password" placeholder="••••••••"></div></div><div class="hint">زر Google يظهر في الواجهة النهائية عند ضبط مفاتيح Neon Auth و OAuth redirects.</div></section><section class="card" data-step="1"><h2>بيانات الشبكة</h2><p>هذه البيانات تساعدك في الإدارة والاشتراك والتقارير.</p><div class="grid"><div><label>اسم الشبكة</label><input name="networkName" required></div><div><label>رقم/كود الشبكة</label><input name="networkNumber"></div><div><label>المدينة</label><input name="networkCity" placeholder="Sana'a"></div><div><label>الدولة</label><input name="networkCountry" placeholder="Yemen"></div><div><label>العنوان أو المنطقة</label><input name="networkLocation"></div><div><label>المنطقة الزمنية</label><input name="networkTimezone" placeholder="Asia/Aden"></div></div></section><section class="card" data-step="2"><h2>الهوية والشعار</h2><p>استخدم شعار الشبكة واسمها في صفحات المشاهدة والمكتبة.</p><div class="grid"><div><label>اسم الواجهة</label><input name="brandName" required></div><div><label>الوصف القصير</label><input name="brandTagline"></div></div><label>رفع شعار PNG</label><input id="logoInput" type="file" accept="image/png"><input type="hidden" name="networkLogoDataUrl"><div class="preview"><img id="logoPreview" src="/wiva-logo.png" alt="logo"><span>سيتم ضغط الشعار وحفظه محلياً. إزالة الخلفية التلقائية تحتاج خدمة صور خارجية، لذلك الواجهة تحفظ PNG الشفاف بأفضل جودة متاحة الآن.</span></div></section><section class="card" data-step="3"><h2>طريقة العرض</h2><p>اختر هل تكون القنوات والمكتبة على نفس التجربة أو منفصلتين.</p><div class="choice-grid"><label class="choice"><input type="radio" name="experienceLayout" value="unified" checked><strong>واجهة واحدة</strong><span>القنوات والمكتبة من نفس تجربة WIVA.</span></label><label class="choice"><input type="radio" name="experienceLayout" value="separate"><strong>منافذ منفصلة</strong><span>منفذ مباشر ومنفذ مستقل للمكتبة والإدارة.</span></label></div></section><section class="card" data-step="4"><h2>المنافذ</h2><p>افحص المنافذ قبل التشغيل حتى تعرف إن كان هناك برنامج آخر يستخدمها.</p><div class="grid"><div><label>منفذ البث المباشر</label><div class="port-row"><input name="port" type="number" min="1" max="65535" required><button class="btn" type="button" data-check="port">فحص</button></div><div class="hint" id="portHint"></div></div><div><label>منفذ الإدارة والمكتبة</label><div class="port-row"><input name="libraryPort" type="number" min="1" max="65535" required><button class="btn" type="button" data-check="libraryPort">فحص</button></div><div class="hint" id="libraryPortHint"></div></div></div></section><section class="card" data-step="5"><h2>الثيم</h2><p>اختر مظهراً هادئاً وواضحاً للمشاهدين والإدارة.</p><div class="grid"><div><label>ثيم القنوات</label><select name="liveTheme"><option value="cinema">Cinema</option><option value="broadcast">Broadcast</option><option value="minimal">Minimal</option></select></div><div><label>ثيم المكتبة</label><select name="libraryTheme"><option value="cinema">Cinema</option><option value="gallery">Gallery</option><option value="minimal">Minimal</option></select></div></div></section><section class="card" data-step="6"><h2>الإدارة</h2><p>اختر رابطاً مخصصاً وبيانات دخول للوحة الإدارة على الشبكة. اترك كلمة المرور فارغة عند التعديل إذا لا تريد تغييرها.</p><div class="grid"><div><label>رابط الإدارة</label><input name="adminPath" placeholder="admin"></div><div><label>اسم المستخدم</label><input name="adminUsername" autocomplete="username" required></div><div><label>كلمة المرور</label><input name="adminPassword" type="password" autocomplete="new-password"></div></div></section><section class="card" data-step="7"><h2>المراجعة والتشغيل</h2><p>بعد الحفظ ستظهر روابط الإعداد والإدارة والمكتبة والقنوات. إذا تغيّر المنفذ ستحتاج فتح الرابط الجديد.</p><div id="review" class="status"></div></section><div class="actions"><button class="btn" type="button" id="prevBtn">السابق</button><button class="btn primary" type="button" id="nextBtn">التالي</button><button class="btn primary" type="submit" id="saveBtn" hidden>حفظ وتشغيل</button></div></form></section></main><script>
+const initial = JSON.parse(document.getElementById('state').textContent || '{}');
+const fields = ['networkName','networkNumber','networkLocation','networkCountry','networkCity','networkTimezone','brandName','brandTagline','experienceLayout','liveTheme','libraryTheme','adminPath','adminUsername','port','libraryPort'];
+const form = document.getElementById('setupForm'); const steps = ['الحساب','الشبكة','الهوية','العرض','المنافذ','الثيم','الإدارة','التشغيل']; let idx=0;
+function fill(){ const s=initial.settings||{}; for(const k of fields){ const el=form.elements[k]; if(el && s[k]!=null){ if(el.length){ [...el].forEach(x=>x.checked=x.value===String(s[k])); } else el.value=s[k]; } } if(!form.elements.brandName.value) form.elements.brandName.value=s.brandName||s.networkName||'WIVA'; if(!form.elements.adminUsername.value) form.elements.adminUsername.value='admin'; if(!form.elements.adminPassword.value && !initial.setupCompleted) form.elements.adminPassword.value='admin'; if(!form.elements.port.value) form.elements.port.value=(initial.ports&&initial.ports.live)||8787; if(!form.elements.libraryPort.value) form.elements.libraryPort.value=(initial.ports&&initial.ports.library)||8788; }
+function renderSteps(){ steps.forEach((name,i)=>{ const b=document.createElement('button'); b.type='button'; b.className='step'+(i===idx?' active':''); b.textContent=(i+1)+'. '+name; b.onclick=()=>{idx=i; render();}; stepsEl.appendChild(b); }); }
+const stepsEl=document.getElementById('steps'); function render(){ stepsEl.innerHTML=''; renderSteps(); document.querySelectorAll('.card').forEach(c=>c.classList.toggle('active', Number(c.dataset.step)===idx)); prevBtn.disabled=idx===0; nextBtn.hidden=idx===steps.length-1; saveBtn.hidden=idx!==steps.length-1; document.getElementById('review').innerHTML = '<div><span>البث</span><b>:'+form.elements.port.value+'</b></div><div><span>المكتبة/الإدارة</span><b>:'+form.elements.libraryPort.value+'</b></div><div><span>الإدارة</span><b>/'+(form.elements.adminPath.value||'admin')+'</b></div>'; }
+function status(){ const u=initial.urls||{}; document.getElementById('agentStatus').innerHTML='<div><span>الإصدار</span><b>'+ (initial.version||'-') +'</b></div><div><span>البث</span><b>'+((initial.ports&&initial.ports.live)||'-')+'</b></div><div><span>الإدارة</span><b>'+((initial.ports&&initial.ports.library)||'-')+'</b></div><div><span>الرابط المحلي</span><b>'+((u.setupLocal)||location.href)+'</b></div>'; }
+async function checkPort(name){ const port=form.elements[name].value; const box=document.getElementById(name+'Hint'); box.textContent='جاري الفحص...'; const r=await fetch('/api/setup/port-check?port='+encodeURIComponent(port)).then(r=>r.json()); box.className='hint '+(r.available?'ok':'bad'); box.textContent=r.available ? 'المنفذ متاح.' : (r.message + (r.suggestedPort ? ' المنفذ المقترح: '+r.suggestedPort : '')); }
+document.querySelectorAll('[data-check]').forEach(b=>b.onclick=()=>checkPort(b.dataset.check));
+logoInput.onchange=async()=>{ const file=logoInput.files&&logoInput.files[0]; if(!file) return; if(file.type!=='image/png'){ alert('الشعار يجب أن يكون PNG.'); return; } const data=await new Promise(r=>{const fr=new FileReader(); fr.onload=()=>r(fr.result); fr.readAsDataURL(file);}); form.elements.networkLogoDataUrl.value=data; logoPreview.src=data; };
+prevBtn.onclick=()=>{idx=Math.max(0,idx-1);render();}; nextBtn.onclick=()=>{idx=Math.min(steps.length-1,idx+1);render();};
+form.onsubmit=async(e)=>{ e.preventDefault(); const data=Object.fromEntries(new FormData(form).entries()); data.setupCompleted=true; const r=await fetch('/api/setup/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}); const j=await r.json(); const t=document.createElement('div'); t.className='toast'; t.textContent=j.ok?'تم حفظ إعداد WIVA. افتح الروابط الجديدة من شاشة الوكيل.':(j.error||'تعذر الحفظ'); document.body.appendChild(t); setTimeout(()=>t.remove(),4200); if(j.ok && j.state && j.state.urls){ setTimeout(()=>location.href=j.state.urls.adminLocal||'/admin',900); } };
+fill(); status(); render();
+</script></body></html>`;
 }
 
 function formatBytes(bytes) {
@@ -404,6 +427,8 @@ function denyFeature(req, res, options, feature) {
 }
 
 function adminPage(options = {}) {
+  const adminPath = '/' + String(typeof options.getAdminPath === 'function' ? options.getAdminPath() : 'admin').replace(/^\/+|\/+$/g, '').replace(/[^\w\-./]/g, '');
+  const adminBase = adminPath === '/' ? '/admin' : adminPath;
   const broadcastJson = escapeHtml(JSON.stringify(db.listBroadcastChannels(), null, 2));
   const status = iptv.status();
   const localRows = db.listIptv().map((ch) => ({ ...ch, sourceKind: 'Manual', readonly: false }));
@@ -542,15 +567,15 @@ function adminPage(options = {}) {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>لوحة إدارة منارة</title>
+<title>لوحة إدارة WIVA</title>
 <style>
-:root{color-scheme:dark;--bg:#070b16;--panel:#101827;--panel2:#0b1220;--line:rgba(226,232,240,.12);--line2:rgba(148,163,184,.2);--text:#f8fafc;--muted:#9ca3af;--accent:#2563eb;--accent2:#14b8a6;--good:#22c55e;--warn:#f59e0b;--danger:#ef4444}
-*{box-sizing:border-box}html{scroll-behavior:smooth}body{font-family:system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;margin:0;background:linear-gradient(180deg,rgba(7,11,22,.96),rgba(8,13,24,1)),repeating-linear-gradient(90deg,rgba(255,255,255,.035) 0 1px,transparent 1px 76px);color:var(--text)}
-body::before{content:"";position:fixed;inset:0;pointer-events:none;background:linear-gradient(90deg,rgba(37,99,235,.08),transparent 36%,rgba(20,184,166,.06));z-index:-1}
+:root{color-scheme:dark;--bg:#07090f;--panel:#111827;--panel2:#0b1220;--line:rgba(226,232,240,.12);--line2:rgba(148,163,184,.2);--text:#f8fafc;--muted:#9ca3af;--accent:#2563eb;--accent2:#14b8a6;--good:#22c55e;--warn:#f59e0b;--danger:#ef4444}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{font-family:system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;margin:0;background:radial-gradient(circle at top right,rgba(37,99,235,.2),transparent 34%),linear-gradient(180deg,#080a12,#0a0f1d 58%,#07090f);color:var(--text);-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;background:linear-gradient(90deg,rgba(37,99,235,.06),transparent 42%,rgba(20,184,166,.05));z-index:-1}
 main{max-width:1440px;margin:auto;padding:22px}
 h1{font-size:28px;margin:0 0 7px;letter-spacing:0}h2{font-size:18px;margin:0 0 12px}h3{font-size:15px;margin:20px 0 9px;color:#dbeafe}.lead{color:#b6c2d6;line-height:1.7;margin:0}
 .eyebrow{display:inline-flex;margin-bottom:8px;padding:5px 8px;border:1px solid rgba(20,184,166,.26);background:rgba(20,184,166,.1);border-radius:7px;color:#ccfbf1;font-size:11px;font-weight:900}
-.shell-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:14px}.head-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.head-actions a,.admin-nav a{color:#e0f2fe;text-decoration:none;font-size:12px;font-weight:900;border:1px solid var(--line);background:rgba(255,255,255,.06);border-radius:8px;padding:9px 11px}.head-actions a.primary{background:var(--accent);border-color:transparent;color:#fff}
+.shell-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:14px}.brand-row{display:flex;align-items:center;gap:13px;margin-bottom:12px}.brand-row img{height:44px;max-width:150px;object-fit:contain}.head-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.head-actions a,.admin-nav a{color:#e0f2fe;text-decoration:none;font-size:12px;font-weight:900;border:1px solid var(--line);background:rgba(255,255,255,.06);border-radius:8px;padding:9px 11px;min-height:38px;display:inline-flex;align-items:center}.head-actions a.primary{background:var(--accent);border-color:transparent;color:#fff}
 .admin-nav{position:sticky;top:0;z-index:5;display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px;padding:10px 0;background:linear-gradient(180deg,rgba(7,11,22,.98),rgba(7,11,22,.86));backdrop-filter:blur(16px)}
 section{border:1px solid var(--line);background:linear-gradient(180deg,rgba(16,24,39,.88),rgba(15,23,42,.72));border-radius:8px;padding:18px;margin-bottom:16px;box-shadow:0 20px 60px rgba(0,0,0,.22)}
 .grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
@@ -568,7 +593,7 @@ a{color:#93c5fd}.url{word-break:break-all;color:#bfdbfe;direction:ltr;text-align
 </style>
 </head>
 <body><main>
-<div class="shell-head"><div><span class="eyebrow">Manara LAN Admin</span><h1>لوحة إدارة منارة</h1><p class="lead">تحكم واضح في المشاهدة داخل الشبكة: القنوات، IPTV، مكتبة الوسائط، المشاهدين، التقارير، والتخصيص.</p></div><div class="head-actions"><a class="primary" href="/">فتح صفحة المشاهدة</a><a href="/library">فتح المكتبة</a><a href="/admin/logout">تسجيل الخروج</a></div></div>
+<div class="shell-head"><div><div class="brand-row"><img src="/wiva-logo.png" alt="WIVA"><span class="eyebrow">WIVA LAN Admin</span></div><h1>لوحة إدارة WIVA</h1><p class="lead">تحكم واضح في المشاهدة داخل الشبكة: القنوات، IPTV، مكتبة الوسائط، المشاهدين، التقارير، والتخصيص.</p></div><div class="head-actions"><a class="primary" href="/">فتح صفحة المشاهدة</a><a href="/library">فتح المكتبة</a><a href="/setup">الإعداد</a><a href="${escapeHtml(adminBase)}/logout">تسجيل الخروج</a></div></div>
 <nav class="admin-nav"><a href="#media">المكتبة</a><a href="#viewers">المشاهدون</a><a href="#iptv">IPTV</a><a href="#security">الحظر</a><a href="#logs">السجل</a><a href="#broadcast">قنوات البث</a></nav>
 <script id="mediaAdminPayload" type="application/json">${mediaPayload}</script>
 <section id="media">
@@ -824,7 +849,7 @@ function libraryPage(req, res) {
   const sectionPayload = jsonForScript(librarySections(items));
   const isRtl = theme.direction === 'rtl';
   const text = isRtl ? {
-    pageTitle: 'مكتبة Manara',
+    pageTitle: 'مكتبة WIVA',
     channels: 'القنوات',
     totalItems: 'كل المحتوى',
     movies: 'أفلام',
@@ -881,7 +906,7 @@ function libraryPage(req, res) {
     accountSaved: 'تم الحفظ.',
     accountError: 'تعذر تنفيذ الطلب. تأكد من البيانات وحاول مرة أخرى.',
   } : {
-    pageTitle: 'Manara Media Library',
+    pageTitle: 'WIVA Media Library',
     channels: 'Channels',
     totalItems: 'Total items',
     movies: 'Movies',
@@ -1138,7 +1163,7 @@ function updateHero(){
   const later = document.getElementById('heroLater');
   if(!heroItem){
     document.getElementById('heroKind').textContent = text.featured || 'Featured';
-    document.getElementById('heroTitle').textContent = document.querySelector('.brand')?.textContent?.trim() || 'Manara';
+    document.getElementById('heroTitle').textContent = document.querySelector('.brand')?.textContent?.trim() || 'WIVA';
     document.getElementById('heroDesc').textContent = '';
     play.textContent = text.browseAll || 'Browse all';
     play.href = '#grid';
@@ -1308,7 +1333,7 @@ function playerPage(id, req, res) {
   return `<!doctype html>
 <html lang="${theme.direction === 'rtl' ? 'ar' : 'en'}" dir="${theme.direction}"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${escapeHtml(title)} - Manara</title>
+<title>${escapeHtml(title)} - WIVA</title>
 <style>
 :root{color-scheme:dark;--bg:#070b19;--panel:#10182f;--line:rgba(255,255,255,.1);--text:#eef2ff;--muted:#a7b3cf;--accent:${escapeHtml(theme.accent)}}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;background:linear-gradient(90deg,rgba(8,10,18,.98),rgba(8,10,18,.82)),url('${escapeHtml(poster)}');background-size:cover;background-position:center;color:var(--text);font-family:system-ui,-apple-system,Segoe UI,sans-serif}
@@ -1379,7 +1404,7 @@ if(media){
 }
 const full = location.origin + meta.streamUrl;
 vlcBtn.onclick=()=>{ location.href='vlc://'+encodeURIComponent(full); setTimeout(()=>open(full,'_blank'),900); };
-mxBtn.onclick=()=>{ location.href='intent:'+full+'#Intent;package=com.mxtech.videoplayer.ad;S.title='+encodeURIComponent(meta.title||'Manara')+';end'; };
+mxBtn.onclick=()=>{ location.href='intent:'+full+'#Intent;package=com.mxtech.videoplayer.ad;S.title='+encodeURIComponent(meta.title||'WIVA')+';end'; };
 const prompt=document.getElementById('watchPrompt'); const countdown=document.getElementById('countdown'); let idle, tick, left=60;
 function stop(){ if(media){ media.pause(); media.removeAttribute('src'); media.load(); } prompt.style.display='none'; }
 function reset(){ clearTimeout(idle); clearInterval(tick); prompt.style.display='none'; idle=setTimeout(show,45*60*1000); }
@@ -1441,11 +1466,25 @@ async function streamRemote(req, res, remoteUrl) {
 function createHandler(options = {}) {
   return async (req, res) => {
     const u = url.parse(req.url, true);
+    const configuredAdminPath = '/' + String(typeof options.getAdminPath === 'function' ? options.getAdminPath() : 'admin')
+      .replace(/^\/+|\/+$/g, '')
+      .replace(/[^\w\-./]/g, '');
+    const adminBase = configuredAdminPath === '/' ? '/admin' : configuredAdminPath;
+    const isAdminBase = u.pathname === '/admin' || u.pathname === adminBase;
+    const isAdminLogin = u.pathname === '/admin/login' || u.pathname === `${adminBase}/login`;
+    const isAdminLogout = u.pathname === '/admin/logout' || u.pathname === `${adminBase}/logout`;
     res.setHeader('Access-Control-Allow-Origin', '*');
-    if (u.pathname === '/favicon.ico') {
-      res.writeHead(204, { 'Cache-Control': 'public, max-age=86400' });
-      res.end();
-      return;
+    if (u.pathname === '/favicon.ico' || u.pathname === '/wiva-logo.png') {
+      const asset = path.join(__dirname, '..', 'assets', u.pathname === '/favicon.ico' ? 'icon.png' : 'wiva.png');
+      try {
+        if (fs.existsSync(asset)) {
+          return send(res, 200, fs.readFileSync(asset), {
+            'Content-Type': 'image/png',
+            'Cache-Control': 'public, max-age=86400',
+          });
+        }
+      } catch {}
+      return send(res, 204, '', { 'Cache-Control': 'public, max-age=86400' });
     }
     if (req.method === 'OPTIONS') {
       res.writeHead(204, {
@@ -1455,16 +1494,41 @@ function createHandler(options = {}) {
       res.end();
       return;
     }
-    if (u.pathname === '/admin/login' && req.method === 'GET') {
-      return send(res, 200, adminLoginPage(), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    if (u.pathname === '/setup' || u.pathname === '/agent') {
+      return send(res, 200, setupPage(options), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     }
-    if (u.pathname === '/admin/logout') {
+    if (u.pathname === '/api/agent/state' || u.pathname === '/api/setup/state') {
+      const state = typeof options.getSetupState === 'function' ? options.getSetupState() : {};
+      return sendJson(res, 200, state);
+    }
+    if (u.pathname === '/api/setup/port-check') {
+      const result = typeof options.checkPort === 'function'
+        ? options.checkPort(u.query.port)
+        : { ok: false, available: false, message: 'Port check is not available.' };
+      return sendJson(res, 200, result);
+    }
+    if (u.pathname === '/api/setup/save' && req.method === 'POST') {
+      try {
+        const state = typeof options.getSetupState === 'function' ? options.getSetupState() : {};
+        if (state.setupCompleted && !requireAdmin(req, res, options.getAdminAuth, adminBase)) return;
+        const body = await parseJsonBody(req);
+        if (!body.networkName && !body.brandName) return sendJson(res, 400, { ok: false, error: 'networkName is required' });
+        const next = typeof options.applySetup === 'function' ? await options.applySetup(body) : state;
+        return sendJson(res, 200, { ok: true, state: next });
+      } catch (e) {
+        return sendJson(res, 500, { ok: false, error: e.message });
+      }
+    }
+    if (isAdminLogin && req.method === 'GET') {
+      return send(res, 200, adminLoginPage('', adminBase), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    }
+    if (isAdminLogout) {
       return send(res, 302, '', {
-        'Location': '/admin/login',
-        'Set-Cookie': 'manara_admin=; Path=/admin; HttpOnly; SameSite=Lax; Max-Age=0',
+        'Location': `${adminBase}/login`,
+        'Set-Cookie': 'manara_admin=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0',
       });
     }
-    if (u.pathname === '/admin/login' && req.method === 'POST') {
+    if (isAdminLogin && req.method === 'POST') {
       const auth = typeof options.getAdminAuth === 'function' ? options.getAdminAuth() : {};
       const body = await readBody(req);
       const params = new URLSearchParams(body);
@@ -1472,14 +1536,14 @@ function createHandler(options = {}) {
       const password = auth.password || 'admin';
       if (params.get('username') === username && params.get('password') === password) {
         return send(res, 302, '', {
-          'Location': '/admin',
-          'Set-Cookie': `manara_admin=${Buffer.from(`${username}:${password}`).toString('base64')}; Path=/admin; HttpOnly; SameSite=Lax; Max-Age=604800`,
+          'Location': adminBase,
+          'Set-Cookie': `manara_admin=${Buffer.from(`${username}:${password}`).toString('base64')}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800`,
         });
       }
-      return send(res, 401, adminLoginPage('اسم المستخدم أو كلمة المرور غير صحيحة.'), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      return send(res, 401, adminLoginPage('اسم المستخدم أو كلمة المرور غير صحيحة.', adminBase), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     }
-    if (u.pathname === '/admin') {
-      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+    if (isAdminBase) {
+      if (!requireAdmin(req, res, options.getAdminAuth, adminBase)) return;
       if (!featureAllowed(options, 'webAdmin')) return denyFeature(req, res, options, 'webAdmin');
       return send(res, 200, adminPage(options), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     }
@@ -1837,11 +1901,11 @@ function createHandler(options = {}) {
         return;
       }
     }
-    res.writeHead(404); res.end('Manara media');
+    res.writeHead(404); res.end('WIVA media');
   };
 }
 
-function start(port = 8420, options = {}) {
+function start(port = 8788, options = {}) {
   const server = http.createServer(createHandler(options));
   server.on('error', (e) => console.error('[media-server]', e.message));
   // Bind to 0.0.0.0 so LAN viewers can pull IPTV through this PC

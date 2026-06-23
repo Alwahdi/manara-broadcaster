@@ -536,7 +536,7 @@ let _adminState = {
   logs: [],
   blockedMessage: 'البث غير متاح حالياً.',
   mediaTheme: {
-    brandName: 'مكتبة منارة',
+    brandName: 'مكتبة WIVA',
     tagline: 'أفلام ومسلسلات وصوتيات جاهزة للمشاهدة داخل الشبكة المحلية',
     logoUrl: '',
     accent: '#3b82f6',
@@ -550,7 +550,7 @@ function normalizeAdminState(raw = {}) {
     ..._adminState.mediaTheme,
     ...(raw.mediaTheme && typeof raw.mediaTheme === 'object' ? raw.mediaTheme : {}),
   };
-  if (mediaTheme.brandName === 'Manara Media') mediaTheme.brandName = 'مكتبة منارة';
+  if (mediaTheme.brandName === 'Manara Media' || mediaTheme.brandName === 'مكتبة منارة') mediaTheme.brandName = 'مكتبة WIVA';
   if (mediaTheme.tagline === 'مكتبة وسائط محلية على نفس الشبكة') {
     mediaTheme.tagline = 'أفلام ومسلسلات وصوتيات جاهزة للمشاهدة داخل الشبكة المحلية';
   }

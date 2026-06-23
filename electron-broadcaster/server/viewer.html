@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8" />
-<title>Manara</title>
+<title>WIVA</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <style>
   :root { --accent:#2563eb; --accent2:#14b8a6; }
@@ -52,7 +52,7 @@
   <header class="hero">
     <div class="logo" id="logoBox">T</div>
     <div class="brand">
-      <h1 id="brandName">TeraNet</h1>
+      <h1 id="brandName">WIVA</h1>
       <p id="brandTagline">خدمة مشاهدة داخل الشبكة</p>
     </div>
     <span class="live-pill"><span class="dot"></span> جاهز للمشاهدة</span>
@@ -70,7 +70,7 @@
     <p>يرجى المحاولة لاحقاً أو التواصل مع المسؤول عن الشبكة.</p>
   </div>
 
-  <footer id="footerName">Manara</footer>
+  <footer id="footerName">WIVA</footer>
 </div>
 
 <script>
@@ -81,11 +81,11 @@ async function load() {
     const brand = data.brand || {};
     document.documentElement.style.setProperty('--accent', brand.accent || '#3b82f6');
     document.documentElement.style.setProperty('--accent2', brand.accent2 || '#8b5cf6');
-    document.getElementById('brandName').textContent = brand.brandName || 'TeraNet';
+    document.getElementById('brandName').textContent = brand.brandName || 'WIVA';
     document.getElementById('brandTagline').textContent = brand.brandTagline || 'خدمة مشاهدة داخل الشبكة';
     document.getElementById('logoBox').innerHTML = brand.logoUrl ? '<img alt="" src="' + escapeAttr(brand.logoUrl) + '">' : escapeHtml((brand.brandName || 'M').trim().charAt(0).toUpperCase());
-    document.title = (brand.brandName || 'Manara') + ' — المشاهدة';
-    document.getElementById('footerName').textContent = (brand.brandName || 'Manara');
+    document.title = (brand.brandName || 'WIVA') + ' — المشاهدة';
+    document.getElementById('footerName').textContent = (brand.brandName || 'WIVA');
 
     const chs = data.channels || [];
     document.getElementById('count').textContent = chs.length + ' قناة متاحة';

@@ -1,4 +1,4 @@
-// Manara Broadcaster — Electron main process
+// WIVA Agent — Electron main process
 // - Persistent settings (brand, channels, port, auto-start)
 // - Windows auto-start at boot via app.setLoginItemSettings
 // - Embedded HTTP + WebSocket signaling server (multi-channel)
@@ -9,6 +9,8 @@ const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell, desktopCapt
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const net = require('net');
+const childProcess = require('child_process');
 const { loadLocalEnv } = require('./library/env.cjs');
 const loadedEnvFiles = loadLocalEnv(__dirname);
 const { startSignalingServer } = require('./server/signaling.cjs');
@@ -24,9 +26,15 @@ const platform = require('./library/platform.cjs');
 let runtimeConfig = {};
 try { runtimeConfig = require('./library/cloud-runtime.cjs'); } catch {}
 if (!process.env.MANARA_NEON_DATABASE_URL && !runtimeConfig.neonDatabaseUrl && !app.isPackaged) {
-  console.warn('[Manara] dev mode has no MANARA_NEON_DATABASE_URL. Add it to .env.local for Neon cloud IPTV/platform tests.');
+  console.warn('[WIVA] dev mode has no MANARA_NEON_DATABASE_URL. Add it to .env.local for Neon cloud IPTV/platform tests.');
 }
-if (loadedEnvFiles.length) console.log('[Manara] loaded local env files:', loadedEnvFiles.join(', '));
+if (loadedEnvFiles.length) console.log('[WIVA] loaded local env files:', loadedEnvFiles.join(', '));
+
+const APP_NAME = 'WIVA';
+const APP_DATA_DIR = 'WIVA';
+const LEGACY_APP_DATA_DIR = 'Manara';
+const DEFAULT_AGENT_PORT = 8787;
+const DEFAULT_LIBRARY_PORT = 8788;
 
 function initSentry() {
   const dsn = process.env.SENTRY_DSN || runtimeConfig.sentryDsn || '';
@@ -35,21 +43,21 @@ function initSentry() {
     const Sentry = require('@sentry/electron/main');
     Sentry.init({
       dsn,
-      release: `manara-broadcaster@${app.getVersion()}`,
+      release: `wiva-agent@${app.getVersion()}`,
       environment: app.isPackaged ? 'production' : 'development',
       tracesSampleRate: 0.05,
     });
     process.on('uncaughtException', (error) => {
       Sentry.captureException(error);
-      console.error('[Manara] uncaught exception:', error);
+      console.error('[WIVA] uncaught exception:', error);
     });
     process.on('unhandledRejection', (reason) => {
       Sentry.captureException(reason instanceof Error ? reason : new Error(String(reason)));
-      console.error('[Manara] unhandled rejection:', reason);
+      console.error('[WIVA] unhandled rejection:', reason);
     });
-    console.log('[Manara] Sentry error tracking enabled');
+    console.log('[WIVA] Sentry error tracking enabled');
   } catch (e) {
-    console.warn('[Manara] Sentry init failed:', e?.message || e);
+    console.warn('[WIVA] Sentry init failed:', e?.message || e);
   }
 }
 
@@ -58,10 +66,10 @@ initSentry();
 // Force a single stable app-data directory across ZIP/installer/autostart/update
 // launches. This is the real source of truth for all local data.
 try {
-  app.setName('Manara');
-  app.setPath('userData', path.join(app.getPath('appData'), 'Manara'));
+  app.setName(APP_NAME);
+  app.setPath('userData', path.join(app.getPath('appData'), APP_DATA_DIR));
 } catch (e) {
-  console.warn('[Manara] could not force userData path:', e?.message || e);
+  console.warn('[WIVA] could not force userData path:', e?.message || e);
 }
 
 // Single-instance lock: prevents concurrent writes to settings/channels JSON
@@ -70,7 +78,7 @@ try {
 // "my channels disappeared after restart".
 const __gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!__gotSingleInstanceLock) {
-  console.warn('[Manara] another instance is already running — exiting this one');
+  console.warn('[WIVA] another instance is already running — exiting this one');
   app.quit();
   process.exit(0);
 } else {
@@ -85,7 +93,7 @@ if (!__gotSingleInstanceLock) {
   });
 }
 
-// Persistent settings: ALWAYS store under userData (%APPDATA%\Manara on Windows).
+// Persistent settings: ALWAYS store under userData (%APPDATA%\WIVA on Windows).
 // This survives auto-updates (NSIS wipes the install dir on update), reboots,
 // uninstall+reinstall, and works regardless of the exec path used to launch
 // the app (autostart shortcut, start menu, updater stub, etc.).
@@ -97,7 +105,9 @@ function settingsPath() {
 
   // One-time migration from legacy portable locations (next to .exe and __dirname).
   if (!fs.existsSync(target)) {
+    const legacyUserData = path.join(app.getPath('appData'), LEGACY_APP_DATA_DIR, 'settings.json');
     const legacyCandidates = [
+      legacyUserData,
       path.join(path.dirname(process.execPath), 'teranet-settings.json'),
       path.join(__dirname, 'teranet-settings.json'),
     ];
@@ -105,18 +115,18 @@ function settingsPath() {
       try {
         if (fs.existsSync(legacy)) {
           fs.copyFileSync(legacy, target);
-          console.log('[Manara] migrated legacy settings:', legacy, '→', target);
+          console.log('[WIVA] migrated legacy settings:', legacy, '→', target);
           break;
         }
       } catch (e) {
-        console.warn('[Manara] migration check failed for', legacy, e?.message);
+        console.warn('[WIVA] migration check failed for', legacy, e?.message);
       }
     }
   }
   return target;
 }
 const SETTINGS_FILE = settingsPath();
-console.log('[Manara] settings file:', SETTINGS_FILE);
+console.log('[WIVA] settings file:', SETTINGS_FILE);
 let lastSettingsSaveError = '';
 const DEFAULT_BRAND_TAGLINE = 'خدمة مشاهدة داخل الشبكة';
 const LEGACY_DEFAULT_BRAND_TAGLINES = new Set([
@@ -127,12 +137,26 @@ const LEGACY_DEFAULT_BRAND_TAGLINES = new Set([
 
 function defaultSettings() {
   return {
-    schemaVersion: 5,
-    brandName: 'Manara',
+    schemaVersion: 6,
+    setupCompleted: false,
+    setupCompletedAt: '',
+    brandName: 'WIVA',
     brandTagline: DEFAULT_BRAND_TAGLINE,
+    networkName: '',
+    networkNumber: '',
+    networkLocation: '',
+    networkCountry: '',
+    networkRegion: '',
+    networkCity: '',
+    networkTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Aden',
+    networkLogoDataUrl: '',
+    experienceLayout: 'unified',
+    liveTheme: 'cinema',
+    libraryTheme: 'cinema',
+    adminPath: 'admin',
     accent: '#2563eb',
     accent2: '#14b8a6',
-    port: 8080,
+    port: DEFAULT_AGENT_PORT,
     autoStartOnBoot: false,
     startMinimized: false,
     autoStartChannels: true,
@@ -140,7 +164,7 @@ function defaultSettings() {
     licenseKey: '',
     tmdbKey: '',
     tmdbLang: 'ar',
-    libraryPort: 8420,
+    libraryPort: DEFAULT_LIBRARY_PORT,
     adminUsername: 'admin',
     adminPassword: 'admin',
     neonDatabaseUrl: '',
@@ -157,6 +181,11 @@ function defaultSettings() {
 
 function normalizeSettings(parsed) {
   const merged = { ...defaultSettings(), ...(parsed && typeof parsed === 'object' ? parsed : {}) };
+  if (!merged.brandName || merged.brandName === 'Manara') merged.brandName = 'WIVA';
+  if (!merged.port || Number(merged.port) === 8080) merged.port = DEFAULT_AGENT_PORT;
+  if (!merged.libraryPort || Number(merged.libraryPort) === 8420) merged.libraryPort = DEFAULT_LIBRARY_PORT;
+  merged.adminPath = String(merged.adminPath || 'admin').replace(/^\/+|\/+$/g, '').replace(/[^\w\-./]/g, '') || 'admin';
+  merged.experienceLayout = merged.experienceLayout === 'separate' ? 'separate' : 'unified';
   if (LEGACY_DEFAULT_BRAND_TAGLINES.has(String(merged.brandTagline || '').trim())) {
     merged.brandTagline = DEFAULT_BRAND_TAGLINE;
   }
@@ -173,16 +202,16 @@ function loadSettings() {
     const parsed = JSON.parse(raw);
     return normalizeSettings(parsed);
   } catch (e) {
-    console.warn('[Manara] settings load fallback:', e?.message || e);
+    console.warn('[WIVA] settings load fallback:', e?.message || e);
     try {
       const backup = SETTINGS_FILE + '.bak';
       if (fs.existsSync(backup)) {
         const parsed = JSON.parse(fs.readFileSync(backup, 'utf8'));
-        console.warn('[Manara] settings recovered from backup:', backup);
+        console.warn('[WIVA] settings recovered from backup:', backup);
         return normalizeSettings(parsed);
       }
     } catch (backupError) {
-      console.warn('[Manara] settings backup recovery failed:', backupError?.message || backupError);
+      console.warn('[WIVA] settings backup recovery failed:', backupError?.message || backupError);
     }
     return defaultSettings();
   }
@@ -210,7 +239,7 @@ function saveSettings(s) {
 
 function publicServerInfo() {
   return {
-    port: serverInfo?.port || settings.port || 8080,
+    port: serverInfo?.port || settings.port || DEFAULT_AGENT_PORT,
     ips: getLocalIPs(),
   };
 }
@@ -218,6 +247,8 @@ function publicServerInfo() {
 function publicSettings() {
   const clone = JSON.parse(JSON.stringify(settings));
   delete clone.neonDatabaseUrl;
+  delete clone.adminPassword;
+  delete clone.licenseKey;
   return clone;
 }
 
@@ -230,6 +261,104 @@ function getLocalIPs() {
     }
   }
   return ips;
+}
+
+function runShell(command) {
+  try {
+    return childProcess.execSync(command, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 1800 });
+  } catch {
+    return '';
+  }
+}
+
+function lookupPortOwner(port) {
+  const p = Number(port);
+  if (!Number.isInteger(p) || p < 1 || p > 65535) return null;
+  if (process.platform === 'win32') {
+    const lines = runShell(`netstat -ano -p tcp | findstr ":${p}"`).split(/\r?\n/).filter(Boolean);
+    const match = lines.find((line) => /\bLISTENING\b/i.test(line));
+    const pid = match ? match.trim().split(/\s+/).pop() : '';
+    if (!pid) return null;
+    const name = runShell(`powershell -NoProfile -Command "try { (Get-Process -Id ${pid}).ProcessName } catch {}"`).trim();
+    return { pid, processName: name || `PID ${pid}` };
+  }
+  const line = runShell(`lsof -nP -iTCP:${p} -sTCP:LISTEN -FpPc | tr '\\n' ' '`).trim();
+  const pid = (line.match(/\bp(\d+)/) || [])[1] || '';
+  const processName = (line.match(/\bc([^ ]+)/) || [])[1] || '';
+  return pid ? { pid, processName: processName || `PID ${pid}` } : null;
+}
+
+function findSuggestedPort(start) {
+  const base = Math.max(1024, Math.min(65500, Number(start) || DEFAULT_AGENT_PORT));
+  for (let p = base; p < Math.min(65535, base + 80); p += 1) {
+    const owner = lookupPortOwner(p);
+    if (!owner) return p;
+  }
+  return base + 100;
+}
+
+function checkPortAvailability(port) {
+  const p = Number(port);
+  if (!Number.isInteger(p) || p < 1 || p > 65535) {
+    return { ok: false, available: false, port, message: 'Port must be a number between 1 and 65535.' };
+  }
+  const owner = lookupPortOwner(p);
+  if (owner) {
+    return {
+      ok: true,
+      available: false,
+      port: p,
+      processName: owner.processName,
+      pid: owner.pid,
+      suggestedPort: findSuggestedPort(p + 1),
+      message: `Port ${p} is already used by ${owner.processName || 'another application'}.`,
+    };
+  }
+  return { ok: true, available: true, port: p, message: `Port ${p} is available.` };
+}
+
+function agentUrls() {
+  const livePort = serverInfo?.port || settings.port || DEFAULT_AGENT_PORT;
+  const libraryPort = libraryServerInfo?.port || settings.libraryPort || DEFAULT_LIBRARY_PORT;
+  const ips = getLocalIPs();
+  const adminPath = String(settings.adminPath || 'admin').replace(/^\/+|\/+$/g, '') || 'admin';
+  return {
+    liveLocal: `http://127.0.0.1:${livePort}`,
+    libraryLocal: `http://127.0.0.1:${libraryPort}/library`,
+    setupLocal: `http://127.0.0.1:${libraryPort}/setup`,
+    adminLocal: `http://127.0.0.1:${libraryPort}/${adminPath}`,
+    liveLan: ips.map((ip) => `http://${ip}:${livePort}`),
+    libraryLan: ips.map((ip) => `http://${ip}:${libraryPort}/library`),
+    setupLan: ips.map((ip) => `http://${ip}:${libraryPort}/setup`),
+    adminLan: ips.map((ip) => `http://${ip}:${libraryPort}/${adminPath}`),
+  };
+}
+
+function agentState() {
+  const status = serverInfo?.getStats ? serverInfo.getStats() : { channels: [] };
+  return {
+    appName: APP_NAME,
+    version: app.getVersion(),
+    setupCompleted: !!settings.setupCompleted,
+    launchedAtBoot,
+    uptimeSeconds: Math.round(process.uptime()),
+    platform: process.platform,
+    ports: {
+      live: serverInfo?.port || settings.port || DEFAULT_AGENT_PORT,
+      library: libraryServerInfo?.port || settings.libraryPort || DEFAULT_LIBRARY_PORT,
+    },
+    urls: agentUrls(),
+    settings: publicSettings(),
+    status,
+    update: updateState,
+    subscription: platform.status(),
+    libraryReady,
+    storage: {
+      settingsPath: SETTINGS_FILE,
+      userDataDir: app.getPath('userData'),
+      lastSettingsSaveError,
+    },
+  };
 }
 
 let settings = loadSettings();
@@ -379,10 +508,81 @@ function applyLoginItem() {
 
 function mediaServerOptions() {
   return {
+    appName: APP_NAME,
     getAdminAuth: () => ({
       username: settings.adminUsername || 'admin',
       password: settings.adminPassword || 'admin',
     }),
+    getAdminPath: () => settings.adminPath || 'admin',
+    getSetupState: () => agentState(),
+    checkPort: (port) => checkPortAvailability(port),
+    applySetup: async (patch = {}) => {
+      const currentLivePort = Number(settings.port) || DEFAULT_AGENT_PORT;
+      const currentLibraryPort = Number(settings.libraryPort) || DEFAULT_LIBRARY_PORT;
+      const clean = patch && typeof patch === 'object' ? patch : {};
+      const next = {
+        setupCompleted: clean.setupCompleted !== false,
+        setupCompletedAt: new Date().toISOString(),
+        brandName: String(clean.brandName || clean.networkName || settings.brandName || 'WIVA').trim() || 'WIVA',
+        brandTagline: String(clean.brandTagline || settings.brandTagline || DEFAULT_BRAND_TAGLINE).trim() || DEFAULT_BRAND_TAGLINE,
+        networkName: String(clean.networkName || '').trim(),
+        networkNumber: String(clean.networkNumber || '').trim(),
+        networkLocation: String(clean.networkLocation || '').trim(),
+        networkCountry: String(clean.networkCountry || '').trim(),
+        networkRegion: String(clean.networkRegion || '').trim(),
+        networkCity: String(clean.networkCity || '').trim(),
+        networkTimezone: String(clean.networkTimezone || settings.networkTimezone || 'Asia/Aden').trim(),
+        networkLogoDataUrl: /^data:image\/png;base64,/i.test(String(clean.networkLogoDataUrl || '')) ? clean.networkLogoDataUrl : settings.networkLogoDataUrl,
+        experienceLayout: clean.experienceLayout === 'separate' ? 'separate' : 'unified',
+        liveTheme: String(clean.liveTheme || settings.liveTheme || 'cinema').trim(),
+        libraryTheme: String(clean.libraryTheme || settings.libraryTheme || 'cinema').trim(),
+        adminPath: String(clean.adminPath || settings.adminPath || 'admin').replace(/^\/+|\/+$/g, '').replace(/[^\w\-./]/g, '') || 'admin',
+        adminUsername: String(clean.adminUsername || settings.adminUsername || 'admin').trim() || 'admin',
+        adminPassword: String(clean.adminPassword || settings.adminPassword || 'admin').trim() || 'admin',
+        port: Math.max(1, Math.min(65535, Number(clean.port || settings.port || DEFAULT_AGENT_PORT))),
+        libraryPort: Math.max(1, Math.min(65535, Number(clean.libraryPort || settings.libraryPort || DEFAULT_LIBRARY_PORT))),
+      };
+      settings = { ...settings, ...next };
+      saveSettingsAndBackup('web-setup');
+      if (libraryReady) {
+        try {
+          libraryDb.setMediaTheme({
+            brandName: settings.brandName,
+            tagline: settings.brandTagline,
+            logoUrl: settings.networkLogoDataUrl || '',
+            direction: 'rtl',
+            accent: settings.accent,
+            accent2: settings.accent2,
+          });
+        } catch (e) {
+          console.warn('[WIVA] setup theme sync failed:', e.message);
+        }
+      }
+      if (serverInfo && serverInfo.setBrand) {
+        serverInfo.setBrand({
+          brandName: settings.brandName,
+          brandTagline: settings.brandTagline,
+          accent: settings.accent,
+          accent2: settings.accent2,
+        });
+      }
+      const shouldRestartLive = Number(settings.port) !== currentLivePort;
+      const shouldRestartLibrary = Number(settings.libraryPort) !== currentLibraryPort;
+      if (shouldRestartLive || shouldRestartLibrary) {
+        setTimeout(async () => {
+          try {
+            if (shouldRestartLive) await restartLiveServer(settings.port);
+            if (shouldRestartLibrary && libraryServerInfo?.close) {
+              await libraryServerInfo.close();
+              libraryServerInfo = libraryServer.start(settings.libraryPort || DEFAULT_LIBRARY_PORT, mediaServerOptions());
+            }
+          } catch (e) {
+            console.error('[WIVA] setup port restart failed:', e.message);
+          }
+        }, 700);
+      }
+      return agentState();
+    },
     getIptvPolicy: () => ({
       iptvGlobalLimitBytes: Number(settings.iptvGlobalLimitBytes) || 0,
     }),
@@ -422,6 +622,23 @@ function platformFeatureAllowed(feature) {
 
 function createMediaHandler() {
   return libraryServer.createHandler(mediaServerOptions());
+}
+
+async function restartLiveServer(port) {
+  if (serverInfo && serverInfo.close) await serverInfo.close();
+  serverInfo = startSignalingServer({
+    port: port || settings.port || DEFAULT_AGENT_PORT,
+    mediaHandler: createMediaHandler(),
+    getIptvChannels: publicIptvChannels,
+    getFeatureAllowed: platformFeatureAllowed,
+  });
+  serverInfo.setBrand({
+    brandName: settings.brandName,
+    brandTagline: settings.brandTagline,
+    accent: settings.accent,
+    accent2: settings.accent2,
+  });
+  return { port: serverInfo.port };
 }
 
 function publicIptvChannels() {
@@ -567,7 +784,9 @@ function setAllCloudIptvEnabled(enabled = true) {
 }
 
 function createAppIcon() {
-  const iconPath = path.join(__dirname, 'assets', 'icon.ico');
+  const iconPath = process.platform === 'win32'
+    ? path.join(__dirname, 'assets', 'icon.ico')
+    : path.join(__dirname, 'assets', 'icon.png');
   try {
     if (fs.existsSync(iconPath)) {
       const icon = nativeImage.createFromPath(iconPath);
@@ -585,12 +804,12 @@ function createAppIcon() {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1320,
-    height: 860,
-    minWidth: 1024,
-    minHeight: 700,
-    backgroundColor: '#070b1e',
-    title: settings.brandName + ' Broadcaster',
+    width: 920,
+    height: 720,
+    minWidth: 760,
+    minHeight: 620,
+    backgroundColor: '#07090f',
+    title: APP_NAME + ' Agent',
     icon: createAppIcon(),
     autoHideMenuBar: true,
     show: !(launchedAtBoot && settings.startMinimized),
@@ -617,9 +836,11 @@ function createTray() {
   try {
     const icon = createAppIcon();
     tray = new Tray(icon);
-    tray.setToolTip(settings.brandName + ' Broadcaster');
+    tray.setToolTip(APP_NAME + ' Agent');
     const menu = Menu.buildFromTemplate([
-      { label: 'فتح اللوحة', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
+      { label: 'فتح WIVA Agent', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
+      { label: 'فتح الإعداد من المتصفح', click: () => shell.openExternal(agentUrls().setupLocal) },
+      { label: 'فتح الإدارة', click: () => shell.openExternal(agentUrls().adminLocal) },
       { type: 'separator' },
       { label: 'إيقاف وخروج', click: () => { app.isQuitting = true; app.quit(); } },
     ]);
@@ -630,6 +851,8 @@ function createTray() {
 
 // ---------- IPC ----------
 ipcMain.handle('get-server-info', () => publicServerInfo());
+ipcMain.handle('agent-state', () => agentState());
+ipcMain.handle('port-check', (_e, port) => checkPortAvailability(port));
 ipcMain.handle('get-local-ips', () => getLocalIPs());
 ipcMain.handle('get-settings', () => {
   syncBroadcastChannelsFromDb({ persist: false });
@@ -674,11 +897,11 @@ ipcMain.handle('save-settings', (_e, next) => {
     const patch = (next && typeof next === 'object') ? { ...next } : {};
     if (Object.prototype.hasOwnProperty.call(patch, 'neonDatabaseUrl')) {
       delete patch.neonDatabaseUrl;
-      console.warn('[Manara] ignored customer-side Neon URL edit; cloud database is owner controlled');
+      console.warn('[WIVA] ignored customer-side Neon URL edit; cloud database is owner controlled');
     }
     const hasChannels = Object.prototype.hasOwnProperty.call(patch, 'channels');
     if (hasChannels && !Array.isArray(patch.channels)) {
-      console.warn('[Manara] ignored invalid channels save payload');
+      console.warn('[WIVA] ignored invalid channels save payload');
       delete patch.channels;
     }
     // Sync channels from disk BEFORE applying patches so we never write a stale
@@ -692,9 +915,9 @@ ipcMain.handle('save-settings', (_e, next) => {
       try {
         settings.channels = libraryDb.setBroadcastChannels(channelPatch);
         try { settings.localIptvChannels = libraryDb.listIptv(); } catch {}
-        console.log('[Manara] broadcast channels persisted:', settings.channels.length);
+        console.log('[WIVA] broadcast channels persisted:', settings.channels.length);
       } catch (e) {
-        console.error('[Manara] broadcast channel persistence FAILED:', e.message);
+        console.error('[WIVA] broadcast channel persistence FAILED:', e.message);
       }
     } else if (hasChannels && Array.isArray(channelPatch)) {
       settings.channels = channelPatch;
@@ -705,7 +928,7 @@ ipcMain.handle('save-settings', (_e, next) => {
 
     saveSettingsAndBackup('settings');
     try { cloudIptv.setNeonDatabaseUrl(settings.neonDatabaseUrl || ''); } catch {}
-    console.log('[Manara] settings saved — keys:', Object.keys(rest).join(',') || '(none)');
+    console.log('[WIVA] settings saved — keys:', Object.keys(rest).join(',') || '(none)');
     applyLoginItem();
     if (serverInfo && serverInfo.setBrand) {
       serverInfo.setBrand({
@@ -717,23 +940,12 @@ ipcMain.handle('save-settings', (_e, next) => {
     }
     return publicSettings();
   } catch (e) {
-    console.error('[Manara] save-settings handler crashed:', e.message);
+    console.error('[WIVA] save-settings handler crashed:', e.message);
     return publicSettings();
   }
 });
 ipcMain.handle('restart-server', async (_e, port) => {
-  if (serverInfo && serverInfo.close) await serverInfo.close();
-  serverInfo = startSignalingServer({
-    port: port || settings.port,
-    mediaHandler: createMediaHandler(),
-    getIptvChannels: publicIptvChannels,
-    getFeatureAllowed: platformFeatureAllowed,
-  });
-  serverInfo.setBrand({
-    brandName: settings.brandName, brandTagline: settings.brandTagline,
-    accent: settings.accent, accent2: settings.accent2,
-  });
-  return { port: serverInfo.port };
+  return restartLiveServer(port);
 });
 ipcMain.handle('launched-at-boot', () => launchedAtBoot);
 ipcMain.handle('open-external', (_e, url) => shell.openExternal(url));
@@ -872,7 +1084,7 @@ ipcMain.handle('library-get', (_e, id) => {
   const item = libraryDb.getMedia(id);
   if (!item) return null;
   const subs = libraryDb.listSubtitles(id);
-  return { ...item, subtitles: subs, streamUrl: `http://127.0.0.1:${serverInfo?.port || settings.port || 8080}/media/${id}` };
+  return { ...item, subtitles: subs, streamUrl: `http://127.0.0.1:${serverInfo?.port || settings.port || DEFAULT_AGENT_PORT}/media/${id}` };
 });
 ipcMain.handle('library-progress', (_e, { id, position, duration }) => {
   libraryDb.setProgress(id, position, duration);
@@ -928,7 +1140,7 @@ ipcMain.handle('iptv-probe', async (_e, payload) => {
 });
 ipcMain.handle('iptv-status', () => iptv.status());
 ipcMain.handle('iptv-stream-url', (_e, id) => {
-  const port = serverInfo?.port || settings.port || 8080;
+  const port = serverInfo?.port || settings.port || DEFAULT_AGENT_PORT;
   return { url: `http://127.0.0.1:${port}/iptv/${id}`, lanIps: getLocalIPs().map((ip) => `http://${ip}:${port}/iptv/${id}`) };
 });
 ipcMain.handle('cloud-iptv-refresh', async () => {
@@ -980,7 +1192,7 @@ app.whenReady().then(() => {
       const existing = libraryDb.listIptv();
       console.log('[Manara] persisted local IPTV channels on startup:', existing.length);
     } catch {}
-    libraryServerInfo = libraryServer.start(settings.libraryPort || 8420, mediaServerOptions());
+    libraryServerInfo = libraryServer.start(settings.libraryPort || DEFAULT_LIBRARY_PORT, mediaServerOptions());
     console.log('[Manara] library server on 127.0.0.1:' + libraryServerInfo.port);
   } catch (e) {
     console.error('[Manara] library init failed:', e.message);

@@ -13,6 +13,8 @@ function waitForStorage() {
 }
 
 contextBridge.exposeInMainWorld('broadcaster', {
+  agentState: () => ipcRenderer.invoke('agent-state'),
+  portCheck: (port) => ipcRenderer.invoke('port-check', port),
   getServerInfo: () => ipcRenderer.invoke('get-server-info'),
   getLocalIPs: () => ipcRenderer.invoke('get-local-ips'),
   getSettings: () => ipcRenderer.invoke('get-settings'),
