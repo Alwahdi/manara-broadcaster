@@ -29,3 +29,11 @@ ready.
 - Added baseline browser security headers.
 - Added a smoke test for setup, health, admin login, session cookies, and protected admin APIs.
 - Added audit, security, and environment documentation.
+
+## v2.6.2
+
+- Redesigned the public media library with a cinematic WIVA hero, premium Arabic/RTL styling, folder-first browsing, quick filters, polished cards, fresh/progress badges, and mobile-oriented layout rules.
+- Moved viewer sign-in into an optional account drawer so the library stays clean and does not show admin controls to viewers.
+- Improved media library interactions for account access, quick filter state, timestamp sorting, favorites/watch later controls, and section/folder browsing.
+- Refreshed the public media player visual style to match the WIVA library experience.
+- Polished the LAN admin panel surfaces, actions, tables, and navigation without changing its management behavior.
