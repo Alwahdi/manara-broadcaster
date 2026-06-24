@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="electron-broadcaster/assets/wiva.png" alt="WIVA" width="220" />
+</p>
+
 # WIVA Agent
 
 WIVA is a local network live TV, IPTV, and media library agent for hotels, hospitals, cafes, campuses, and private networks.
@@ -29,6 +33,12 @@ The setup wizard can change the ports and custom admin path.
 npm start
 ```
 
+Run the smoke test:
+
+```bash
+npm test
+```
+
 The Electron runtime owns the correct native module ABI. If plain `node` reports a `better-sqlite3` ABI mismatch during local scripts, the app falls back to JSON storage for those checks; use Electron or run `npm --prefix electron-broadcaster run dev:repair-native` when native SQLite is required.
 
 ## Release
@@ -38,3 +48,9 @@ npm --prefix electron-broadcaster run release
 ```
 
 The publish target remains the existing GitHub repository so installed apps can continue receiving updates.
+
+## Documentation
+
+- [Project audit](docs/AUDIT.md)
+- [Security notes](docs/SECURITY.md)
+- [Release flow](electron-broadcaster/RELEASES.md)

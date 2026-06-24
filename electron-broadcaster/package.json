@@ -1,7 +1,7 @@
 {
   "name": "wiva-agent",
   "productName": "WIVA",
-  "version": "2.6.0",
+  "version": "2.6.1",
   "description": "WIVA — Local network live TV, IPTV, and media library agent for hotels, hospitals, cafes, and private networks.",
   "main": "main.cjs",
   "author": {
@@ -17,7 +17,8 @@
     "release": "electron-builder --win --x64 --publish always",
     "platform": "node scripts/platform-admin.cjs",
     "platform:apply-schema": "node scripts/platform-admin.cjs apply-schema",
-    "platform:list": "node scripts/platform-admin.cjs list all"
+    "platform:list": "node scripts/platform-admin.cjs list all",
+    "test": "node scripts/smoke-test.cjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

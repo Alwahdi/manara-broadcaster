@@ -11,6 +11,7 @@ const fs = require('fs');
 const os = require('os');
 const net = require('net');
 const childProcess = require('child_process');
+const crypto = require('crypto');
 const { loadLocalEnv } = require('./library/env.cjs');
 const loadedEnvFiles = loadLocalEnv(__dirname);
 const { startSignalingServer } = require('./server/signaling.cjs');
@@ -35,6 +36,9 @@ const APP_DATA_DIR = 'WIVA';
 const LEGACY_APP_DATA_DIR = 'Manara';
 const DEFAULT_AGENT_PORT = 8787;
 const DEFAULT_LIBRARY_PORT = 8788;
+const ADMIN_HASH_PREFIX = 'scrypt';
+const ADMIN_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const adminSessions = new Map();
 
 function initSentry() {
   const dsn = process.env.SENTRY_DSN || runtimeConfig.sentryDsn || '';
@@ -135,6 +139,61 @@ const LEGACY_DEFAULT_BRAND_TAGLINES = new Set([
   'بث محلي عبر Wi-Fi',
 ]);
 
+function hashAdminPassword(password, salt = crypto.randomBytes(16).toString('base64')) {
+  const normalized = String(password || '');
+  const hash = crypto.scryptSync(normalized, salt, 64, { N: 16384, r: 8, p: 1 }).toString('base64');
+  return `${ADMIN_HASH_PREFIX}$16384$8$1$${salt}$${hash}`;
+}
+
+function timingSafeEqualString(a, b) {
+  const aa = Buffer.from(String(a || ''));
+  const bb = Buffer.from(String(b || ''));
+  if (aa.length !== bb.length) return false;
+  return crypto.timingSafeEqual(aa, bb);
+}
+
+function verifyAdminPassword(password, storedHash) {
+  const parts = String(storedHash || '').split('$');
+  if (parts.length !== 6 || parts[0] !== ADMIN_HASH_PREFIX) return false;
+  const [, n, r, p, salt, expected] = parts;
+  try {
+    const hash = crypto.scryptSync(String(password || ''), salt, 64, {
+      N: Number(n) || 16384,
+      r: Number(r) || 8,
+      p: Number(p) || 1,
+    }).toString('base64');
+    return timingSafeEqualString(hash, expected);
+  } catch {
+    return false;
+  }
+}
+
+function issueAdminSession(username) {
+  const token = crypto.randomBytes(32).toString('base64url');
+  adminSessions.set(token, {
+    username: String(username || 'admin'),
+    createdAt: Date.now(),
+    lastSeenAt: Date.now(),
+  });
+  return token;
+}
+
+function verifyAdminSession(token) {
+  const clean = String(token || '');
+  const sessionInfo = adminSessions.get(clean);
+  if (!sessionInfo) return false;
+  if (Date.now() - Number(sessionInfo.createdAt || 0) > ADMIN_SESSION_TTL_MS) {
+    adminSessions.delete(clean);
+    return false;
+  }
+  sessionInfo.lastSeenAt = Date.now();
+  return true;
+}
+
+function clearAdminSession(token) {
+  adminSessions.delete(String(token || ''));
+}
+
 function defaultSettings() {
   return {
     schemaVersion: 6,
@@ -166,7 +225,8 @@ function defaultSettings() {
     tmdbLang: 'ar',
     libraryPort: DEFAULT_LIBRARY_PORT,
     adminUsername: 'admin',
-    adminPassword: 'admin',
+    adminPassword: '',
+    adminPasswordHash: hashAdminPassword('admin'),
     neonDatabaseUrl: '',
     platformTenantName: '',
     platformContactEmail: '',
@@ -181,6 +241,10 @@ function defaultSettings() {
 
 function normalizeSettings(parsed) {
   const merged = { ...defaultSettings(), ...(parsed && typeof parsed === 'object' ? parsed : {}) };
+  if (merged.adminPassword && !merged.adminPasswordHash) {
+    merged.adminPasswordHash = hashAdminPassword(merged.adminPassword);
+  }
+  merged.adminPassword = '';
   if (!merged.brandName || merged.brandName === 'Manara') merged.brandName = 'WIVA';
   if (!merged.port || Number(merged.port) === 8080) merged.port = DEFAULT_AGENT_PORT;
   if (!merged.libraryPort || Number(merged.libraryPort) === 8420) merged.libraryPort = DEFAULT_LIBRARY_PORT;
@@ -248,6 +312,7 @@ function publicSettings() {
   const clone = JSON.parse(JSON.stringify(settings));
   delete clone.neonDatabaseUrl;
   delete clone.adminPassword;
+  delete clone.adminPasswordHash;
   delete clone.licenseKey;
   return clone;
 }
@@ -511,8 +576,15 @@ function mediaServerOptions() {
     appName: APP_NAME,
     getAdminAuth: () => ({
       username: settings.adminUsername || 'admin',
-      password: settings.adminPassword || 'admin',
+      passwordHash: settings.adminPasswordHash || '',
     }),
+    verifyAdminCredentials: ({ username, password }) => (
+      String(username || '') === String(settings.adminUsername || 'admin')
+      && verifyAdminPassword(password, settings.adminPasswordHash)
+    ),
+    issueAdminSession: ({ username }) => issueAdminSession(username || settings.adminUsername || 'admin'),
+    verifyAdminSession: (token) => verifyAdminSession(token),
+    clearAdminSession: (token) => clearAdminSession(token),
     getAdminPath: () => settings.adminPath || 'admin',
     getSetupState: () => agentState(),
     checkPort: (port) => checkPortAvailability(port),
@@ -538,10 +610,12 @@ function mediaServerOptions() {
         libraryTheme: String(clean.libraryTheme || settings.libraryTheme || 'cinema').trim(),
         adminPath: String(clean.adminPath || settings.adminPath || 'admin').replace(/^\/+|\/+$/g, '').replace(/[^\w\-./]/g, '') || 'admin',
         adminUsername: String(clean.adminUsername || settings.adminUsername || 'admin').trim() || 'admin',
-        adminPassword: String(clean.adminPassword || settings.adminPassword || 'admin').trim() || 'admin',
         port: Math.max(1, Math.min(65535, Number(clean.port || settings.port || DEFAULT_AGENT_PORT))),
         libraryPort: Math.max(1, Math.min(65535, Number(clean.libraryPort || settings.libraryPort || DEFAULT_LIBRARY_PORT))),
       };
+      const nextPassword = String(clean.adminPassword || '').trim();
+      if (nextPassword) next.adminPasswordHash = hashAdminPassword(nextPassword);
+      next.adminPassword = '';
       settings = { ...settings, ...next };
       saveSettingsAndBackup('web-setup');
       if (libraryReady) {
@@ -895,6 +969,13 @@ ipcMain.handle('broadcast-remove', (_e, id) => {
 ipcMain.handle('save-settings', (_e, next) => {
   try {
     const patch = (next && typeof next === 'object') ? { ...next } : {};
+    const hasAdminPasswordPatch = Object.prototype.hasOwnProperty.call(patch, 'adminPassword');
+    if (Object.prototype.hasOwnProperty.call(patch, 'adminPassword')) {
+      const password = String(patch.adminPassword || '').trim();
+      if (password) patch.adminPasswordHash = hashAdminPassword(password);
+      delete patch.adminPassword;
+    }
+    if (!hasAdminPasswordPatch) delete patch.adminPasswordHash;
     if (Object.prototype.hasOwnProperty.call(patch, 'neonDatabaseUrl')) {
       delete patch.neonDatabaseUrl;
       console.warn('[WIVA] ignored customer-side Neon URL edit; cloud database is owner controlled');

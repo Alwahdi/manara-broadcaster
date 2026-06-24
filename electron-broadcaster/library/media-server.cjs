@@ -8,6 +8,9 @@ const db = require('./db.cjs');
 const iptv = require('./iptv.cjs');
 const cloudIptv = require('./cloud-iptv.cjs');
 const scanner = require('./scanner.cjs');
+const adminLoginAttempts = new Map();
+const ADMIN_LOGIN_WINDOW_MS = 10 * 60 * 1000;
+const ADMIN_LOGIN_MAX_ATTEMPTS = 8;
 
 const MIME = {
   '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mkv': 'video/x-matroska',
@@ -29,6 +32,14 @@ function sendJson(res, status, body) {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
   });
+}
+
+function setSecurityHeaders(res) {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-site');
 }
 
 function escapeHtml(value) {
@@ -116,16 +127,56 @@ function setViewerAccountCookies(res, token, viewerId) {
   appendCookie(res, `manara_viewer=${encodeURIComponent(viewerId)}; Path=/; SameSite=Lax; Max-Age=31536000`);
 }
 
-function requireAdmin(req, res, getAdminAuth, basePath = '/admin') {
+function adminRateKey(req) {
+  return clientIp(req);
+}
+
+function adminRateStatus(req) {
+  const key = adminRateKey(req);
+  const now = Date.now();
+  const entry = adminLoginAttempts.get(key) || { count: 0, firstAt: now, lockedUntil: 0 };
+  if (entry.lockedUntil && entry.lockedUntil > now) return { locked: true, retryAfterMs: entry.lockedUntil - now };
+  if (now - entry.firstAt > ADMIN_LOGIN_WINDOW_MS) return { locked: false, count: 0, firstAt: now, key };
+  return { locked: false, count: entry.count || 0, firstAt: entry.firstAt || now, key };
+}
+
+function recordAdminLogin(req, ok) {
+  const status = adminRateStatus(req);
+  if (ok) {
+    adminLoginAttempts.delete(adminRateKey(req));
+    return;
+  }
+  const count = Number(status.count || 0) + 1;
+  const entry = {
+    count,
+    firstAt: status.firstAt || Date.now(),
+    lockedUntil: count >= ADMIN_LOGIN_MAX_ATTEMPTS ? Date.now() + ADMIN_LOGIN_WINDOW_MS : 0,
+  };
+  adminLoginAttempts.set(adminRateKey(req), entry);
+}
+
+function verifyAdminCredentials(options, username, password) {
+  if (typeof options.verifyAdminCredentials === 'function') {
+    return !!options.verifyAdminCredentials({ username, password });
+  }
+  const auth = typeof options.getAdminAuth === 'function' ? options.getAdminAuth() : {};
+  return String(username || '') === String(auth.username || 'admin') && String(password || '') === String(auth.password || 'admin');
+}
+
+function requireAdmin(req, res, options = {}, basePath = '/admin') {
+  const getAdminAuth = options.getAdminAuth;
   const auth = typeof getAdminAuth === 'function' ? getAdminAuth() : {};
   const username = auth.username || 'admin';
-  const password = auth.password || 'admin';
   const header = req.headers.authorization || '';
   const token = header.startsWith('Basic ') ? header.slice(6) : '';
   const cookieToken = parseCookies(req).manara_admin || '';
   let provided = '';
   try { provided = Buffer.from(token, 'base64').toString('utf8'); } catch {}
-  if (provided === `${username}:${password}` || cookieToken === Buffer.from(`${username}:${password}`).toString('base64')) return true;
+  const sep = provided.indexOf(':');
+  const basicOk = sep > -1 && verifyAdminCredentials(options, provided.slice(0, sep), provided.slice(sep + 1));
+  const sessionOk = cookieToken && typeof options.verifyAdminSession === 'function' && options.verifyAdminSession(cookieToken);
+  const legacyCookieOk = cookieToken === Buffer.from(`${username}:${auth.password || 'admin'}`).toString('base64') && verifyAdminCredentials(options, username, auth.password || 'admin');
+  if (basicOk || sessionOk || legacyCookieOk) return true;
   if (String(req.headers.accept || '').includes('text/html')) {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end(adminLoginPage('', basePath));
@@ -294,6 +345,35 @@ function healthDiagnostics() {
     missingFiles: items.filter((item) => !item.remote_url && !fs.existsSync(item.path)).map((item) => ({ id: item.id, title: item.title, path: item.path })),
     unsupportedFormats: items.filter((item) => mediaType(item) === 'unsupported').map((item) => ({ id: item.id, title: item.title, path: item.path })),
     brokenSubtitles: subs.filter((sub) => !fs.existsSync(sub.path)).map((sub) => ({ id: sub.id, mediaId: sub.media_id, title: sub.mediaTitle, path: sub.path })),
+  };
+}
+
+function serviceHealth(options = {}) {
+  const state = typeof options.getSetupState === 'function' ? options.getSetupState() : {};
+  const mediaStats = (() => { try { return db.mediaStats(); } catch { return null; } })();
+  const iptvStatus = (() => { try { return iptv.status(); } catch { return {}; } })();
+  return {
+    ok: true,
+    ready: true,
+    app: 'WIVA',
+    version: state.version || '',
+    setupCompleted: !!state.setupCompleted,
+    uptimeSeconds: Math.round(process.uptime()),
+    ports: state.ports || {},
+    urls: state.urls || {},
+    services: {
+      agent: { status: 'running' },
+      library: { status: 'running', totalItems: mediaStats?.total ?? 0 },
+      iptv: { status: 'ready', activeStreams: Object.keys(iptvStatus || {}).length },
+    },
+    update: state.update || {},
+    subscription: state.subscription ? {
+      state: state.subscription.state,
+      online: !!state.subscription.online,
+      checkedAt: state.subscription.checkedAt,
+      error: state.subscription.error || '',
+    } : null,
+    checkedAt: new Date().toISOString(),
   };
 }
 
@@ -1473,6 +1553,7 @@ function createHandler(options = {}) {
     const isAdminBase = u.pathname === '/admin' || u.pathname === adminBase;
     const isAdminLogin = u.pathname === '/admin/login' || u.pathname === `${adminBase}/login`;
     const isAdminLogout = u.pathname === '/admin/logout' || u.pathname === `${adminBase}/logout`;
+    setSecurityHeaders(res);
     res.setHeader('Access-Control-Allow-Origin', '*');
     if (u.pathname === '/favicon.ico' || u.pathname === '/wiva-logo.png') {
       const asset = path.join(__dirname, '..', 'assets', u.pathname === '/favicon.ico' ? 'icon.png' : 'wiva.png');
@@ -1494,6 +1575,9 @@ function createHandler(options = {}) {
       res.end();
       return;
     }
+    if (u.pathname === '/health' || u.pathname === '/ready' || u.pathname === '/api/agent/health') {
+      return sendJson(res, 200, serviceHealth(options));
+    }
     if (u.pathname === '/setup' || u.pathname === '/agent') {
       return send(res, 200, setupPage(options), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     }
@@ -1510,7 +1594,7 @@ function createHandler(options = {}) {
     if (u.pathname === '/api/setup/save' && req.method === 'POST') {
       try {
         const state = typeof options.getSetupState === 'function' ? options.getSetupState() : {};
-        if (state.setupCompleted && !requireAdmin(req, res, options.getAdminAuth, adminBase)) return;
+        if (state.setupCompleted && !requireAdmin(req, res, options, adminBase)) return;
         const body = await parseJsonBody(req);
         if (!body.networkName && !body.brandName) return sendJson(res, 400, { ok: false, error: 'networkName is required' });
         const next = typeof options.applySetup === 'function' ? await options.applySetup(body) : state;
@@ -1523,32 +1607,47 @@ function createHandler(options = {}) {
       return send(res, 200, adminLoginPage('', adminBase), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     }
     if (isAdminLogout) {
+      const cookieToken = parseCookies(req).manara_admin || '';
+      if (cookieToken && typeof options.clearAdminSession === 'function') options.clearAdminSession(cookieToken);
       return send(res, 302, '', {
         'Location': `${adminBase}/login`,
         'Set-Cookie': 'manara_admin=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0',
       });
     }
     if (isAdminLogin && req.method === 'POST') {
-      const auth = typeof options.getAdminAuth === 'function' ? options.getAdminAuth() : {};
-      const body = await readBody(req);
-      const params = new URLSearchParams(body);
-      const username = auth.username || 'admin';
-      const password = auth.password || 'admin';
-      if (params.get('username') === username && params.get('password') === password) {
-        return send(res, 302, '', {
-          'Location': adminBase,
-          'Set-Cookie': `manara_admin=${Buffer.from(`${username}:${password}`).toString('base64')}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800`,
+      const rate = adminRateStatus(req);
+      if (rate.locked) {
+        const minutes = Math.max(1, Math.ceil(rate.retryAfterMs / 60000));
+        return send(res, 429, adminLoginPage(`تم إيقاف محاولات الدخول مؤقتاً. حاول مرة أخرى بعد ${minutes} دقيقة.`, adminBase), {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store',
+          'Retry-After': String(Math.ceil(rate.retryAfterMs / 1000)),
         });
       }
+      const body = await readBody(req);
+      const params = new URLSearchParams(body);
+      const username = String(params.get('username') || '');
+      const password = String(params.get('password') || '');
+      if (verifyAdminCredentials(options, username, password)) {
+        recordAdminLogin(req, true);
+        const token = typeof options.issueAdminSession === 'function'
+          ? options.issueAdminSession({ username })
+          : Buffer.from(`${username}:${password}`).toString('base64');
+        return send(res, 302, '', {
+          'Location': adminBase,
+          'Set-Cookie': `manara_admin=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800`,
+        });
+      }
+      recordAdminLogin(req, false);
       return send(res, 401, adminLoginPage('اسم المستخدم أو كلمة المرور غير صحيحة.', adminBase), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     }
     if (isAdminBase) {
-      if (!requireAdmin(req, res, options.getAdminAuth, adminBase)) return;
+      if (!requireAdmin(req, res, options, adminBase)) return;
       if (!featureAllowed(options, 'webAdmin')) return denyFeature(req, res, options, 'webAdmin');
       return send(res, 200, adminPage(options), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     }
     if (/^\/api\/admin\//.test(u.pathname) && !featureAllowed(options, 'webAdmin')) {
-      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      if (!requireAdmin(req, res, options, adminBase)) return;
       return denyFeature(req, res, options, 'webAdmin');
     }
     if (u.pathname === '/library') {
@@ -1573,7 +1672,7 @@ function createHandler(options = {}) {
       return send(res, 200, html, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     }
     if (u.pathname === '/api/admin/state') {
-      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      if (!requireAdmin(req, res, options, adminBase)) return;
       return sendJson(res, 200, {
         broadcast: db.listBroadcastChannels(),
         iptv: db.listIptv(),
@@ -1589,7 +1688,7 @@ function createHandler(options = {}) {
       });
     }
     if (u.pathname === '/api/admin/iptv' && req.method === 'POST') {
-      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      if (!requireAdmin(req, res, options, adminBase)) return;
       try {
         const body = await parseJsonBody(req);
         if (!body.name || !body.url) return sendJson(res, 400, { error: 'name and url are required' });
@@ -1600,14 +1699,14 @@ function createHandler(options = {}) {
     }
     let adminMatch = /^\/api\/admin\/iptv\/(\d+)(?:\/toggle)?$/.exec(u.pathname);
     if (adminMatch && req.method === 'DELETE') {
-      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      if (!requireAdmin(req, res, options, adminBase)) return;
       db.removeIptv(adminMatch[1]);
       if (options.onChannelsChanged) options.onChannelsChanged();
       return sendJson(res, 200, { ok: true });
     }
     adminMatch = /^\/api\/admin\/iptv\/(\d+)\/toggle$/.exec(u.pathname);
     if (adminMatch && req.method === 'POST') {
-      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      if (!requireAdmin(req, res, options, adminBase)) return;
       const ch = db.getIptv(adminMatch[1]);
       if (!ch) return sendJson(res, 404, { error: 'not found' });
       const updated = db.updateIptv(adminMatch[1], { ...ch, enabled: !ch.enabled });
@@ -1615,7 +1714,7 @@ function createHandler(options = {}) {
       return sendJson(res, 200, updated);
     }
     if (u.pathname === '/api/admin/broadcast' && req.method === 'PUT') {
-      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      if (!requireAdmin(req, res, options, adminBase)) return;
       try {
         const body = await parseJsonBody(req);
         if (!Array.isArray(body.channels)) return sendJson(res, 400, { error: 'channels must be an array' });
@@ -1625,7 +1724,7 @@ function createHandler(options = {}) {
       } catch (e) { return sendJson(res, 500, { error: e.message }); }
     }
     if (u.pathname === '/api/admin/blocklist' && req.method === 'POST') {
-      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      if (!requireAdmin(req, res, options, adminBase)) return;
       try {
         const body = await parseJsonBody(req);
         if (!body.identifier) return sendJson(res, 400, { error: 'identifier is required' });
@@ -1635,12 +1734,12 @@ function createHandler(options = {}) {
     }
     adminMatch = /^\/api\/admin\/blocklist\/([^/]+)$/.exec(u.pathname);
     if (adminMatch && req.method === 'DELETE') {
-      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      if (!requireAdmin(req, res, options, adminBase)) return;
       db.removeBlock(decodeURIComponent(adminMatch[1]));
       return sendJson(res, 200, { ok: true });
     }
     if (u.pathname === '/api/admin/block-message' && req.method === 'PUT') {
-      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      if (!requireAdmin(req, res, options, adminBase)) return;
       try {
         const body = await parseJsonBody(req);
         return sendJson(res, 200, { message: db.setBlockedMessage(body.message) });
@@ -1648,7 +1747,7 @@ function createHandler(options = {}) {
     }
     adminMatch = /^\/api\/admin\/viewer-messages\/([^/]+)\/status$/.exec(u.pathname);
     if (adminMatch && req.method === 'POST') {
-      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      if (!requireAdmin(req, res, options, adminBase)) return;
       try {
         const body = await parseJsonBody(req);
         const message = db.updateViewerMessageStatus(decodeURIComponent(adminMatch[1]), body.status);
@@ -1658,7 +1757,7 @@ function createHandler(options = {}) {
     }
     adminMatch = /^\/api\/admin\/media\/(\d+)$/.exec(u.pathname);
     if (adminMatch && req.method === 'PUT') {
-      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      if (!requireAdmin(req, res, options, adminBase)) return;
       try {
         const body = await parseJsonBody(req);
         const media = db.updateMedia(parseInt(adminMatch[1], 10), body);
@@ -1667,44 +1766,44 @@ function createHandler(options = {}) {
       } catch (e) { return sendJson(res, 500, { error: e.message }); }
     }
     if (adminMatch && req.method === 'DELETE') {
-      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      if (!requireAdmin(req, res, options, adminBase)) return;
       try {
         db.removeMedia(parseInt(adminMatch[1], 10), { deleteFile: u.query.deleteFile === '1' });
         return sendJson(res, 200, { ok: true });
       } catch (e) { return sendJson(res, 500, { error: e.message }); }
     }
     if (u.pathname === '/api/admin/media-stats') {
-      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      if (!requireAdmin(req, res, options, adminBase)) return;
       return sendJson(res, 200, db.mediaStats());
     }
     if (u.pathname === '/api/admin/health') {
-      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      if (!requireAdmin(req, res, options, adminBase)) return;
       return sendJson(res, 200, healthDiagnostics());
     }
     if (u.pathname === '/api/admin/iptv-analytics') {
-      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      if (!requireAdmin(req, res, options, adminBase)) return;
       return sendJson(res, 200, { status: iptv.status() });
     }
     if (u.pathname === '/api/admin/reports/views.json') {
-      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      if (!requireAdmin(req, res, options, adminBase)) return;
       return sendJson(res, 200, { stats: db.mediaStats(), logs: db.listAccessLogs(600) });
     }
     if (u.pathname === '/api/admin/reports/views.csv') {
-      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      if (!requireAdmin(req, res, options, adminBase)) return;
       return send(res, 200, reportCsv(db.listAccessLogs(600)), {
         'Content-Type': 'text/csv; charset=utf-8',
         'Content-Disposition': 'attachment; filename="manara-media-report.csv"',
       });
     }
     if (u.pathname === '/api/admin/media-theme' && req.method === 'PUT') {
-      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      if (!requireAdmin(req, res, options, adminBase)) return;
       try {
         const body = await parseJsonBody(req);
         return sendJson(res, 200, { theme: db.setMediaTheme(body) });
       } catch (e) { return sendJson(res, 500, { error: e.message }); }
     }
     if (u.pathname === '/api/admin/library-paths' && req.method === 'POST') {
-      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      if (!requireAdmin(req, res, options, adminBase)) return;
       try {
         const body = await parseJsonBody(req);
         if (!body.path) return sendJson(res, 400, { error: 'path is required' });
@@ -1714,12 +1813,12 @@ function createHandler(options = {}) {
     }
     adminMatch = /^\/api\/admin\/library-paths\/(\d+)$/.exec(u.pathname);
     if (adminMatch && req.method === 'DELETE') {
-      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      if (!requireAdmin(req, res, options, adminBase)) return;
       db.removePath(parseInt(adminMatch[1], 10));
       return sendJson(res, 200, { paths: db.listPaths() });
     }
     if (u.pathname === '/api/admin/scan' && req.method === 'POST') {
-      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      if (!requireAdmin(req, res, options, adminBase)) return;
       try {
         const cfg = typeof options.getLibraryConfig === 'function' ? options.getLibraryConfig() : {};
         const result = await scanner.scanAll({ tmdbKey: cfg.tmdbKey || '', tmdbLang: cfg.tmdbLang || 'ar' });
@@ -1727,7 +1826,7 @@ function createHandler(options = {}) {
       } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
     }
     if (u.pathname === '/api/admin/upload' && req.method === 'POST') {
-      if (!requireAdmin(req, res, options.getAdminAuth)) return;
+      if (!requireAdmin(req, res, options, adminBase)) return;
       try {
         const body = await parseJsonBody(req);
         if (!body.name || !body.base64) return sendJson(res, 400, { error: 'name and base64 are required' });

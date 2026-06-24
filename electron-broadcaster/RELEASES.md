@@ -21,3 +21,11 @@ ready.
 - Added a browser setup wizard for account placeholder, network details, logo upload, layout selection, port checks, theme selection, admin path, and admin credentials.
 - Added setup and agent APIs: `/setup`, `/api/setup/state`, `/api/setup/save`, `/api/setup/port-check`, and `/api/agent/state`.
 - Added WIVA assets to packaged builds so the taskbar icon and web logo are included.
+
+## v2.6.1
+
+- Hardened local admin authentication with hashed passwords, opaque sessions, and login rate limiting.
+- Added WIVA service health/readiness endpoints.
+- Added baseline browser security headers.
+- Added a smoke test for setup, health, admin login, session cookies, and protected admin APIs.
+- Added audit, security, and environment documentation.
