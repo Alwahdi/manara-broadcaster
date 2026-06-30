@@ -5,13 +5,15 @@ import { toast } from "sonner";
 import { Check, Plus, Trash2, Save } from "lucide-react";
 import { AdminShell } from "@/components/AdminShell";
 import { fetchAllThemes, createTheme, updateTheme, deleteTheme, activateTheme, type Theme } from "@/lib/themes";
+import { PRODUCT } from "@/lib/product";
+import { ConfirmAction } from "@/components/ConfirmAction";
 
 export const Route = createFileRoute("/admin/themes")({
   component: () => <AdminShell title="العلامة التجارية والثيمات"><ThemesAdmin /></AdminShell>,
   head: () => ({ meta: [{ title: "العلامة — لوحة التحكم" }] }),
 });
 
-const blank = { name: "ثيم جديد", brandName: "تيرا نت", brandTagline: "شبكة البث المباشر", logoUrl: "", faviconUrl: "", primaryColor: "#3b82f6", accentColor: "#8b5cf6", bgColor: "#0a0f1f", fontFamily: "Cairo", isActive: false };
+const blank = { name: "ثيم جديد", brandName: PRODUCT.name, brandTagline: "شبكة البث المباشر", logoUrl: "", faviconUrl: "", primaryColor: "#3b82f6", accentColor: "#8b5cf6", bgColor: "#0a0f1f", fontFamily: "Cairo", isActive: false };
 
 function ThemesAdmin() {
   const qc = useQueryClient();
@@ -92,7 +94,7 @@ function ThemeCard({ theme, onSave, onActivate, onDelete }: { theme: Theme; onSa
           <Save className="h-4 w-4" /> حفظ
         </button>
         {!t.isActive && <button className="btn-ghost" onClick={onActivate}>تفعيل</button>}
-        {!t.isPreset && <button className="btn-ghost text-destructive" onClick={() => confirm("حذف؟") && onDelete()}><Trash2 className="h-4 w-4" /></button>}
+        {!t.isPreset && <ConfirmAction className="btn-ghost text-destructive" title="حذف الثيم؟" message="سيتم حذف هذا الثيم من إعدادات العلامة." confirmText="حذف" onConfirm={onDelete}><Trash2 className="h-4 w-4" /></ConfirmAction>}
       </div>
     </div>
   );

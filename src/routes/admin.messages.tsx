@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Check, Trash2, MailOpen } from "lucide-react";
 import { AdminShell } from "@/components/AdminShell";
 import { fetchMessages, markMessageRead, markAllMessagesRead, deleteMessage } from "@/lib/messages";
+import { ConfirmAction } from "@/components/ConfirmAction";
 
 export const Route = createFileRoute("/admin/messages")({
   component: () => <AdminShell title="الرسائل الواردة"><MessagesAdmin /></AdminShell>,
@@ -43,7 +44,7 @@ function MessagesAdmin() {
               </div>
               <div className="flex flex-col gap-1">
                 <button className="btn-ghost p-2" title={m.isRead ? "إعادة كغير مقروء" : "تحديد كمقروء"} onClick={() => readMut.mutate({ id: m.id, r: !m.isRead })}><Check className="h-4 w-4" /></button>
-                <button className="btn-ghost p-2 text-destructive" onClick={() => confirm("حذف؟") && delMut.mutate(m.id)}><Trash2 className="h-4 w-4" /></button>
+                <ConfirmAction className="btn-ghost p-2 text-destructive" title="حذف الرسالة؟" message="سيتم حذف الرسالة من لوحة الإدارة." confirmText="حذف" onConfirm={() => delMut.mutate(m.id)}><Trash2 className="h-4 w-4" /></ConfirmAction>
               </div>
             </div>
           </div>

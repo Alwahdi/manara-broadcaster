@@ -1,4 +1,4 @@
-// Manara — TMDB metadata lookup (no extra deps; uses fetch)
+// WIVA — TMDB metadata lookup (no extra deps; uses fetch)
 const IMG = 'https://image.tmdb.org/t/p/w500';
 const IMG_BIG = 'https://image.tmdb.org/t/p/w1280';
 

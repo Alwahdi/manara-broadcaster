@@ -1,4 +1,4 @@
-// Manara platform subscription/activation client.
+// WIVA platform subscription/activation client.
 // Talks only to the owner-controlled Neon database and stores a small local cache.
 const fs = require('fs');
 const path = require('path');

@@ -13,11 +13,13 @@ import {
   parseM3U, type CloudIptvChannel, type CloudIptvInput,
 } from "@/lib/cloud-iptv";
 import { cn } from "@/lib/utils";
+import { pageTitle } from "@/lib/product";
+import { ConfirmAction } from "@/components/ConfirmAction";
 
 export const Route = createFileRoute("/admin/iptv")({
   component: AdminIptvPage,
   head: () => ({ meta: [
-    { title: "إدارة IPTV السحابية — مَنارة" },
+    { title: pageTitle("إدارة IPTV السحابية") },
     { name: "robots", content: "noindex" },
   ] }),
 });
@@ -161,7 +163,15 @@ function AdminIptvPage() {
                   <div className="flex shrink-0 gap-1">
                     <button onClick={() => navigator.clipboard.writeText(ch.url).then(() => toast.success("نُسخ"))} className="rounded-lg glass-btn p-2" title="نسخ"><CopyIcon className="h-4 w-4" /></button>
                     <button onClick={() => { setEditing(ch); setShowForm(true); }} className="rounded-lg glass-btn p-2"><Pencil className="h-4 w-4" /></button>
-                    <button onClick={() => { if (confirm(`حذف "${ch.name}"؟`)) deleteMut.mutate(ch.id); }} className="rounded-lg glass-btn p-2 text-destructive"><Trash2 className="h-4 w-4" /></button>
+                    <ConfirmAction
+                      className="rounded-lg glass-btn p-2 text-destructive"
+                      title="حذف قناة IPTV؟"
+                      message={`سيتم حذف "${ch.name}" من القنوات السحابية.`}
+                      confirmText="حذف"
+                      onConfirm={() => deleteMut.mutate(ch.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </ConfirmAction>
                   </div>
                 </div>
               </div>

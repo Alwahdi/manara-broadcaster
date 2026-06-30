@@ -5,12 +5,13 @@ import { Search, Film } from "lucide-react";
 import { fetchCategories } from "@/lib/categories";
 import { fetchRecentMedia, fetchMediaByCategory } from "@/lib/media";
 import { AuroraBackground } from "@/components/AuroraBackground";
+import { pageTitle } from "@/lib/product";
 
 export const Route = createFileRoute("/library")({
   component: LibraryPage,
   head: () => ({
     meta: [
-      { title: "المكتبة — تيرا نت" },
+      { title: pageTitle("المكتبة") },
       { name: "description", content: "تصفح مكتبة الأفلام والوسائط حسب التصنيف." },
     ],
   }),

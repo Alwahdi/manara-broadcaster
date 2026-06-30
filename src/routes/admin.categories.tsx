@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Plus, Trash2, Save } from "lucide-react";
 import { AdminShell } from "@/components/AdminShell";
 import { fetchAllCategories, createCategory, updateCategory, deleteCategory, type Category } from "@/lib/categories";
+import { ConfirmAction } from "@/components/ConfirmAction";
 
 export const Route = createFileRoute("/admin/categories")({
   component: () => <AdminShell title="التصنيفات"><CategoriesAdmin /></AdminShell>,
@@ -73,7 +74,7 @@ function CatRow({ cat, onSave, onDelete }: { cat: Category; onSave: (p: Partial<
       </label>
       <div className="flex gap-1">
         <button className="btn-ghost p-2" onClick={() => onSave({ name: c.name, slug: c.slug, sortOrder: c.sortOrder, isActive: c.isActive })}><Save className="h-4 w-4" /></button>
-        <button className="btn-ghost p-2 text-destructive" onClick={() => confirm("حذف؟") && onDelete()}><Trash2 className="h-4 w-4" /></button>
+        <ConfirmAction className="btn-ghost p-2 text-destructive" title="حذف التصنيف؟" message="سيتم حذف التصنيف من الواجهة العامة." confirmText="حذف" onConfirm={onDelete}><Trash2 className="h-4 w-4" /></ConfirmAction>
       </div>
     </div>
   );

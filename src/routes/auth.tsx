@@ -4,11 +4,12 @@ import { z } from "zod";
 import { Radio, Loader2, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { PRODUCT, pageTitle } from "@/lib/product";
 
 export const Route = createFileRoute("/auth")({
   component: AuthPage,
   head: () => ({
-    meta: [{ title: "تسجيل الدخول — تيرا نت" }],
+    meta: [{ title: pageTitle("تسجيل الدخول") }],
   }),
 });
 
@@ -86,7 +87,7 @@ function AuthPage() {
               <Radio className="h-6 w-6 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-xl font-extrabold text-gradient">تيرا نت</h1>
+              <h1 className="text-xl font-extrabold text-gradient">{PRODUCT.name}</h1>
               <p className="text-xs text-muted-foreground">لوحة تحكم الأدمن</p>
             </div>
           </div>

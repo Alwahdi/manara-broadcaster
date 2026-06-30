@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('broadcaster', {
   restartServer: (port) => ipcRenderer.invoke('restart-server', port),
   launchedAtBoot: () => ipcRenderer.invoke('launched-at-boot'),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  qrDataUrl: (text) => ipcRenderer.invoke('qr-data-url', text),
   storageDiagnostics: () => ipcRenderer.invoke('storage-diagnostics'),
   onLocalStateUpdated: (cb) => {
     const h = () => cb();

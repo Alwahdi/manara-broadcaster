@@ -1,5 +1,5 @@
 // License verification + offline cache.
-// Calls the Manara cloud endpoint and caches the result locally so the app
+// Calls the WIVA cloud endpoint and caches the result locally so the app
 // keeps working offline for up to `validForDays` days from last successful check.
 
 const fs = require('fs');
@@ -56,7 +56,7 @@ function postJson(url, body) {
         headers: {
           'Content-Type': 'application/json',
           'Content-Length': data.length,
-          'User-Agent': 'Manara-Broadcaster',
+          'User-Agent': 'WIVA-Agent',
         },
         timeout: 10000,
       }, (res) => {

@@ -1,4 +1,4 @@
-// Manara — licensed device cloud backup/sync for Windows state.
+// WIVA — licensed device cloud backup/sync for Windows state.
 // The app remains fully local-first; this only prevents data loss across
 // restarts/reinstalls by backing up settings + local channels by license/device.
 const https = require('https');
@@ -19,7 +19,7 @@ function postJson(body) {
       headers: {
         'Content-Type': 'application/json',
         'Content-Length': data.length,
-        'User-Agent': 'Manara-Broadcaster',
+        'User-Agent': 'WIVA-Agent',
       },
       timeout: 10000,
     }, (res) => {

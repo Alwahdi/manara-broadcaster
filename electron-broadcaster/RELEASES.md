@@ -37,3 +37,11 @@ ready.
 - Improved media library interactions for account access, quick filter state, timestamp sorting, favorites/watch later controls, and section/folder browsing.
 - Refreshed the public media player visual style to match the WIVA library experience.
 - Polished the LAN admin panel surfaces, actions, tables, and navigation without changing its management behavior.
+
+## v2.6.3
+
+- Applied Cairo typography across the WIVA agent, public live/player pages, media library, setup, and LAN admin surfaces.
+- Simplified public viewer accounts to name plus phone/room number with optional email, and preserved those details in admin messages.
+- Reworked media library folder browsing into direct folder cards with sidecar/folder artwork support.
+- Added structured LAN admin controls for broadcast channels instead of raw JSON editing.
+- Added configurable cloud IPTV refresh policy, defaulting to every 3 minutes, and exposed IPTV policy/status in admin APIs.

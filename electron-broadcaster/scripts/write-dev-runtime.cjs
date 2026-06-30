@@ -18,8 +18,8 @@ const missing = [];
 if (!config.neonDatabaseUrl) missing.push('MANARA_NEON_DATABASE_URL');
 if (!config.sentryDsn) missing.push('SENTRY_DSN');
 
-console.log(`[Manara] dev runtime written: ${target}`);
-if (loaded.length) console.log(`[Manara] loaded env files: ${loaded.join(', ')}`);
+console.log(`[WIVA] dev runtime written: ${target}`);
+if (loaded.length) console.log(`[WIVA] loaded env files: ${loaded.join(', ')}`);
 if (missing.length) {
-  console.warn(`[Manara] dev runtime missing optional secret(s): ${missing.join(', ')}. Add them to .env.local for full cloud/platform/Sentry testing.`);
+  console.warn(`[WIVA] dev runtime missing optional secret(s): ${missing.join(', ')}. Add them to .env.local for full cloud/platform/Sentry testing.`);
 }

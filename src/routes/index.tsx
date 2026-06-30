@@ -7,15 +7,16 @@ import {
 import { AuroraBackground } from "@/components/AuroraBackground";
 import { NetworkMap } from "@/components/NetworkMap";
 import { fetchVisibleNetworks } from "@/lib/networks";
+import { PRODUCT } from "@/lib/product";
 
 export const Route = createFileRoute("/")({
   component: Landing,
   head: () => ({
     meta: [
-      { title: "مَنارة — منصة البث المحلي وإدارة المكتبات للشبكات" },
-      { name: "description", content: "مَنارة: تطبيق ويندوز موحّد للبث المباشر متعدد القنوات وإدارة مكتبات الفيديو على الشبكة المحلية. حلّ كامل للفنادق، الكافيهات، المدارس، والمجمعات السكنية." },
-      { property: "og:title", content: "مَنارة — منصة البث المحلي" },
-      { property: "og:description", content: "بثّ متعدد القنوات + مكتبة فيديو احترافية تعمل بالكامل على شبكتك الداخلية، بدون إنترنت." },
+      { title: `${PRODUCT.name} — منصة البث المحلي وإدارة المكتبات للشبكات` },
+      { name: "description", content: `${PRODUCT.name}: تطبيق ويندوز موحّد للبث المباشر متعدد القنوات وإدارة مكتبات الفيديو على الشبكة المحلية. حلّ كامل للفنادق، الكافيهات، المدارس، والمجمعات السكنية.` },
+      { property: "og:title", content: `${PRODUCT.name} — منصة البث المحلي` },
+      { property: "og:description", content: "بثّ متعدد القنوات + مكتبة فيديو احترافية تعمل على شبكتك الداخلية بأداء منخفض التأخير." },
     ],
   }),
 });
@@ -23,7 +24,7 @@ export const Route = createFileRoute("/")({
 const FEATURES = [
   { icon: Tv, title: "بثّ متعدد القنوات", desc: "كاميرات USB، التقاط الشاشة، روابط IPTV/HLS/RTSP، كل القنوات تشتغل بالتوازي بدون تعارض." },
   { icon: HardDrive, title: "مكتبة فيديو ذكية", desc: "فحص تلقائي لمجلداتك، جلب الأغلفة والمعلومات من TMDB، تصنيفات ومسارات مقفلة بالمستخدم." },
-  { icon: Wifi, title: "يعمل بدون إنترنت", desc: "البث والمشاهدة كلها على شبكتك المحلية (LAN). بدون استهلاك بيانات، بدون تأخير، بدون اعتماد على السحابة." },
+  { icon: Wifi, title: "يعمل داخل الشبكة", desc: "البث والمشاهدة على شبكتك المحلية (LAN) مع أداء منخفض التأخير ودون اعتماد دائم على السحابة." },
   { icon: Palette, title: "تخصيص كامل (White-label)", desc: "اسم، شعار، ألوان، شريط أخبار، رسائل ترحيب — كل شيء قابل للتخصيص ليطابق هويتك." },
   { icon: ShieldCheck, title: "تحكّم كامل بالصلاحيات", desc: "لوحة إدارة عبر المتصفح، مستخدمون متعددون، مسارات محتوى مقفلة، إحصائيات مشاهدة لحظية." },
   { icon: Zap, title: "محمول وسريع", desc: "تطبيق ويندوز واحد portable، يشتغل من USB أو من جهاز السيرفر مباشرة. الإعدادات محفوظة بجانب التطبيق." },
@@ -60,7 +61,7 @@ const PRICING_LIFETIME = [
 const FAQ = [
   { q: "هل يحتاج التطبيق إلى إنترنت؟", a: "لا. كل البث والمشاهدة وإدارة المكتبة تتم على شبكتك المحلية (LAN). الإنترنت يُستخدم فقط للتفعيل الأولي وتحديث المعلومات من TMDB." },
   { q: "كيف يصل المشاهدون للبث؟", a: "كل ما يحتاجه المشاهد هو متصفح. التطبيق يفتح صفحة على عنوان IP الخاص بالسيرفر (مثل http://192.168.1.10:8080) ويفتحها المشاهدون من جوالاتهم أو شاشاتهم." },
-  { q: "هل أستطيع استخدام نفس الكاميرا لأكثر من قناة؟", a: "نعم. مَنارة تستخدم نظام مشاركة المصدر (Stream Cache) فتفتح الجهاز مرة واحدة وتوزّع البث على كل القنوات اللي تحتاجه." },
+  { q: "هل أستطيع استخدام نفس الكاميرا لأكثر من قناة؟", a: `نعم. ${PRODUCT.name} يستخدم نظام مشاركة المصدر (Stream Cache) فيفتح الجهاز مرة واحدة ويوزّع البث على القنوات التي تحتاجه.` },
   { q: "كيف أحصل على المفتاح بعد الدفع؟", a: "بعد إتمام الدفع وتأكيد الطلب، يصلك مفتاح الترخيص خلال ساعات على الإيميل، مع رابط تحميل آخر إصدار." },
   { q: "هل يمكنني إعادة بيع التطبيق لعملائي؟", a: "خطة Enterprise تتضمن صلاحيات White-label الكاملة وعقد إعادة بيع. تواصل معنا للتفاصيل." },
   { q: "ماذا يحدث عند نقل التطبيق لجهاز آخر؟", a: "المفتاح مرتبط بـ Hardware ID. يمكن نقله مرة كل 30 يوم تلقائياً، أو فوراً عبر التواصل مع الدعم." },
@@ -81,7 +82,7 @@ function Landing() {
           </div>
           <div className="flex-1">
             <h1 className="text-lg font-extrabold leading-tight sm:text-xl">
-              <span className="text-gradient">مَنارة</span>
+              <span className="text-gradient">{PRODUCT.name}</span>
             </h1>
             <p className="text-[11px] font-medium text-muted-foreground sm:text-xs">منصة البث المحلي للشبكات</p>
           </div>
@@ -111,13 +112,13 @@ function Landing() {
           تعمل على شبكتك المحلية
         </h2>
         <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">
-          مَنارة تجمع البث المباشر متعدد القنوات وإدارة مكتبات الفيديو في تطبيق ويندوز واحد —
-          بدون إنترنت، بدون اشتراكات سحابية، بتحكّم كامل من متصفحك.
+          {PRODUCT.name} يجمع البث المباشر متعدد القنوات وإدارة مكتبات الفيديو في تطبيق ويندوز واحد —
+          تجربة محلية واضحة، منخفضة التأخير، وبتحكّم كامل من متصفحك.
         </p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
           <a href="#pricing" className="inline-flex items-center gap-2 rounded-full bg-gradient-primary px-6 py-3 text-sm font-bold text-primary-foreground shadow-glow hover-lift">
             <Download className="h-4 w-4" />
-            احصل على مَنارة
+            احصل على {PRODUCT.name}
           </a>
           <Link to="/contact" className="inline-flex items-center gap-2 rounded-full glass px-6 py-3 text-sm font-bold hover-lift">
             <MessageSquare className="h-4 w-4" />
@@ -129,7 +130,7 @@ function Landing() {
         <div className="mx-auto mt-16 grid max-w-3xl grid-cols-3 gap-4">
           {[
             { v: networks.length || "10+", l: "شبكة مشتركة" },
-            { v: "0ms", l: "تأخير على LAN" },
+            { v: "LAN", l: "تأخير منخفض" },
             { v: "24/7", l: "دعم فني" },
           ].map((s, i) => (
             <div key={i} className="glass-panel rounded-2xl p-5">
@@ -144,7 +145,7 @@ function Landing() {
       <section id="features" className="mx-auto max-w-7xl px-4 sm:px-6 py-16">
         <div className="text-center mb-12">
           <h3 className="text-3xl sm:text-4xl font-black tracking-tight">كل ما تحتاجه شبكتك في تطبيق واحد</h3>
-          <p className="mt-3 text-muted-foreground">صُمّمت مَنارة لتغنيك عن أي حلّ آخر</p>
+          <p className="mt-3 text-muted-foreground">صُمّم {PRODUCT.name} ليجمع الإدارة والمشاهدة في تجربة واحدة</p>
         </div>
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {FEATURES.map((f, i) => (
@@ -167,7 +168,7 @@ function Landing() {
             ينتشرون حول العالم
           </div>
           <h3 className="text-3xl sm:text-4xl font-black tracking-tight">شبكاتنا المشتركة</h3>
-          <p className="mt-3 text-muted-foreground">انضمّ لشبكات تثق بـ مَنارة لإدارة بثّها ومكتبتها يومياً</p>
+          <p className="mt-3 text-muted-foreground">انضمّ لشبكات تثق بـ {PRODUCT.name} لإدارة بثّها ومكتبتها يومياً</p>
         </div>
         <NetworkMap />
         {networks.length > 0 && (
@@ -235,7 +236,7 @@ function Landing() {
         <div className="rounded-3xl bg-gradient-primary p-10 sm:p-14 text-center shadow-elegant ring-1 ring-white/20">
           <h3 className="text-3xl sm:text-4xl font-black text-primary-foreground tracking-tight">جاهز تبدأ؟</h3>
           <p className="mt-3 text-primary-foreground/90 max-w-xl mx-auto">
-            احصل على مَنارة وابدأ ببث قنواتك ومكتبتك على شبكتك خلال دقائق
+            احصل على {PRODUCT.name} وابدأ ببث قنواتك ومكتبتك على شبكتك خلال دقائق
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Link to="/contact" className="inline-flex items-center gap-2 rounded-full bg-background px-6 py-3 text-sm font-bold text-foreground hover-lift">
@@ -247,7 +248,7 @@ function Landing() {
       </section>
 
       <footer className="border-t border-white/10 py-8 text-center text-xs text-muted-foreground">
-        <p>© 2026 مَنارة — جميع الحقوق محفوظة</p>
+        <p>© 2026 {PRODUCT.name} — جميع الحقوق محفوظة</p>
         <p className="mt-1 opacity-60">منصة البث المحلي للشبكات الاحترافية</p>
       </footer>
     </div>

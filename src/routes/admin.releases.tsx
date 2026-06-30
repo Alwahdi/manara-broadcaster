@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Download, Trash2, UploadCloud, Copy } from "lucide-react";
+import { PRODUCT } from "@/lib/product";
+import { ConfirmAction } from "@/components/ConfirmAction";
 
 export const Route = createFileRoute("/admin/releases")({
   component: ReleasesPage,
@@ -66,7 +68,6 @@ function ReleasesPage() {
   }
 
   async function deleteFile(name: string) {
-    if (!confirm(`حذف ${name}؟`)) return;
     const { error } = await supabase.storage.from(BUCKET).remove([name]);
     if (error) { toast.error(error.message); return; }
     toast.success("تم الحذف");
@@ -87,10 +88,10 @@ function ReleasesPage() {
     <AdminShell title="إدارة الإصدارات">
       <div className="grid gap-6">
         <div className="glass-panel rounded-2xl p-6">
-          <h2 className="text-lg font-bold mb-2 flex items-center gap-2"><UploadCloud className="h-5 w-5 text-primary" />رفع إصدار جديد</h2>
+          <h2 className="text-lg font-bold mb-2 flex items-center gap-2"><UploadCloud className="h-5 w-5 text-primary" />رفع إصدار {PRODUCT.name} جديد</h2>
           <p className="text-sm text-muted-foreground mb-4">
             ابنِ على ويندوز عبر <code>npm run dist</code> داخل <code>electron-broadcaster/</code>،
-            ثم ارفع ملفي <code>Manara-Setup-x.x.x.exe</code> و <code>latest.yml</code> هنا.
+            ثم ارفع ملفي <code>WIVA-Setup-x.x.x.exe</code> و <code>latest.yml</code> هنا.
             جميع أجهزة العملاء ستفحص التحديث وتنزّله تلقائياً.
           </p>
           <div className="grid sm:grid-cols-2 gap-4">
@@ -128,7 +129,15 @@ function ReleasesPage() {
                   </div>
                   <button onClick={() => { navigator.clipboard.writeText(f.url); toast.success("تم نسخ الرابط"); }} className="p-2 rounded-lg hover:bg-white/10" title="نسخ الرابط"><Copy className="h-4 w-4" /></button>
                   <a href={f.url} target="_blank" rel="noreferrer" className="p-2 rounded-lg hover:bg-white/10" title="تنزيل"><Download className="h-4 w-4" /></a>
-                  <button onClick={() => deleteFile(f.name)} className="p-2 rounded-lg hover:bg-destructive/20 text-destructive" title="حذف"><Trash2 className="h-4 w-4" /></button>
+                  <ConfirmAction
+                    className="p-2 rounded-lg hover:bg-destructive/20 text-destructive"
+                    title="حذف ملف الإصدار؟"
+                    message={`سيتم حذف ${f.name} من ملفات التحديث.`}
+                    confirmText="حذف"
+                    onConfirm={() => deleteFile(f.name)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </ConfirmAction>
                 </div>
               ))}
             </div>

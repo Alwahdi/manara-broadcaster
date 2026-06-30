@@ -1,4 +1,4 @@
-// Manara — local media library DB
+// WIVA — local media library DB
 // IPTV + broadcast channels: ALWAYS stored as JSON (small, no schema needed).
 //   This eliminates the "channels disappear" bug caused by native better-sqlite3
 //   failing to load in some Windows environments (antivirus quarantine of the
@@ -57,7 +57,7 @@ function reloadChannelsFromDisk() {
     if (Array.isArray(raw.broadcast)) _channels.broadcast = raw.broadcast;
     if (Array.isArray(raw.iptv)) _channels.iptv = raw.iptv;
   } catch (e) {
-    console.warn('[Manara] reloadChannelsFromDisk failed:', e.message);
+    console.warn('[WIVA] reloadChannelsFromDisk failed:', e.message);
   }
 }
 
@@ -76,38 +76,38 @@ function loadChannelsFile(seed = {}) {
         if (hasChannelData(backupRaw)) {
           if (Array.isArray(backupRaw.broadcast)) _channels.broadcast = backupRaw.broadcast;
           if (Array.isArray(backupRaw.iptv)) _channels.iptv = backupRaw.iptv;
-          console.warn('[Manara] recovered channels from non-empty backup:', bak);
+          console.warn('[WIVA] recovered channels from non-empty backup:', bak);
           saveChannelsFile();
         }
       }
-      console.log('[Manara] channels loaded from', _channelsPath,
+      console.log('[WIVA] channels loaded from', _channelsPath,
         '— broadcast:', _channels.broadcast.length, 'iptv:', _channels.iptv.length);
     } else {
-      console.log('[Manara] no existing channels file (first run) at', _channelsPath);
+      console.log('[WIVA] no existing channels file (first run) at', _channelsPath);
     }
     if ((!_channels.broadcast.length) && Array.isArray(seed.broadcast) && seed.broadcast.length) {
       _channels.broadcast = seed.broadcast;
       saveChannelsFile();
-      console.warn('[Manara] restored broadcast channels from settings mirror:', _channels.broadcast.length);
+      console.warn('[WIVA] restored broadcast channels from settings mirror:', _channels.broadcast.length);
     }
     if ((!_channels.iptv.length) && Array.isArray(seed.iptv) && seed.iptv.length) {
       _channels.iptv = seed.iptv;
       saveChannelsFile();
-      console.warn('[Manara] restored IPTV channels from settings mirror:', _channels.iptv.length);
+      console.warn('[WIVA] restored IPTV channels from settings mirror:', _channels.iptv.length);
     }
   } catch (e) {
-    console.error('[Manara] channels file read failed:', e.message);
+    console.error('[WIVA] channels file read failed:', e.message);
     try {
       const bak = _channelsPath + '.bak';
       if (fs.existsSync(bak)) {
         const raw = readJsonFile(bak);
         if (Array.isArray(raw.broadcast)) _channels.broadcast = raw.broadcast;
         if (Array.isArray(raw.iptv)) _channels.iptv = raw.iptv;
-        console.warn('[Manara] recovered channels from backup:', bak);
+        console.warn('[WIVA] recovered channels from backup:', bak);
         saveChannelsFile();
       }
     } catch (backupError) {
-      console.error('[Manara] channels backup recovery failed:', backupError.message);
+      console.error('[WIVA] channels backup recovery failed:', backupError.message);
     }
   }
 }
@@ -128,7 +128,7 @@ function saveChannelsFile() {
     return true;
   } catch (e) {
     _lastChannelSaveError = e.message;
-    console.error('[Manara] channels file write failed:', e.message);
+    console.error('[WIVA] channels file write failed:', e.message);
     throw e;
   }
 }
@@ -144,7 +144,7 @@ function loadMediaFallback(dbPath) {
     }
     if (!_mediaFallback.watch_progress || typeof _mediaFallback.watch_progress !== 'object') _mediaFallback.watch_progress = {};
     if (!Array.isArray(_mediaFallback.subtitles)) _mediaFallback.subtitles = [];
-  } catch (e) { console.error('[Manara] media fallback read failed:', e.message); }
+  } catch (e) { console.error('[WIVA] media fallback read failed:', e.message); }
 }
 function saveMediaFallback() {
   if (!_mediaFallbackPath) return;
@@ -153,7 +153,7 @@ function saveMediaFallback() {
     const tmp = _mediaFallbackPath + '.tmp';
     fs.writeFileSync(tmp, JSON.stringify(_mediaFallback, null, 2));
     fs.renameSync(tmp, _mediaFallbackPath);
-  } catch (e) { console.error('[Manara] media fallback write failed:', e.message); }
+  } catch (e) { console.error('[WIVA] media fallback write failed:', e.message); }
 }
 
 function init(dbPath, seed = {}) {
@@ -165,7 +165,7 @@ function init(dbPath, seed = {}) {
 
   if (!Database) {
     loadMediaFallback(dbPath);
-    console.warn('[Manara] better-sqlite3 not available; media library uses JSON fallback');
+    console.warn('[WIVA] better-sqlite3 not available; media library uses JSON fallback');
     return null;
   }
   try {
@@ -224,10 +224,10 @@ function init(dbPath, seed = {}) {
     ]) {
       try { _db.exec(ddl); } catch {}
     }
-    console.log('[Manara] sqlite media library ready at', dbPath);
+    console.log('[WIVA] sqlite media library ready at', dbPath);
     return _db;
   } catch (e) {
-    console.error('[Manara] sqlite init failed, using JSON fallback for media:', e.message);
+    console.error('[WIVA] sqlite init failed, using JSON fallback for media:', e.message);
     _db = null;
     loadMediaFallback(dbPath);
     return null;
@@ -576,7 +576,7 @@ function loadAdminState(baseDir) {
       _adminState = normalizeAdminState(JSON.parse(fs.readFileSync(_adminStatePath, 'utf8')));
     }
   } catch (e) {
-    console.error('[Manara] admin state read failed:', e.message);
+    console.error('[WIVA] admin state read failed:', e.message);
   }
 }
 
@@ -588,7 +588,7 @@ function saveAdminState() {
     fs.writeFileSync(tmp, JSON.stringify(_adminState, null, 2));
     fs.renameSync(tmp, _adminStatePath);
   } catch (e) {
-    console.error('[Manara] admin state write failed:', e.message);
+    console.error('[WIVA] admin state write failed:', e.message);
   }
 }
 
@@ -604,6 +604,10 @@ function cleanEmail(value) {
   return String(value || '').trim().toLowerCase().slice(0, 180);
 }
 
+function cleanPhone(value) {
+  return String(value || '').trim().replace(/[^\d+]/g, '').slice(0, 40);
+}
+
 function cleanDisplayName(value, fallback = '') {
   return String(value || fallback || '').trim().replace(/\s+/g, ' ').slice(0, 80);
 }
@@ -615,6 +619,7 @@ function publicViewerAccount(account) {
     viewerId: account.viewerId,
     name: account.name || '',
     email: account.email || '',
+    phone: account.phone || '',
     disabled: !!account.disabled,
     createdAt: Number(account.createdAt) || 0,
     updatedAt: Number(account.updatedAt) || 0,
@@ -637,7 +642,14 @@ function verifyPassword(password, account) {
 
 function findViewerAccountByEmail(email) {
   const clean = cleanEmail(email);
+  if (!clean) return null;
   return Object.values(_adminState.viewerAccounts || {}).find((account) => account.email === clean) || null;
+}
+
+function findViewerAccountByPhone(phone) {
+  const clean = cleanPhone(phone);
+  if (!clean) return null;
+  return Object.values(_adminState.viewerAccounts || {}).find((account) => account.phone === clean) || null;
 }
 
 function mergeUnique(left = [], right = []) {
@@ -770,6 +782,45 @@ function createViewerAccount({ name, email, password, fromViewerId } = {}) {
   return publicViewerAccount(account);
 }
 
+function createOrUpdateViewerProfile({ name, phone, email, fromViewerId } = {}) {
+  const clean = cleanPhone(phone);
+  if (!clean) throw new Error('phone_required');
+  const displayName = cleanDisplayName(name, clean);
+  if (!displayName) throw new Error('name_required');
+  const cleanMail = cleanEmail(email);
+  const now = Date.now();
+  let account = findViewerAccountByPhone(clean);
+  if (!account) {
+    const id = randomId('user');
+    account = {
+      id,
+      viewerId: `account_${id}`,
+      name: displayName,
+      phone: clean,
+      email: cleanMail,
+      passwordSalt: '',
+      passwordHash: '',
+      sessions: {},
+      disabled: false,
+      createdAt: now,
+      updatedAt: now,
+      lastSeenAt: now,
+    };
+    _adminState.viewerAccounts[id] = account;
+    viewerState(account.viewerId);
+  } else {
+    if (account.disabled) throw new Error('account_disabled');
+    account.name = displayName;
+    account.phone = clean;
+    account.email = cleanMail || account.email || '';
+    account.updatedAt = now;
+    account.lastSeenAt = now;
+  }
+  if (fromViewerId) mergeViewerState(fromViewerId, account.viewerId);
+  saveAdminState();
+  return startViewerAccountSession(account.id);
+}
+
 function startViewerAccountSession(accountId) {
   const account = _adminState.viewerAccounts[String(accountId)];
   if (!account || account.disabled) return null;
@@ -790,6 +841,10 @@ function authenticateViewerAccount({ email, password, fromViewerId } = {}) {
   if (!account || account.disabled || !verifyPassword(password, account)) throw new Error('invalid_credentials');
   if (fromViewerId) mergeViewerState(fromViewerId, account.viewerId);
   return startViewerAccountSession(account.id);
+}
+
+function authenticateViewerProfile({ name, phone, email, fromViewerId } = {}) {
+  return createOrUpdateViewerProfile({ name, phone, email, fromViewerId });
 }
 
 function viewerAccountBySession(token) {
@@ -832,6 +887,7 @@ function addViewerMessage(viewerId, patch = {}) {
     id: randomId('msg'),
     viewerId: state.id,
     name: cleanDisplayName(patch.name, ''),
+    phone: cleanPhone(patch.phone),
     email: cleanEmail(patch.email),
     message: String(patch.message || '').trim().slice(0, 1200),
     context: String(patch.context || '').slice(0, 220),
@@ -1152,6 +1208,7 @@ module.exports = {
   touchSession, addSessionBytes, addAccessLog, listSessions, listAccessLogs,
   viewerState, updateViewerList, recordViewerHistory, listViewers,
   createViewerAccount, authenticateViewerAccount, viewerAccountBySession, clearViewerAccountSession,
+  createOrUpdateViewerProfile, authenticateViewerProfile,
   listViewerAccounts, addViewerMessage, listViewerMessages, updateViewerMessageStatus,
   mediaTheme, setMediaTheme,
   listBlocks, addBlock, removeBlock, isBlocked, blockedMessage, setBlockedMessage,

@@ -1,4 +1,4 @@
-// Manara — IPTV proxy with reference-counted upstream
+// WIVA — IPTV proxy with reference-counted upstream
 // ------------------------------------------------------------
 // Goal: for each IPTV channel, only open ONE upstream connection
 // to the provider while at least one LAN viewer is watching.

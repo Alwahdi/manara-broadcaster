@@ -1,13 +1,15 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
-import { ArrowRight, LayoutDashboard, KeyRound, Globe2, Tv, FolderTree, Folder, Palette, Megaphone, MessageSquare, Loader2, Download } from "lucide-react";
+import { ArrowRight, LayoutDashboard, KeyRound, Globe2, Tv, FolderTree, Folder, Palette, Megaphone, MessageSquare, Loader2, Download, Radio } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { PRODUCT } from "@/lib/product";
 
 const items = [
   { to: "/admin/licenses", label: "التراخيص", icon: KeyRound },
   { to: "/admin/releases", label: "الإصدارات", icon: Download },
   { to: "/admin/networks", label: "الشبكات", icon: Globe2 },
   { to: "/admin", label: "القنوات", icon: Tv },
+  { to: "/admin/iptv", label: "IPTV", icon: Radio },
   { to: "/admin/categories", label: "التصنيفات", icon: FolderTree },
   { to: "/admin/paths", label: "المكتبات", icon: Folder },
   { to: "/admin/themes", label: "العلامة", icon: Palette },
@@ -40,7 +42,10 @@ export function AdminShell({ title, children }: { title: string; children: React
       <header className="sticky top-0 z-40 border-b border-white/10 bg-background/60 backdrop-blur-xl">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 py-3 flex items-center gap-3">
           <LayoutDashboard className="h-5 w-5 text-primary" />
-          <h1 className="text-lg font-bold flex-1">{title}</h1>
+          <div className="min-w-0 flex-1">
+            <div className="text-[11px] font-bold uppercase tracking-wide text-primary">{PRODUCT.adminName}</div>
+            <h1 className="truncate text-lg font-bold">{title}</h1>
+          </div>
           <Link to="/" className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
             <ArrowRight className="h-3 w-3" /> الرئيسية
           </Link>

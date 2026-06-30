@@ -4,10 +4,11 @@ import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Send, MessageSquare } from "lucide-react";
 import { submitMessage } from "@/lib/messages";
+import { pageTitle } from "@/lib/product";
 
 export const Route = createFileRoute("/contact")({
   component: ContactPage,
-  head: () => ({ meta: [{ title: "تواصل معنا — تيرا نت" }, { name: "description", content: "أرسل رسالة لإدارة الشبكة." }] }),
+  head: () => ({ meta: [{ title: pageTitle("تواصل معنا") }, { name: "description", content: "أرسل رسالة لإدارة الشبكة." }] }),
 });
 
 function ContactPage() {

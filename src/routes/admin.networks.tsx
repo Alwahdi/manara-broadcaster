@@ -5,6 +5,7 @@ import { AdminShell } from "@/components/AdminShell";
 import { fetchAllNetworks, createNetwork, updateNetwork, deleteNetwork, type SubscriberNetwork } from "@/lib/networks";
 import { toast } from "sonner";
 import { Plus, Trash2, MapPin, Eye, EyeOff } from "lucide-react";
+import { ConfirmAction } from "@/components/ConfirmAction";
 
 export const Route = createFileRoute("/admin/networks")({ component: AdminNetworksPage });
 
@@ -37,7 +38,6 @@ function AdminNetworksPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("حذف هذه الشبكة من الخريطة؟")) return;
     await deleteNetwork(id);
     qc.invalidateQueries({ queryKey: ["networks-all"] });
     qc.invalidateQueries({ queryKey: ["public-networks"] });
@@ -107,7 +107,15 @@ function AdminNetworksPage() {
                 <button onClick={() => handleToggle(n.id, !n.is_visible)} className="rounded-lg glass p-2" title={n.is_visible ? "إخفاء" : "إظهار"}>
                   {n.is_visible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4 text-muted-foreground" />}
                 </button>
-                <button onClick={() => handleDelete(n.id)} className="rounded-lg glass p-2 text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></button>
+                <ConfirmAction
+                  className="rounded-lg glass p-2 text-red-400 hover:bg-red-500/10"
+                  title="حذف الشبكة؟"
+                  message={`سيتم حذف "${n.name}" من خريطة الشبكات.`}
+                  confirmText="حذف"
+                  onConfirm={() => handleDelete(n.id)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </ConfirmAction>
               </div>
             </div>
           ))}

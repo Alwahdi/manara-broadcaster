@@ -30,11 +30,36 @@ function linkRow(label, href) {
   return row;
 }
 
-function renderLinks() {
+async function qrCard(label, href) {
+  const card = document.createElement('div');
+  card.className = 'qr-card';
+  const img = document.createElement('img');
+  img.alt = `QR ${label}`;
+  img.src = await api.qrDataUrl(href);
+  const title = document.createElement('strong');
+  title.textContent = label;
+  const code = document.createElement('code');
+  code.textContent = href;
+  const actions = document.createElement('div');
+  actions.className = 'qr-actions';
+  const open = document.createElement('button');
+  open.textContent = 'فتح';
+  open.onclick = () => api.openExternal(href);
+  const cp = document.createElement('button');
+  cp.textContent = 'نسخ';
+  cp.onclick = () => copy(href);
+  actions.append(open, cp);
+  card.append(img, title, code, actions);
+  return card;
+}
+
+async function renderLinks() {
   const local = el('localLinks');
   const lan = el('lanLinks');
+  const qrGrid = el('qrGrid');
   local.innerHTML = '';
   lan.innerHTML = '';
+  qrGrid.innerHTML = '';
   const urls = state.urls || {};
   [
     ['الإعداد', urls.setupLocal],
@@ -51,6 +76,16 @@ function renderLinks() {
     lan.innerHTML = '<p class="muted">لم يتم العثور على عنوان شبكة محلية بعد. تأكد أن الجهاز متصل بالشبكة.</p>';
   } else {
     rows.forEach(([label, href]) => lan.appendChild(linkRow(label, href)));
+  }
+  const preferred = [
+    ['المشاهدة', (urls.liveLan || [])[0] || urls.liveLocal],
+    ['المكتبة', (urls.libraryLan || [])[0] || urls.libraryLocal],
+    ['الإدارة', (urls.adminLan || [])[0] || urls.adminLocal],
+  ].filter((x) => x[1]);
+  if (!preferred.length) {
+    qrGrid.innerHTML = '<p class="muted">لا توجد روابط جاهزة لإنشاء QR.</p>';
+  } else {
+    for (const [label, href] of preferred) qrGrid.appendChild(await qrCard(label, href));
   }
 }
 
@@ -80,7 +115,9 @@ function render() {
     <div><dt>الاشتراك</dt><dd>${subscription.state || 'offline'}</dd></div>
     <div><dt>التشغيل</dt><dd>${state.launchedAtBoot ? 'بدأ مع الجهاز' : 'تشغيل يدوي'}</dd></div>
   `;
-  renderLinks();
+  renderLinks().catch((error) => {
+    el('qrGrid').innerHTML = `<p class="muted">تعذر إنشاء QR: ${error.message || error}</p>`;
+  });
   el('updateText').textContent = updateText(state.update || { state: 'idle' });
   el('installUpdateBtn').hidden = (state.update || {}).state !== 'ready';
   el('diagnostics').textContent = JSON.stringify({
@@ -109,6 +146,29 @@ el('copyAllBtn').onclick = () => {
     ...(urls.liveLan || []),
   ];
   copy(lines.join('\n') || urls.setupLocal || '');
+};
+el('exportDiagnosticsBtn').onclick = () => {
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    app: state.appName,
+    version: state.version,
+    ports: state.ports,
+    urls: state.urls,
+    setupCompleted: state.setupCompleted,
+    subscription: state.subscription,
+    update: state.update,
+    storage: state.storage,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `wiva-diagnostics-${Date.now()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  toast('تم تصدير التشخيصات');
 };
 el('restartBtn').onclick = async () => {
   await api.restartServer((state.ports || {}).live);

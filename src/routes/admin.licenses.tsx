@@ -5,6 +5,8 @@ import { AdminShell } from "@/components/AdminShell";
 import { fetchLicenses, createLicense, updateLicense, deleteLicense, generateLicenseKey, type License } from "@/lib/licenses";
 import { toast } from "sonner";
 import { Copy, Plus, Trash2, RefreshCw } from "lucide-react";
+import { PRODUCT } from "@/lib/product";
+import { ConfirmAction } from "@/components/ConfirmAction";
 
 export const Route = createFileRoute("/admin/licenses")({ component: AdminLicensesPage });
 
@@ -55,7 +57,6 @@ function AdminLicensesPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("حذف هذا الترخيص نهائياً؟")) return;
     await deleteLicense(id);
     toast.success("تم الحذف");
     qc.invalidateQueries({ queryKey: ["licenses"] });
@@ -71,7 +72,7 @@ function AdminLicensesPage() {
       <div className="mb-6 flex items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold">التراخيص الصادرة</h2>
-          <p className="text-sm text-muted-foreground">إصدار وإدارة مفاتيح تفعيل تطبيق مَنارة للعملاء</p>
+          <p className="text-sm text-muted-foreground">إصدار وإدارة مفاتيح تفعيل تطبيق {PRODUCT.name} للعملاء</p>
         </div>
         <button onClick={() => setShowForm(!showForm)} className="inline-flex items-center gap-1.5 rounded-full bg-gradient-primary px-4 py-2 text-sm font-bold text-primary-foreground shadow-glow">
           <Plus className="h-4 w-4" /> ترخيص جديد
@@ -155,7 +156,15 @@ function AdminLicensesPage() {
                   <select value={lic.status} onChange={(e) => handleUpdate(lic.id, { status: e.target.value })} className="input-base text-xs h-8">
                     {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
-                  <button onClick={() => handleDelete(lic.id)} className="rounded-lg glass p-2 text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></button>
+                  <ConfirmAction
+                    className="rounded-lg glass p-2 text-red-400 hover:bg-red-500/10"
+                    title="حذف الترخيص؟"
+                    message={`سيتم حذف ترخيص ${lic.customer_name || lic.license_key} نهائياً.`}
+                    confirmText="حذف"
+                    onConfirm={() => handleDelete(lic.id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </ConfirmAction>
                 </div>
               </div>
             </div>

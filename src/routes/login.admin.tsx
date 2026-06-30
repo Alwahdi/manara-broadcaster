@@ -1,22 +1,18 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { useServerFn } from "@tanstack/react-start";
 import { Loader2, Shield, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { ensureAdminAccount } from "@/lib/admin-bootstrap.functions";
-import { ensureSuperAdmin } from "@/lib/super-admin-bootstrap.functions";
+import { PRODUCT, pageTitle } from "@/lib/product";
 
 export const Route = createFileRoute("/login/admin")({
   component: AdminLoginPage,
-  head: () => ({ meta: [{ title: "دخول الإدارة" }, { name: "robots", content: "noindex" }] }),
+  head: () => ({ meta: [{ title: pageTitle("دخول الإدارة") }, { name: "robots", content: "noindex" }] }),
 });
 
 function AdminLoginPage() {
   const navigate = useNavigate();
-  const ensureAdmin = useServerFn(ensureAdminAccount);
-  const ensureSuper = useServerFn(ensureSuperAdmin);
-  const [username, setUsername] = useState("admin");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -24,14 +20,8 @@ function AdminLoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const email = username.includes("@") ? username.trim() : `${username.trim()}@teranet.local`;
-
-      if (email === "admin@teranet.local" && password === "admin123") {
-        await ensureAdmin();
-      }
-      if (email.toLowerCase() === "abdullahalwahdi464@gmail.com" && password === "Aa773032@") {
-        await ensureSuper();
-      }
+      const email = username.trim().toLowerCase();
+      if (!email.includes("@")) throw new Error("استخدم البريد الإلكتروني الكامل لحساب الإدارة.");
 
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
@@ -62,13 +52,13 @@ function AdminLoginPage() {
             </div>
             <div>
               <h1 className="text-xl font-extrabold text-gradient">دخول الإدارة</h1>
-              <p className="text-xs text-muted-foreground">للمسؤولين فقط</p>
+              <p className="text-xs text-muted-foreground">{PRODUCT.adminName} · للمسؤولين فقط</p>
             </div>
           </div>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="mb-1.5 block text-xs font-bold text-muted-foreground">اسم المستخدم</label>
-              <input value={username} onChange={(e) => setUsername(e.target.value)} dir="ltr" required
+              <input value={username} onChange={(e) => setUsername(e.target.value)} dir="ltr" required type="email" autoComplete="username"
                 className="glass-input w-full rounded-xl px-4 py-3 text-sm" />
             </div>
             <div>
@@ -81,8 +71,8 @@ function AdminLoginPage() {
               {loading && <Loader2 className="h-4 w-4 animate-spin" />} دخول
             </button>
           </form>
-          <p className="mt-4 text-center text-[11px] text-muted-foreground">
-            الحساب الافتراضي: <code dir="ltr">admin / admin123</code>
+          <p className="mt-4 rounded-xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-center text-[11px] text-amber-100">
+            هذه الصفحة للإدارة فقط. لا تنشر رابط الإدارة على الإنترنت العام، واستخدم حساباً مفعلاً من مالك المنصة.
           </p>
         </div>
       </div>

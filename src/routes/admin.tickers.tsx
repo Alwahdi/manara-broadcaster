@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Plus, Trash2, Save } from "lucide-react";
 import { AdminShell } from "@/components/AdminShell";
 import { fetchAllTickers, createTicker, updateTicker, deleteTicker, type Ticker } from "@/lib/tickers";
+import { ConfirmAction } from "@/components/ConfirmAction";
 
 export const Route = createFileRoute("/admin/tickers")({
   component: () => <AdminShell title="الشريط الإخباري"><TickersAdmin /></AdminShell>,
@@ -53,7 +54,7 @@ function TRow({ t, onSave, onDelete }: { t: Ticker; onSave: (p: Partial<Omit<Tic
       <label className="flex items-center gap-1 text-xs text-muted-foreground"><input type="checkbox" checked={s.isActive} onChange={(e) => setS({ ...s, isActive: e.target.checked })} /> مفعّل</label>
       <div className="flex gap-1">
         <button className="btn-ghost p-2" onClick={() => onSave({ text: s.text, url: s.url, sortOrder: s.sortOrder, isActive: s.isActive })}><Save className="h-4 w-4" /></button>
-        <button className="btn-ghost p-2 text-destructive" onClick={() => confirm("حذف؟") && onDelete()}><Trash2 className="h-4 w-4" /></button>
+        <ConfirmAction className="btn-ghost p-2 text-destructive" title="حذف عنصر الشريط؟" message="سيتم حذف هذا النص من شريط المشاهدين." confirmText="حذف" onConfirm={onDelete}><Trash2 className="h-4 w-4" /></ConfirmAction>
       </div>
     </div>
   );

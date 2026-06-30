@@ -2,7 +2,6 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const url = require('url');
 const { Readable } = require('stream');
 const db = require('./db.cjs');
 const iptv = require('./iptv.cjs');
@@ -114,6 +113,9 @@ function getViewerContext(req, res) {
 
 function viewerAuthErrorMessage(code) {
   return {
+    name_required: 'اكتب الاسم أولاً.',
+    phone_required: 'اكتب رقم الهاتف أو رقم الغرفة أولاً.',
+    account_disabled: 'هذا الحساب غير متاح حالياً.',
     email_required: 'أدخل بريداً إلكترونياً صحيحاً.',
     password_too_short: 'كلمة المرور يجب أن تكون 4 أحرف على الأقل.',
     account_exists: 'يوجد حساب بهذا البريد بالفعل.',
@@ -191,15 +193,16 @@ function requireAdmin(req, res, options = {}, basePath = '/admin') {
 }
 
 function adminLoginPage(error = '', basePath = '/admin') {
-  return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>دخول إدارة WIVA</title><style>:root{color-scheme:dark;--bg:#07090f;--panel:#111827;--line:rgba(226,232,240,.14);--text:#f8fafc;--muted:#9ca3af;--accent:#2563eb;--accent2:#14b8a6}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at top right,rgba(37,99,235,.24),transparent 34%),linear-gradient(180deg,#080a12,#0b1020);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;padding:22px}.login{width:min(430px,100%)}.mark{display:flex;align-items:center;gap:12px;margin-bottom:14px}.mark img{height:38px;max-width:120px;object-fit:contain}.brand b{display:block;font-size:16px}.brand span{display:block;color:var(--muted);font-size:12px;margin-top:2px}.card{border:1px solid var(--line);background:rgba(16,24,39,.92);border-radius:8px;padding:22px;box-shadow:0 26px 80px rgba(0,0,0,.36)}h1{font-size:23px;margin:0 0 7px;letter-spacing:0}.lead{color:#cbd5e1;line-height:1.7;margin:0 0 18px;font-size:13px}label{display:block;color:#dbeafe;font-size:12px;font-weight:900;margin-top:12px}input{width:100%;margin:7px 0 2px;padding:13px 14px;border-radius:8px;border:1px solid rgba(148,163,184,.24);background:#0b1220;color:#fff;font:inherit;outline:none}input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.18)}button{width:100%;min-height:46px;padding:12px;border:0;border-radius:8px;background:linear-gradient(135deg,var(--accent),#1d4ed8);color:#fff;font-weight:900;margin-top:16px;cursor:pointer;font:inherit}.err{color:#fecaca;background:rgba(127,29,29,.26);border:1px solid rgba(248,113,113,.34);border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.6}.note{margin:12px 0 0;color:var(--muted);font-size:12px;line-height:1.7;text-align:center}</style></head><body><main class="login"><div class="mark"><img src="/wiva-logo.png" alt="WIVA"><div class="brand"><b>WIVA</b><span>إدارة الشبكة المحلية</span></div></div><form class="card" method="post" action="${escapeHtml(basePath)}/login"><h1>تسجيل الدخول</h1><p class="lead">ادخل ببيانات الإدارة لإدارة القنوات، IPTV، المكتبة، المشاهدين، والتقارير.</p>${error ? `<p class="err">${escapeHtml(error)}</p>` : ''}<label>اسم المستخدم<input name="username" autocomplete="username" placeholder="admin" required autofocus></label><label>كلمة المرور<input name="password" type="password" autocomplete="current-password" placeholder="كلمة المرور" required></label><button>دخول إلى اللوحة</button><p class="note">الجلسة محفوظة على هذا الجهاز لمدة أسبوع.</p></form></main></body></html>`;
+  return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>دخول إدارة WIVA</title><style>@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap');:root{color-scheme:dark;--bg:#07090f;--panel:#111827;--line:rgba(226,232,240,.14);--text:#f8fafc;--muted:#9ca3af;--accent:#2563eb;--accent2:#14b8a6}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at top right,rgba(37,99,235,.24),transparent 34%),linear-gradient(180deg,#080a12,#0b1020);color:var(--text);font-family:"Cairo",system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;padding:22px}.login{width:min(430px,100%)}.mark{display:flex;align-items:center;gap:12px;margin-bottom:14px}.mark img{height:38px;max-width:120px;object-fit:contain}.brand b{display:block;font-size:16px}.brand span{display:block;color:var(--muted);font-size:12px;margin-top:2px}.card{border:1px solid var(--line);background:rgba(16,24,39,.92);border-radius:8px;padding:22px;box-shadow:0 26px 80px rgba(0,0,0,.36)}h1{font-size:23px;margin:0 0 7px;letter-spacing:0}.lead{color:#cbd5e1;line-height:1.7;margin:0 0 18px;font-size:13px}label{display:block;color:#dbeafe;font-size:12px;font-weight:900;margin-top:12px}input{width:100%;margin:7px 0 2px;padding:13px 14px;border-radius:8px;border:1px solid rgba(148,163,184,.24);background:#0b1220;color:#fff;font:inherit;outline:none}input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.18)}button{width:100%;min-height:46px;padding:12px;border:0;border-radius:8px;background:linear-gradient(135deg,var(--accent),#1d4ed8);color:#fff;font-weight:900;margin-top:16px;cursor:pointer;font:inherit}.err{color:#fecaca;background:rgba(127,29,29,.26);border:1px solid rgba(248,113,113,.34);border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.6}.note{margin:12px 0 0;color:var(--muted);font-size:12px;line-height:1.7;text-align:center}</style></head><body><main class="login"><div class="mark"><img src="/wiva-logo.png" alt="WIVA"><div class="brand"><b>WIVA</b><span>إدارة الشبكة المحلية</span></div></div><form class="card" method="post" action="${escapeHtml(basePath)}/login"><h1>تسجيل الدخول</h1><p class="lead">ادخل ببيانات الإدارة لإدارة القنوات، IPTV، المكتبة، المشاهدين، والتقارير.</p>${error ? `<p class="err">${escapeHtml(error)}</p>` : ''}<label>اسم المستخدم<input name="username" autocomplete="username" placeholder="admin" required autofocus></label><label>كلمة المرور<input name="password" type="password" autocomplete="current-password" placeholder="كلمة المرور" required></label><button>دخول إلى اللوحة</button><p class="note">الجلسة محفوظة على هذا الجهاز لمدة أسبوع.</p></form></main></body></html>`;
 }
 
 function setupPage(options = {}) {
   const state = typeof options.getSetupState === 'function' ? options.getSetupState() : {};
   const payload = jsonForScript(state);
   return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>إعداد WIVA</title><style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap');
 :root{color-scheme:dark;--bg:#07090f;--panel:#111827;--panel2:#0f172a;--line:rgba(226,232,240,.12);--text:#f8fafc;--muted:#9ca3af;--accent:#2563eb;--accent2:#14b8a6;--good:#22c55e;--warn:#f59e0b;--danger:#ef4444}
-*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top right,rgba(37,99,235,.24),transparent 30%),linear-gradient(180deg,#080a12,#0a0f1d 55%,#07090f);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;-webkit-font-smoothing:antialiased}main{width:min(1180px,100%);margin:auto;padding:24px}.hero{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:20px;align-items:end;margin-bottom:18px}.brand{display:flex;align-items:center;gap:12px;margin-bottom:18px}.brand img{height:46px;max-width:150px;object-fit:contain}.eyebrow{display:inline-flex;margin-bottom:10px;border:1px solid rgba(20,184,166,.28);background:rgba(20,184,166,.1);color:#ccfbf1;border-radius:8px;padding:6px 9px;font-size:12px;font-weight:900}h1{font-size:clamp(32px,6vw,64px);line-height:1;margin:0 0 10px;letter-spacing:0}.lead{color:#d1d5db;line-height:1.8;margin:0;max-width:760px}.status{border:1px solid var(--line);background:rgba(17,24,39,.72);border-radius:8px;padding:16px;display:grid;gap:9px}.status div{display:flex;justify-content:space-between;gap:8px;color:#cbd5e1;font-size:13px}.status b{color:#fff;direction:ltr}.shell{display:grid;grid-template-columns:240px minmax(0,1fr);gap:16px}.steps{position:sticky;top:14px;align-self:start;border:1px solid var(--line);background:rgba(17,24,39,.72);border-radius:8px;padding:10px}.step{width:100%;min-height:44px;border:0;border-radius:8px;background:transparent;color:#cbd5e1;font:inherit;font-weight:850;text-align:start;padding:10px;cursor:pointer}.step.active{background:rgba(37,99,235,.18);color:#fff}.card{display:none;border:1px solid var(--line);background:rgba(17,24,39,.78);border-radius:8px;padding:20px;box-shadow:0 22px 70px rgba(0,0,0,.22)}.card.active{display:block}.card h2{font-size:23px;margin:0 0 6px}.card p{color:#aebacd;line-height:1.75;margin:0 0 16px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}label{display:block;color:#dbeafe;font-size:12px;font-weight:900;margin:0 0 6px}input,select{width:100%;min-height:46px;border:1px solid rgba(148,163,184,.22);background:#0b1220;color:#fff;border-radius:8px;padding:12px;font:inherit;outline:none}input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.16)}.choice-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}.choice{border:1px solid rgba(148,163,184,.22);background:rgba(255,255,255,.045);border-radius:8px;padding:14px;cursor:pointer}.choice input{display:none}.choice:has(input:checked){border-color:rgba(20,184,166,.7);background:rgba(20,184,166,.12)}.choice strong{display:block}.choice span{display:block;color:#9ca3af;font-size:12px;line-height:1.6;margin-top:4px}.port-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end}.hint{font-size:12px;color:#aebacd;margin-top:7px;line-height:1.6}.ok{color:#86efac}.bad{color:#fca5a5}.actions{display:flex;justify-content:space-between;gap:10px;margin-top:18px}.btn{min-height:44px;border:0;border-radius:8px;padding:11px 16px;color:#fff;font:inherit;font-weight:900;cursor:pointer;background:rgba(255,255,255,.08);border:1px solid var(--line)}.btn.primary{background:linear-gradient(135deg,var(--accent),#1d4ed8);border-color:transparent}.btn:disabled{opacity:.55;cursor:not-allowed}.preview{border:1px solid var(--line);background:rgba(0,0,0,.22);border-radius:8px;padding:14px;margin-top:12px;display:flex;align-items:center;gap:12px}.preview img{max-height:52px;max-width:140px;object-fit:contain}.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);border:1px solid var(--line);background:#101827;color:#fff;border-radius:8px;padding:11px 16px;font-weight:850;box-shadow:0 18px 44px rgba(0,0,0,.34)}@media(max-width:880px){main{padding:14px}.hero,.shell{grid-template-columns:1fr}.steps{position:static;display:grid;grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.status{display:none}}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top right,rgba(37,99,235,.24),transparent 30%),linear-gradient(180deg,#080a12,#0a0f1d 55%,#07090f);color:var(--text);font-family:"Cairo",system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;-webkit-font-smoothing:antialiased}main{width:min(1180px,100%);margin:auto;padding:24px}.hero{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:20px;align-items:end;margin-bottom:18px}.brand{display:flex;align-items:center;gap:12px;margin-bottom:18px}.brand img{height:46px;max-width:150px;object-fit:contain}.eyebrow{display:inline-flex;margin-bottom:10px;border:1px solid rgba(20,184,166,.28);background:rgba(20,184,166,.1);color:#ccfbf1;border-radius:8px;padding:6px 9px;font-size:12px;font-weight:900}h1{font-size:clamp(32px,6vw,64px);line-height:1;margin:0 0 10px;letter-spacing:0}.lead{color:#d1d5db;line-height:1.8;margin:0;max-width:760px}.status{border:1px solid var(--line);background:rgba(17,24,39,.72);border-radius:8px;padding:16px;display:grid;gap:9px}.status div{display:flex;justify-content:space-between;gap:8px;color:#cbd5e1;font-size:13px}.status b{color:#fff;direction:ltr}.shell{display:grid;grid-template-columns:240px minmax(0,1fr);gap:16px}.steps{position:sticky;top:14px;align-self:start;border:1px solid var(--line);background:rgba(17,24,39,.72);border-radius:8px;padding:10px}.step{width:100%;min-height:44px;border:0;border-radius:8px;background:transparent;color:#cbd5e1;font:inherit;font-weight:850;text-align:start;padding:10px;cursor:pointer}.step.active{background:rgba(37,99,235,.18);color:#fff}.card{display:none;border:1px solid var(--line);background:rgba(17,24,39,.78);border-radius:8px;padding:20px;box-shadow:0 22px 70px rgba(0,0,0,.22)}.card.active{display:block}.card h2{font-size:23px;margin:0 0 6px}.card p{color:#aebacd;line-height:1.75;margin:0 0 16px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}label{display:block;color:#dbeafe;font-size:12px;font-weight:900;margin:0 0 6px}input,select{width:100%;min-height:46px;border:1px solid rgba(148,163,184,.22);background:#0b1220;color:#fff;border-radius:8px;padding:12px;font:inherit;outline:none}input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.16)}.choice-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}.choice{border:1px solid rgba(148,163,184,.22);background:rgba(255,255,255,.045);border-radius:8px;padding:14px;cursor:pointer}.choice input{display:none}.choice:has(input:checked){border-color:rgba(20,184,166,.7);background:rgba(20,184,166,.12)}.choice strong{display:block}.choice span{display:block;color:#9ca3af;font-size:12px;line-height:1.6;margin-top:4px}.port-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end}.hint{font-size:12px;color:#aebacd;margin-top:7px;line-height:1.6}.ok{color:#86efac}.bad{color:#fca5a5}.actions{display:flex;justify-content:space-between;gap:10px;margin-top:18px}.btn{min-height:44px;border:0;border-radius:8px;padding:11px 16px;color:#fff;font:inherit;font-weight:900;cursor:pointer;background:rgba(255,255,255,.08);border:1px solid var(--line)}.btn.primary{background:linear-gradient(135deg,var(--accent),#1d4ed8);border-color:transparent}.btn:disabled{opacity:.55;cursor:not-allowed}.preview{border:1px solid var(--line);background:rgba(0,0,0,.22);border-radius:8px;padding:14px;margin-top:12px;display:flex;align-items:center;gap:12px}.preview img{max-height:52px;max-width:140px;object-fit:contain}.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);border:1px solid var(--line);background:#101827;color:#fff;border-radius:8px;padding:11px 16px;font-weight:850;box-shadow:0 18px 44px rgba(0,0,0,.34)}@media(max-width:880px){main{padding:14px}.hero,.shell{grid-template-columns:1fr}.steps{position:static;display:grid;grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.status{display:none}}
 </style></head><body><main><script id="state" type="application/json">${payload}</script><section class="hero"><div><div class="brand"><img src="/wiva-logo.png" alt="WIVA"><strong>WIVA Agent</strong></div><span class="eyebrow">إعداد الشبكة</span><h1>جهّز تجربة المشاهدة داخل شبكتك</h1><p class="lead">خطوات قصيرة لتسجيل الشبكة، اختيار المنافذ، تخصيص الهوية، وتشغيل الإدارة من المتصفح على نفس الشبكة.</p></div><aside class="status" id="agentStatus"></aside></section><section class="shell"><nav class="steps" id="steps"></nav><form id="setupForm"><section class="card active" data-step="0"><h2>الحساب</h2><p>سجّل بيانات مالك الشبكة. ربط Neon Auth/Google يحتاج مفاتيح المشروع النهائية؛ هذه النسخة تحفظ الإعداد المحلي وتجهّز الواجهة له.</p><div class="grid"><div><label>البريد الإلكتروني</label><input name="ownerEmail" type="email" autocomplete="email" placeholder="owner@example.com"></div><div><label>كلمة المرور</label><input name="ownerPassword" type="password" autocomplete="new-password" placeholder="••••••••"></div></div><div class="hint">زر Google يظهر في الواجهة النهائية عند ضبط مفاتيح Neon Auth و OAuth redirects.</div></section><section class="card" data-step="1"><h2>بيانات الشبكة</h2><p>هذه البيانات تساعدك في الإدارة والاشتراك والتقارير.</p><div class="grid"><div><label>اسم الشبكة</label><input name="networkName" required></div><div><label>رقم/كود الشبكة</label><input name="networkNumber"></div><div><label>المدينة</label><input name="networkCity" placeholder="Sana'a"></div><div><label>الدولة</label><input name="networkCountry" placeholder="Yemen"></div><div><label>العنوان أو المنطقة</label><input name="networkLocation"></div><div><label>المنطقة الزمنية</label><input name="networkTimezone" placeholder="Asia/Aden"></div></div></section><section class="card" data-step="2"><h2>الهوية والشعار</h2><p>استخدم شعار الشبكة واسمها في صفحات المشاهدة والمكتبة.</p><div class="grid"><div><label>اسم الواجهة</label><input name="brandName" required></div><div><label>الوصف القصير</label><input name="brandTagline"></div></div><label>رفع شعار PNG</label><input id="logoInput" type="file" accept="image/png"><input type="hidden" name="networkLogoDataUrl"><div class="preview"><img id="logoPreview" src="/wiva-logo.png" alt="logo"><span>سيتم ضغط الشعار وحفظه محلياً. إزالة الخلفية التلقائية تحتاج خدمة صور خارجية، لذلك الواجهة تحفظ PNG الشفاف بأفضل جودة متاحة الآن.</span></div></section><section class="card" data-step="3"><h2>طريقة العرض</h2><p>اختر هل تكون القنوات والمكتبة على نفس التجربة أو منفصلتين.</p><div class="choice-grid"><label class="choice"><input type="radio" name="experienceLayout" value="unified" checked><strong>واجهة واحدة</strong><span>القنوات والمكتبة من نفس تجربة WIVA.</span></label><label class="choice"><input type="radio" name="experienceLayout" value="separate"><strong>منافذ منفصلة</strong><span>منفذ مباشر ومنفذ مستقل للمكتبة والإدارة.</span></label></div></section><section class="card" data-step="4"><h2>المنافذ</h2><p>افحص المنافذ قبل التشغيل حتى تعرف إن كان هناك برنامج آخر يستخدمها.</p><div class="grid"><div><label>منفذ البث المباشر</label><div class="port-row"><input name="port" type="number" min="1" max="65535" required><button class="btn" type="button" data-check="port">فحص</button></div><div class="hint" id="portHint"></div></div><div><label>منفذ الإدارة والمكتبة</label><div class="port-row"><input name="libraryPort" type="number" min="1" max="65535" required><button class="btn" type="button" data-check="libraryPort">فحص</button></div><div class="hint" id="libraryPortHint"></div></div></div></section><section class="card" data-step="5"><h2>الثيم</h2><p>اختر مظهراً هادئاً وواضحاً للمشاهدين والإدارة.</p><div class="grid"><div><label>ثيم القنوات</label><select name="liveTheme"><option value="cinema">Cinema</option><option value="broadcast">Broadcast</option><option value="minimal">Minimal</option></select></div><div><label>ثيم المكتبة</label><select name="libraryTheme"><option value="cinema">Cinema</option><option value="gallery">Gallery</option><option value="minimal">Minimal</option></select></div></div></section><section class="card" data-step="6"><h2>الإدارة</h2><p>اختر رابطاً مخصصاً وبيانات دخول للوحة الإدارة على الشبكة. اترك كلمة المرور فارغة عند التعديل إذا لا تريد تغييرها.</p><div class="grid"><div><label>رابط الإدارة</label><input name="adminPath" placeholder="admin"></div><div><label>اسم المستخدم</label><input name="adminUsername" autocomplete="username" required></div><div><label>كلمة المرور</label><input name="adminPassword" type="password" autocomplete="new-password"></div></div></section><section class="card" data-step="7"><h2>المراجعة والتشغيل</h2><p>بعد الحفظ ستظهر روابط الإعداد والإدارة والمكتبة والقنوات. إذا تغيّر المنفذ ستحتاج فتح الرابط الجديد.</p><div id="review" class="status"></div></section><div class="actions"><button class="btn" type="button" id="prevBtn">السابق</button><button class="btn primary" type="button" id="nextBtn">التالي</button><button class="btn primary" type="submit" id="saveBtn" hidden>حفظ وتشغيل</button></div></form></section></main><script>
 const initial = JSON.parse(document.getElementById('state').textContent || '{}');
 const fields = ['networkName','networkNumber','networkLocation','networkCountry','networkCity','networkTimezone','brandName','brandTagline','experienceLayout','liveTheme','libraryTheme','adminPath','adminUsername','port','libraryPort'];
@@ -294,6 +297,39 @@ function mediaType(item) {
   return 'unsupported';
 }
 
+const ARTWORK_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
+const FOLDER_ARTWORK_NAMES = ['poster', 'cover', 'folder', 'thumbnail', 'thumb'];
+
+function artworkMime(filePath) {
+  const ext = path.extname(filePath || '').toLowerCase();
+  if (ext === '.png') return 'image/png';
+  if (ext === '.webp') return 'image/webp';
+  return 'image/jpeg';
+}
+
+function findArtworkFile(item) {
+  const source = String(item?.path || '');
+  if (!source || /^https?:\/\//i.test(source)) return '';
+  const dir = path.dirname(source);
+  const base = path.basename(source, path.extname(source));
+  const candidates = [];
+  for (const ext of ARTWORK_EXT) candidates.push(path.join(dir, base + ext), path.join(dir, base + '-poster' + ext), path.join(dir, base + '.poster' + ext));
+  for (const name of FOLDER_ARTWORK_NAMES) for (const ext of ARTWORK_EXT) candidates.push(path.join(dir, name + ext));
+  return candidates.find((candidate) => {
+    try { return fs.existsSync(candidate) && fs.statSync(candidate).isFile(); } catch { return false; }
+  }) || '';
+}
+
+function mediaPosterUrl(item) {
+  if (item?.poster_url) return item.poster_url;
+  return findArtworkFile(item) ? `/media-art/${item.id}/poster` : '';
+}
+
+function mediaBackdropUrl(item) {
+  if (item?.backdrop_url) return item.backdrop_url;
+  return findArtworkFile(item) ? `/media-art/${item.id}/poster` : '';
+}
+
 function listLibraryItems(query = {}) {
   return db.listMedia({
     q: query.q || '',
@@ -307,15 +343,20 @@ function librarySections(items = listLibraryItems({ limit: 5000 })) {
   for (const item of items) {
     const section = item.section || (item.kind === 'episode' ? 'مسلسلات' : item.kind === 'audio' ? 'صوتيات' : 'أفلام');
     const folder = item.folder || section;
-    if (!sections.has(section)) sections.set(section, { name: section, count: 0, folders: new Map() });
+    if (!sections.has(section)) sections.set(section, { name: section, count: 0, cover: '', folders: new Map() });
     const sec = sections.get(section);
     sec.count += 1;
-    sec.folders.set(folder, (sec.folders.get(folder) || 0) + 1);
+    if (!sec.cover) sec.cover = mediaBackdropUrl(item) || mediaPosterUrl(item);
+    const current = sec.folders.get(folder) || { name: folder, count: 0, cover: '' };
+    current.count += 1;
+    if (!current.cover) current.cover = mediaPosterUrl(item) || mediaBackdropUrl(item);
+    sec.folders.set(folder, current);
   }
   return Array.from(sections.values()).map((sec) => ({
     name: sec.name,
     count: sec.count,
-    folders: Array.from(sec.folders.entries()).map(([name, count]) => ({ name, count })),
+    cover: sec.cover || '',
+    folders: Array.from(sec.folders.values()),
   }));
 }
 
@@ -443,7 +484,7 @@ function denyIfBlocked(req, res, meta = {}) {
     status: 403,
     message: block.reason || 'blocked',
   });
-  send(res, 403, `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>البث غير متاح</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#080d1f;color:#e5e7eb;font-family:system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;text-align:center;padding:24px}main{max-width:520px}h1{font-size:24px;margin:0 0 10px}p{color:#cbd5e1;line-height:1.7}</style></head><body><main><h1>البث غير متاح حالياً</h1><p>${escapeHtml(db.blockedMessage())}</p></main></body></html>`, {
+  send(res, 403, `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>البث غير متاح</title><style>@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap');body{margin:0;min-height:100vh;display:grid;place-items:center;background:#080d1f;color:#e5e7eb;font-family:"Cairo",system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;text-align:center;padding:24px}main{max-width:520px}h1{font-size:24px;margin:0 0 10px}p{color:#cbd5e1;line-height:1.7}</style></head><body><main><h1>البث غير متاح حالياً</h1><p>${escapeHtml(db.blockedMessage())}</p></main></body></html>`, {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'no-store',
   });
@@ -490,7 +531,7 @@ function denyFeature(req, res, options, feature) {
   const status = platformStatus(options);
   const message = platformGateMessage(status, feature);
   if (String(req.headers.accept || '').includes('text/html')) {
-    send(res, 402, `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>الميزة غير متاحة</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#080d1f;color:#e5e7eb;font-family:system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;text-align:center;padding:24px}main{max-width:560px}h1{font-size:24px;margin:0 0 10px}p{color:#cbd5e1;line-height:1.7}</style></head><body><main><h1>الميزة غير متاحة حالياً</h1><p>${escapeHtml(message)}</p></main></body></html>`, {
+    send(res, 402, `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>الميزة غير متاحة</title><style>@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap');body{margin:0;min-height:100vh;display:grid;place-items:center;background:#080d1f;color:#e5e7eb;font-family:"Cairo",system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;text-align:center;padding:24px}main{max-width:560px}h1{font-size:24px;margin:0 0 10px}p{color:#cbd5e1;line-height:1.7}</style></head><body><main><h1>الميزة غير متاحة حالياً</h1><p>${escapeHtml(message)}</p></main></body></html>`, {
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'no-store',
       'X-Manara-Error': encodeURIComponent(message),
@@ -509,7 +550,9 @@ function denyFeature(req, res, options, feature) {
 function adminPage(options = {}) {
   const adminPath = '/' + String(typeof options.getAdminPath === 'function' ? options.getAdminPath() : 'admin').replace(/^\/+|\/+$/g, '').replace(/[^\w\-./]/g, '');
   const adminBase = adminPath === '/' ? '/admin' : adminPath;
-  const broadcastJson = escapeHtml(JSON.stringify(db.listBroadcastChannels(), null, 2));
+  const broadcastChannels = db.listBroadcastChannels();
+  const broadcastJson = escapeHtml(JSON.stringify(broadcastChannels, null, 2));
+  const iptvPolicy = typeof options.getIptvPolicy === 'function' ? options.getIptvPolicy() : {};
   const status = iptv.status();
   const localRows = db.listIptv().map((ch) => ({ ...ch, sourceKind: 'Manual', readonly: false }));
   let cloudRows = [];
@@ -550,6 +593,19 @@ function adminPage(options = {}) {
       <td>${Number(s.slowClientsDropped || 0)}</td>
       <td>${Number(s.errors || 0)}${s.lastError ? `<br><span class="muted">${escapeHtml(s.lastError)}</span>` : ''}</td>
     </tr>`).join('');
+  const activeStreamsCount = Object.values(status).filter((s) => Number(s.viewers || 0) > 0).length;
+  const broadcastRows = broadcastChannels.map((ch) => `
+    <tr data-broadcast-row="${escapeHtml(ch.id || '')}">
+      <td><input name="name" value="${escapeHtml(ch.name || '')}" placeholder="اسم القناة"></td>
+      <td><select name="sourceType"><option value="screen" ${ch.source?.type === 'screen' ? 'selected' : ''}>شاشة</option><option value="window" ${ch.source?.type === 'window' ? 'selected' : ''}>نافذة</option><option value="device" ${ch.source?.type === 'device' ? 'selected' : ''}>USB / HDMI</option><option value="url" ${ch.source?.type === 'url' ? 'selected' : ''}>رابط</option></select></td>
+      <td><input name="sourceId" value="${escapeHtml(ch.source?.id || ch.source?.url || '')}" placeholder="معرف الجهاز أو الرابط"></td>
+      <td><input name="audioDeviceId" value="${escapeHtml(ch.audioDeviceId || 'none')}" placeholder="none أو معرف الصوت"></td>
+      <td><input name="resolution" value="${escapeHtml(ch.resolution || '1280x720')}"></td>
+      <td><input name="fps" type="number" min="1" max="120" value="${Number(ch.fps || 30)}"></td>
+      <td><input name="bitrateKbps" type="number" min="250" step="250" value="${Number(ch.bitrateKbps || 2500)}"></td>
+      <td><label class="check"><input name="autoStart" type="checkbox" ${ch.autoStart ? 'checked' : ''}> تلقائي</label><label class="check"><input name="enabled" type="checkbox" ${ch.enabled !== false ? 'checked' : ''}> مفعل</label></td>
+      <td><button data-save-broadcast="${escapeHtml(ch.id || '')}">حفظ</button><button class="danger" data-remove-broadcast="${escapeHtml(ch.id || '')}">حذف</button></td>
+    </tr>`).join('');
   const sessions = db.listSessions();
   const viewerAccounts = db.listViewerAccounts();
   const viewerMessages = db.listViewerMessages(120);
@@ -574,6 +630,7 @@ function adminPage(options = {}) {
     return `
     <tr>
       <td>${escapeHtml(account.name || '')}</td>
+      <td class="url">${escapeHtml(account.phone || '')}</td>
       <td class="url">${escapeHtml(account.email || '')}</td>
       <td>${Number(state.favorites?.length || 0)}</td>
       <td>${Number(state.watchLater?.length || 0)}</td>
@@ -584,7 +641,7 @@ function adminPage(options = {}) {
   const messageRows = viewerMessages.map((msg) => `
     <tr>
       <td>${new Date(msg.createdAt).toLocaleString()}</td>
-      <td>${escapeHtml(msg.name || '')}<br><span class="muted">${escapeHtml(msg.email || '')}</span></td>
+      <td>${escapeHtml(msg.name || '')}<br><span class="muted">${escapeHtml([msg.phone, msg.email].filter(Boolean).join(' · '))}</span></td>
       <td>${escapeHtml(msg.message || '')}${msg.context ? `<br><span class="muted">${escapeHtml(msg.context)}</span>` : ''}</td>
       <td><span class="pill">${escapeHtml(msg.status || 'new')}</span></td>
       <td>
@@ -649,8 +706,9 @@ function adminPage(options = {}) {
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>لوحة إدارة WIVA</title>
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap');
 :root{color-scheme:dark;--bg:#07090f;--panel:#111827;--panel2:#0b1220;--line:rgba(226,232,240,.12);--line2:rgba(148,163,184,.2);--text:#f8fafc;--muted:#9ca3af;--accent:#2563eb;--accent2:#14b8a6;--good:#22c55e;--warn:#f59e0b;--danger:#ef4444;--radius:14px;--radius2:20px}
-*{box-sizing:border-box}html{scroll-behavior:smooth}body{font-family:system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;margin:0;background:radial-gradient(circle at top right,rgba(37,99,235,.2),transparent 34%),linear-gradient(180deg,#080a12,#0a0f1d 58%,#07090f);color:var(--text);-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{font-family:"Cairo",system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;margin:0;background:radial-gradient(circle at top right,rgba(37,99,235,.2),transparent 34%),linear-gradient(180deg,#080a12,#0a0f1d 58%,#07090f);color:var(--text);-webkit-font-smoothing:antialiased}
 body::before{content:"";position:fixed;inset:0;pointer-events:none;background:linear-gradient(90deg,rgba(37,99,235,.06),transparent 42%,rgba(20,184,166,.05));z-index:-1}
 main{max-width:1440px;margin:auto;padding:22px}
 h1{font-size:28px;margin:0 0 7px;letter-spacing:0}h2{font-size:18px;margin:0 0 12px}h3{font-size:15px;margin:20px 0 9px;color:#dbeafe}.lead{color:#b6c2d6;line-height:1.7;margin:0}
@@ -661,6 +719,7 @@ section{border:1px solid var(--line);background:linear-gradient(180deg,rgba(16,2
 .grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
 label{display:block;font-size:12px;color:#dbeafe;font-weight:850;margin:10px 0 6px}
 input,textarea,select{width:100%;box-sizing:border-box;border:1px solid var(--line2);border-radius:var(--radius);padding:11px 12px;background:var(--panel2);color:#fff;font:inherit;outline:none}input:focus,textarea:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.16)}
+.check{display:flex;align-items:center;gap:6px;margin:3px 0;color:#dbeafe}.check input{width:auto;min-height:0}.mini-form{border:1px solid rgba(148,163,184,.16);background:rgba(255,255,255,.035);border-radius:var(--radius2);padding:14px;margin:10px 0 14px}.admin-tools{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;align-items:end}.tabs-note{color:#bfdbfe;background:rgba(20,184,166,.08);border:1px solid rgba(20,184,166,.2);border-radius:var(--radius);padding:10px 12px;margin:0 0 14px;font-size:12px;line-height:1.7}
 textarea{min-height:220px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;direction:ltr;text-align:left;line-height:1.55}
 button{border:0;border-radius:var(--radius);padding:9px 12px;background:linear-gradient(135deg,var(--accent),#1d4ed8);color:#fff;font-weight:850;cursor:pointer;margin:4px 4px 4px 0;font-family:inherit}button:hover{filter:brightness(1.08)}button.secondary{background:#334155}button.danger{background:#dc2626}
 table{width:100%;border-collapse:separate;border-spacing:0;margin-top:10px;font-size:13px;overflow:hidden;border:1px solid rgba(255,255,255,.06);border-radius:var(--radius)}
@@ -668,14 +727,67 @@ thead th{position:sticky;top:0;background:rgba(15,23,42,.96);color:#dbeafe;font-
 a{color:#93c5fd}.url{word-break:break-all;color:#bfdbfe;direction:ltr;text-align:left}.msg{color:#86efac;font-size:13px;margin-top:8px}.muted{color:var(--muted);font-size:12px;line-height:1.7}
 .statcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:10px 0 12px}.statcard{border:1px solid var(--line);background:rgba(0,0,0,.2);border-radius:var(--radius);padding:13px}.statcard b{display:block;font-size:24px;line-height:1.1}.statcard span{font-size:12px;color:var(--muted);font-weight:800}
 .table-wrap{width:100%;overflow:auto}.section-note{display:flex;gap:8px;align-items:center;color:#bfdbfe;background:rgba(37,99,235,.08);border:1px solid rgba(37,99,235,.22);border-radius:var(--radius);padding:10px 12px;margin:10px 0;font-size:12px;line-height:1.7}.pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:rgba(255,255,255,.055);border-radius:999px;padding:4px 8px;color:#dbeafe;font-size:11px;font-weight:900}
+.modal-host{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:rgba(3,7,18,.72);padding:18px;backdrop-filter:blur(14px)}.modal-host[hidden]{display:none}.modal-card{width:min(520px,100%);border:1px solid var(--line);background:#101827;border-radius:var(--radius2);box-shadow:0 28px 90px rgba(0,0,0,.5);padding:18px}.modal-card h3{margin:0 0 8px;font-size:18px}.modal-card p{color:#cbd5e1;line-height:1.75;margin:0 0 14px}.modal-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}.modal-danger{background:#dc2626}.modal-fields{display:grid;gap:10px;margin:12px 0}.modal-fields textarea{min-height:100px;direction:rtl;text-align:right;font-family:inherit}
 @media (max-width:980px){.grid{grid-template-columns:1fr}.shell-head{align-items:flex-start;flex-direction:column}.head-actions{justify-content:flex-start}table{display:block;overflow:auto}.admin-nav{position:static}}
 @media (max-width:720px){main{padding:14px}.statcards{grid-template-columns:1fr 1fr}.head-actions a,.admin-nav a{flex:1;text-align:center}.shell-head h1{font-size:24px}}
 </style>
 </head>
 <body><main>
 <div class="shell-head"><div><div class="brand-row"><img src="/wiva-logo.png" alt="WIVA"><span class="eyebrow">WIVA LAN Admin</span></div><h1>لوحة إدارة WIVA</h1><p class="lead">تحكم واضح في المشاهدة داخل الشبكة: القنوات، IPTV، مكتبة الوسائط، المشاهدين، التقارير، والتخصيص.</p></div><div class="head-actions"><a class="primary" href="/">فتح صفحة المشاهدة</a><a href="/library">فتح المكتبة</a><a href="/setup">الإعداد</a><a href="${escapeHtml(adminBase)}/logout">تسجيل الخروج</a></div></div>
-<nav class="admin-nav"><a href="#media">المكتبة</a><a href="#viewers">المشاهدون</a><a href="#iptv">IPTV</a><a href="#security">الحظر</a><a href="#logs">السجل</a><a href="#broadcast">قنوات البث</a></nav>
+<nav class="admin-nav"><a href="#dashboard">Dashboard</a><a href="#viewers">المستخدمون</a><a href="#broadcast">قنوات البث</a><a href="#iptv">IPTV</a><a href="#media">المكتبة</a><a href="#security">الحظر</a><a href="#logs">السجل</a></nav>
 <script id="mediaAdminPayload" type="application/json">${mediaPayload}</script>
+<section id="dashboard">
+  <h2>Dashboard</h2>
+  <p class="tabs-note">ملخص سريع لحالة WIVA داخل الشبكة. إذا ظهرت تنبيهات هنا، ابدأ من فحص الصحة قبل تعديل القنوات.</p>
+  <div class="statcards">
+    <div class="statcard"><b>${sessions.length}</b><span>أجهزة نشطة الآن</span></div>
+    <div class="statcard"><b>${activeStreamsCount}</b><span>بث IPTV نشط</span></div>
+    <div class="statcard"><b>${cloudRows.length + localRows.length}</b><span>قنوات IPTV</span></div>
+    <div class="statcard"><b>${mediaStats.total}</b><span>عناصر المكتبة</span></div>
+  </div>
+  <div class="statcards">
+    <div class="statcard"><b>${broadcastChannels.length}</b><span>قنوات بث محلية</span></div>
+    <div class="statcard"><b>${viewerAccounts.length}</b><span>حسابات مشاهدين</span></div>
+    <div class="statcard"><b>${health.missingFiles.length + health.unsupportedFormats.length + health.brokenSubtitles.length}</b><span>تنبيهات مكتبة</span></div>
+    <div class="statcard"><b>${Math.max(1, Number(iptvPolicy.cloudIptvRefreshMinutes || 3))}m</b><span>تحديث IPTV السحابي</span></div>
+  </div>
+  <div class="admin-tools">
+    <a class="pill" href="/api/admin/health">فحص الصحة</a>
+    <a class="pill" href="/api/admin/reports/views.csv">تصدير CSV</a>
+    <a class="pill" href="/api/admin/reports/views.json">تصدير JSON</a>
+    <a class="pill" href="/setup">الإعداد</a>
+  </div>
+</section>
+<section id="viewers">
+  <h2>المستخدمون والمشاهدون</h2>
+  <p class="tabs-note">هنا تظهر الأجهزة النشطة، حسابات المشاهدين، ورسائلهم للإدارة.</p>
+  <h3>المشاهدون النشطون</h3>
+  <div class="table-wrap"><table><thead><tr><th>IP</th><th>يشاهد</th><th>البيانات المنقولة</th><th>الطلبات</th><th>الجهاز</th><th>الإجراء</th></tr></thead><tbody>${sessionRows || '<tr><td colspan="6">لا يوجد مشاهدون نشطون حالياً.</td></tr>'}</tbody></table></div>
+  <h3>حسابات المشاهدين</h3>
+  <div class="table-wrap"><table><thead><tr><th>الاسم</th><th>الرقم / الغرفة</th><th>البريد</th><th>المفضلة</th><th>لاحقاً</th><th>السجل</th><th>آخر ظهور</th></tr></thead><tbody>${accountRows || '<tr><td colspan="7">لا توجد حسابات مشاهدين بعد.</td></tr>'}</tbody></table></div>
+  <h3>رسائل المشاهدين</h3>
+  <div class="table-wrap"><table><thead><tr><th>الوقت</th><th>المشاهد</th><th>الرسالة</th><th>الحالة</th><th>الإجراء</th></tr></thead><tbody>${messageRows || '<tr><td colspan="5">لا توجد رسائل حتى الآن.</td></tr>'}</tbody></table></div>
+</section>
+<section id="broadcast">
+  <h2>قنوات البث وأجهزة الالتقاط</h2>
+  <p class="tabs-note">أضف قنوات البث من الشاشة، النافذة، USB/HDMI أو رابط مباشر بدون تعديل JSON.</p>
+  <form id="broadcastForm" class="mini-form">
+    <div class="admin-tools">
+      <label>اسم القناة<input name="name" required placeholder="القناة الرئيسية"></label>
+      <label>نوع المصدر<select name="sourceType"><option value="screen">شاشة</option><option value="window">نافذة</option><option value="device">USB / HDMI</option><option value="url">رابط</option></select></label>
+      <label>معرف الجهاز أو الرابط<input name="sourceId" placeholder="اتركه فارغاً للشاشة الافتراضية"></label>
+      <label>معرف الصوت<input name="audioDeviceId" value="none" placeholder="none"></label>
+      <label>الدقة<input name="resolution" value="1280x720"></label>
+      <label>FPS<input name="fps" type="number" min="1" max="120" value="30"></label>
+      <label>Bitrate Kbps<input name="bitrateKbps" type="number" min="250" step="250" value="2500"></label>
+      <label class="check"><input name="autoStart" type="checkbox" checked> تشغيل تلقائي</label>
+      <label class="check"><input name="enabled" type="checkbox" checked> مفعل</label>
+      <div><button>إضافة القناة</button></div>
+    </div>
+  </form>
+  <textarea id="broadcastJson" hidden>${broadcastJson}</textarea>
+  <div class="table-wrap"><table><thead><tr><th>الاسم</th><th>المصدر</th><th>معرف المصدر</th><th>الصوت</th><th>الدقة</th><th>FPS</th><th>Bitrate</th><th>الحالة</th><th>الإجراء</th></tr></thead><tbody id="broadcastRows">${broadcastRows || '<tr><td colspan="9">لا توجد قنوات بث محفوظة.</td></tr>'}</tbody></table></div>
+</section>
 <section id="media">
   <h2>مكتبة الوسائط</h2>
   <div class="statcards">
@@ -720,16 +832,15 @@ a{color:#93c5fd}.url{word-break:break-all;color:#bfdbfe;direction:ltr;text-align
   <h3 style="margin-top:18px">محتوى المكتبة</h3>
   <div class="table-wrap"><table><thead><tr><th>العنوان</th><th>النوع</th><th>الحجم</th><th>المدة</th><th>الملف</th><th>الإجراءات</th></tr></thead><tbody>${mediaRows || '<tr><td colspan="6">لم تتم فهرسة أي وسائط بعد. أضف مجلداً ثم شغل الفحص.</td></tr>'}</tbody></table></div>
 </section>
-<section id="viewers">
-  <h2>المشاهدون النشطون</h2>
-  <div class="table-wrap"><table><thead><tr><th>IP</th><th>يشاهد</th><th>البيانات المنقولة</th><th>الطلبات</th><th>الجهاز</th><th>الإجراء</th></tr></thead><tbody>${sessionRows || '<tr><td colspan="6">لا يوجد مشاهدون نشطون حالياً.</td></tr>'}</tbody></table></div>
-  <h3>حسابات المشاهدين</h3>
-  <div class="table-wrap"><table><thead><tr><th>الاسم</th><th>البريد</th><th>المفضلة</th><th>لاحقاً</th><th>السجل</th><th>آخر ظهور</th></tr></thead><tbody>${accountRows || '<tr><td colspan="6">لا توجد حسابات مشاهدين بعد.</td></tr>'}</tbody></table></div>
-  <h3>رسائل المشاهدين</h3>
-  <div class="table-wrap"><table><thead><tr><th>الوقت</th><th>المشاهد</th><th>الرسالة</th><th>الحالة</th><th>الإجراء</th></tr></thead><tbody>${messageRows || '<tr><td colspan="5">لا توجد رسائل حتى الآن.</td></tr>'}</tbody></table></div>
-</section>
 <section id="iptv">
   <h2>قنوات IPTV</h2>
+  <form id="iptvPolicyForm" class="mini-form">
+    <div class="admin-tools">
+      <label>تحديث IPTV السحابي كل (دقيقة)<input name="cloudIptvRefreshMinutes" type="number" min="1" max="1440" value="${Math.max(1, Number(iptvPolicy.cloudIptvRefreshMinutes || (status.refreshMs ? status.refreshMs / 60000 : 3)))}"></label>
+      <label>حد كل IPTV إجمالي MB<input name="iptvGlobalLimitMb" type="number" min="0" step="1" value="${Math.round((Number(iptvPolicy.iptvGlobalLimitBytes || 0) || 0) / 1024 / 1024)}"></label>
+      <div><button>حفظ سياسة IPTV</button></div>
+    </div>
+  </form>
   <form id="iptvForm">
     <label>اسم القناة</label><input name="name" required>
     <label>الرابط الأصلي</label><input name="url" required placeholder="https://.../playlist.m3u8">
@@ -762,20 +873,43 @@ a{color:#93c5fd}.url{word-break:break-all;color:#bfdbfe;direction:ltr;text-align
   <div class="table-wrap"><table><thead><tr><th>الوقت</th><th>الإجراء</th><th>IP</th><th>الهدف</th><th>البيانات</th><th>الحالة</th></tr></thead><tbody>${logRows || '<tr><td colspan="6">لا توجد سجلات حتى الآن.</td></tr>'}</tbody></table></div>
 </section>
 </div>
-<section id="broadcast">
-  <h2>قنوات البث المحفوظة</h2>
-  <p class="muted">محرر متقدم لقائمة قنوات البث التي يستخدمها تطبيق سطح المكتب.</p>
-  <textarea id="broadcastJson">${broadcastJson}</textarea>
-  <button id="saveBroadcast">حفظ قنوات البث</button>
-  <button class="secondary" onclick="location.reload()">إعادة تحميل</button>
-  <div id="msg" class="msg"></div>
-</section>
+<div id="msg" class="msg"></div>
+<div class="modal-host" id="modalHost" hidden></div>
 <script>
 const msg = document.getElementById('msg');
+const modalHost = document.getElementById('modalHost');
 async function api(path, opts) {
   const r = await fetch(path, opts);
   if (!r.ok) throw new Error(await r.text());
   return r.json();
+}
+function closeModal(){ modalHost.hidden = true; modalHost.innerHTML = ''; }
+function confirmAction({ title, body, okText = 'تأكيد', danger = false }){
+  return new Promise((resolve) => {
+    modalHost.innerHTML = '<div class="modal-card" role="dialog" aria-modal="true"><h3>'+escapeHtmlClient(title)+'</h3><p>'+escapeHtmlClient(body)+'</p><div class="modal-actions"><button class="secondary" data-modal-cancel>إلغاء</button><button class="'+(danger?'modal-danger':'')+'" data-modal-ok>'+escapeHtmlClient(okText)+'</button></div></div>';
+    modalHost.hidden = false;
+    modalHost.querySelector('[data-modal-cancel]').onclick = () => { closeModal(); resolve(false); };
+    modalHost.querySelector('[data-modal-ok]').onclick = () => { closeModal(); resolve(true); };
+  });
+}
+function escapeHtmlClient(value){ return String(value || '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function openMediaEditor(item){
+  return new Promise((resolve) => {
+    modalHost.innerHTML = '<form class="modal-card" id="mediaEditForm" role="dialog" aria-modal="true"><h3>تعديل الوسائط</h3><div class="modal-fields"><label>العنوان<input name="title" required></label><label>النوع<select name="kind"><option value="movie">فيلم</option><option value="episode">حلقة</option><option value="audio">صوتيات</option></select></label><label>السنة<input name="year"></label><label>الوصف<textarea name="overview"></textarea></label></div><div class="modal-actions"><button type="button" class="secondary" data-modal-cancel>إلغاء</button><button>حفظ</button></div></form>';
+    modalHost.hidden = false;
+    const form = modalHost.querySelector('#mediaEditForm');
+    form.elements.title.value = item.title || '';
+    form.elements.kind.value = item.kind || 'movie';
+    form.elements.year.value = item.year || '';
+    form.elements.overview.value = item.overview || '';
+    form.querySelector('[data-modal-cancel]').onclick = () => { closeModal(); resolve(null); };
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(form).entries());
+      closeModal();
+      resolve(data);
+    };
+  });
 }
 function parseJsonSafe(text) {
   if (!String(text || '').trim()) return {};
@@ -791,7 +925,7 @@ document.getElementById('iptvForm').addEventListener('submit', async (e) => {
   location.reload();
 });
 document.querySelectorAll('[data-del]').forEach((b) => b.onclick = async () => {
-  if (!confirm('حذف قناة IPTV هذه؟')) return;
+  if (!await confirmAction({ title:'حذف قناة IPTV؟', body:'سيتم حذف القناة اليدوية من هذه النسخة. القنوات السحابية لا تحذف من هنا.', okText:'حذف', danger:true })) return;
   await api('/api/admin/iptv/' + b.dataset.del, { method:'DELETE' });
   location.reload();
 });
@@ -817,11 +951,70 @@ document.getElementById('saveBlockedMessage').onclick = async () => {
   await api('/api/admin/block-message', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ message:document.getElementById('blockedMessage').value }) });
   msg.textContent = 'تم الحفظ.';
 };
-document.getElementById('saveBroadcast').onclick = async () => {
-  const channels = JSON.parse(document.getElementById('broadcastJson').value);
+function readBroadcastChannels(){ try { return JSON.parse(document.getElementById('broadcastJson').value || '[]'); } catch { return []; } }
+function formDataFromContainer(container){
+  const data = {};
+  container.querySelectorAll('input,select,textarea').forEach((el) => {
+    if (!el.name) return;
+    data[el.name] = el.type === 'checkbox' ? el.checked : el.value;
+  });
+  return data;
+}
+function channelFromForm(form, id){
+  const data = form instanceof HTMLFormElement ? Object.fromEntries(new FormData(form).entries()) : formDataFromContainer(form);
+  const sourceType = data.sourceType || 'screen';
+  const sourceId = String(data.sourceId || '').trim();
+  return {
+    id: id || ('ch_' + Date.now().toString(36)),
+    name: String(data.name || '').trim(),
+    description: '',
+    source: sourceType === 'url' ? { type: 'url', url: sourceId } : { type: sourceType, id: sourceId },
+    audioDeviceId: String(data.audioDeviceId || 'none').trim() || 'none',
+    resolution: String(data.resolution || '1280x720').trim(),
+    fps: Math.max(1, Number(data.fps || 30) || 30),
+    bitrateKbps: Math.max(250, Number(data.bitrateKbps || 2500) || 2500),
+    autoStart: !!data.autoStart,
+    enabled: !!data.enabled,
+  };
+}
+async function saveBroadcastChannels(channels){
+  document.getElementById('broadcastJson').value = JSON.stringify(channels, null, 2);
   await api('/api/admin/broadcast', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ channels }) });
   msg.textContent = 'تم الحفظ.';
-};
+}
+document.getElementById('broadcastForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const channels = readBroadcastChannels();
+  channels.push(channelFromForm(e.target));
+  await saveBroadcastChannels(channels);
+  location.reload();
+});
+document.querySelectorAll('[data-save-broadcast]').forEach((b) => b.onclick = async () => {
+  const row = b.closest('[data-broadcast-row]');
+  const id = b.dataset.saveBroadcast;
+  const channels = readBroadcastChannels().map((ch) => String(ch.id) === String(id) ? channelFromForm(row, id) : ch);
+  await saveBroadcastChannels(channels);
+  location.reload();
+});
+document.querySelectorAll('[data-remove-broadcast]').forEach((b) => b.onclick = async () => {
+  if (!await confirmAction({ title:'حذف قناة البث؟', body:'سيتم حذف قناة البث المحلية من إعدادات هذا الجهاز.', okText:'حذف', danger:true })) return;
+  const channels = readBroadcastChannels().filter((ch) => String(ch.id) !== String(b.dataset.removeBroadcast));
+  await saveBroadcastChannels(channels);
+  location.reload();
+});
+document.getElementById('iptvPolicyForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const data = Object.fromEntries(new FormData(e.target).entries());
+  await api('/api/admin/iptv-policy', {
+    method:'PUT',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      cloudIptvRefreshMinutes: Math.max(1, Number(data.cloudIptvRefreshMinutes || 3) || 3),
+      iptvGlobalLimitBytes: Math.max(0, Number(data.iptvGlobalLimitMb || 0) || 0) * 1024 * 1024
+    })
+  });
+  msg.textContent = 'تم حفظ سياسة IPTV.';
+});
 document.getElementById('pathForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   await api('/api/admin/library-paths', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(Object.fromEntries(new FormData(e.target).entries())) });
@@ -855,24 +1048,17 @@ const mediaAdmin = JSON.parse(document.getElementById('mediaAdminPayload').textC
 document.querySelectorAll('[data-edit-media]').forEach((b) => b.onclick = async () => {
   const item = mediaAdmin.find((row) => String(row.id) === String(b.dataset.editMedia));
   if (!item) return;
-  const title = prompt('العنوان', item.title || '');
-  if (title == null) return;
-  const kind = prompt('النوع: movie أو episode أو audio', item.kind || 'movie');
-  if (kind == null) return;
-  const year = prompt('السنة', item.year || '');
-  if (year == null) return;
-  const overview = prompt('الوصف', item.overview || '');
-  if (overview == null) return;
+  const patch = await openMediaEditor(item);
+  if (!patch) return;
   await api('/api/admin/media/' + item.id, {
     method:'PUT',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({ ...item, title, kind, year, overview })
+    body:JSON.stringify({ ...item, ...patch })
   });
   location.reload();
 });
 document.querySelectorAll('[data-delete-media]').forEach((b) => b.onclick = async () => {
-  const removeFile = confirm('إزالة هذا العنصر من المكتبة؟ سيتم حذفه من قائمة المكتبة فقط وسيبقى الملف على القرص.');
-  if (!removeFile) return;
+  if (!await confirmAction({ title:'إزالة عنصر من المكتبة؟', body:'سيتم حذف العنصر من فهرس المكتبة فقط، وسيبقى الملف الأصلي على القرص.', okText:'إزالة', danger:true })) return;
   await api('/api/admin/media/' + b.dataset.deleteMedia, { method:'DELETE' });
   location.reload();
 });
@@ -909,8 +1095,8 @@ function libraryPage(req, res) {
     year: item.year || '',
     rating: item.rating || '',
     overview: item.overview || '',
-    poster: item.poster_url || '',
-    backdrop: item.backdrop_url || '',
+    poster: mediaPosterUrl(item),
+    backdrop: mediaBackdropUrl(item),
     size: item.size || 0,
     position: item.position || 0,
     duration: item.wp_duration || item.duration || 0,
@@ -978,8 +1164,8 @@ function libraryPage(req, res) {
     signUp: 'إنشاء حساب',
     signOut: 'خروج',
     name: 'الاسم',
-    email: 'البريد الإلكتروني',
-    password: 'كلمة المرور',
+    phone: 'رقم الهاتف أو الغرفة',
+    email: 'البريد الإلكتروني (اختياري)',
     messageAdmin: 'مراسلة الإدارة',
     messagePlaceholder: 'اكتب ملاحظة أو طلباً للإدارة...',
     sendMessage: 'إرسال الرسالة',
@@ -988,6 +1174,8 @@ function libraryPage(req, res) {
     quickFilters: 'تصفية سريعة',
     latest: 'الأحدث',
     openAccount: 'حسابي',
+    openMessage: 'رسالة',
+    liveUrl: 'البث المباشر',
     close: 'إغلاق',
     accountSaved: 'تم الحفظ.',
     accountError: 'تعذر تنفيذ الطلب. تأكد من البيانات وحاول مرة أخرى.',
@@ -1041,8 +1229,8 @@ function libraryPage(req, res) {
     signUp: 'Create account',
     signOut: 'Sign out',
     name: 'Name',
-    email: 'Email',
-    password: 'Password',
+    phone: 'Phone or room number',
+    email: 'Email (optional)',
     messageAdmin: 'Message admin',
     messagePlaceholder: 'Write a note or request for the admin...',
     sendMessage: 'Send message',
@@ -1051,6 +1239,8 @@ function libraryPage(req, res) {
     quickFilters: 'Quick filters',
     latest: 'Latest',
     openAccount: 'Account',
+    openMessage: 'Message',
+    liveUrl: 'Live',
     close: 'Close',
     accountSaved: 'Saved.',
     accountError: 'Could not complete the request. Check the details and try again.',
@@ -1063,27 +1253,28 @@ function libraryPage(req, res) {
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>${escapeHtml(text.pageTitle)}</title>
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap');
 :root{color-scheme:dark;--bg:#07090f;--bg2:#0b1020;--panel:#111827;--panel2:#151f35;--surface:rgba(17,24,39,.78);--glass:rgba(255,255,255,.055);--line:rgba(226,232,240,.12);--line2:rgba(148,163,184,.22);--text:#f8fafc;--muted:#a7b3cf;--soft:#dbeafe;--accent:${escapeHtml(theme.accent)};--accent2:${escapeHtml(theme.accent2)};--danger:#ef4444;--radius:14px;--radius2:20px}
-*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;min-height:100vh;background:radial-gradient(circle at 88% 0,rgba(37,99,235,.18),transparent 32%),linear-gradient(180deg,var(--bg),var(--bg2) 48%,#07090f);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;min-height:100vh;background:radial-gradient(circle at 88% 0,rgba(37,99,235,.18),transparent 32%),linear-gradient(180deg,var(--bg),var(--bg2) 48%,#07090f);color:var(--text);font-family:"Cairo",system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
 body::before{content:"";position:fixed;inset:0;pointer-events:none;background:linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(180deg,rgba(255,255,255,.018) 1px,transparent 1px);background-size:86px 86px;mask-image:linear-gradient(180deg,rgba(0,0,0,.9),transparent 70%);z-index:-1}
 button,input,select{font:inherit}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent2);outline-offset:3px}.hide{display:none!important}
 .hero{min-height:62vh;padding:24px;background:linear-gradient(90deg,rgba(7,9,15,.98),rgba(7,9,15,.76) 48%,rgba(7,9,15,.22)),var(--hero,linear-gradient(135deg,#111827,#101827));background-size:cover;background-position:center;display:flex;align-items:flex-end;box-shadow:inset 0 -170px 150px rgba(7,9,15,.92)}
-.hero-inner{width:100%;max-width:1440px;margin:auto}.top{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:clamp(34px,7vh,76px)}.brand{display:flex;align-items:center;gap:11px;font-weight:950;font-size:19px;letter-spacing:0}.brand img{max-height:42px;max-width:150px;object-fit:contain}.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a,.btn{border:1px solid var(--line);background:rgba(255,255,255,.08);color:#fff;text-decoration:none;border-radius:var(--radius);padding:10px 14px;font-weight:900;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px}.btn.primary,.nav a.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));border-color:transparent;box-shadow:0 18px 40px rgba(37,99,235,.22)}.btn.ghost{background:rgba(255,255,255,.06)}
+.hero-inner{width:100%;max-width:1440px;margin:auto}.top{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:clamp(34px,7vh,76px)}.brand{display:flex;align-items:center;gap:11px;font-weight:950;font-size:19px;letter-spacing:0}.brand img{max-height:42px;max-width:150px;object-fit:contain}.brand-text{display:grid;gap:2px}.brand-text small{color:var(--muted);font-size:11px;font-weight:800}.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a,.btn{border:1px solid var(--line);background:rgba(255,255,255,.08);color:#fff;text-decoration:none;border-radius:var(--radius);padding:10px 14px;font-weight:900;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px}.btn.primary,.nav a.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));border-color:transparent;box-shadow:0 18px 40px rgba(37,99,235,.22)}.btn.ghost{background:rgba(255,255,255,.06)}
 .eyebrow{display:inline-flex;margin-bottom:12px;color:#ccfbf1;background:rgba(20,184,166,.12);border:1px solid rgba(20,184,166,.28);border-radius:999px;padding:7px 11px;font-size:12px;font-weight:950}.hero h1{font-size:clamp(36px,6.5vw,78px);line-height:.98;margin:0 0 14px;letter-spacing:0;max-width:940px}.hero p{max-width:780px;color:#d7def0;line-height:1.75;margin:0 0 20px}.hero-actions{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}.stats{display:grid;grid-template-columns:repeat(4,minmax(92px,132px));gap:10px}.stat{border:1px solid var(--line);background:rgba(0,0,0,.32);backdrop-filter:blur(12px);border-radius:var(--radius);padding:11px 13px}.stat b{display:block;font-size:20px}.stat span{font-size:12px;color:var(--muted);font-weight:800}
 main.library-shell{max-width:1440px;margin:auto;padding:18px 22px 52px}.tools{position:sticky;top:0;z-index:8;display:grid;grid-template-columns:minmax(260px,1.55fr) repeat(5,minmax(126px,1fr));gap:10px;margin:0 0 22px;padding:12px;background:rgba(7,9,15,.82);border:1px solid rgba(226,232,240,.1);border-radius:var(--radius2);backdrop-filter:blur(18px)}
 input,select{width:100%;border:1px solid var(--line2);background:#0b1220;color:#fff;border-radius:var(--radius);padding:12px 13px;min-height:46px;outline:none}input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.18)}select option{background:#0b1220;color:#fff}
 .quick-filter-row{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 22px}.chip-btn{border:1px solid var(--line);background:var(--glass);color:#e5edff;border-radius:999px;padding:8px 12px;font-weight:900;cursor:pointer}.chip-btn.active{background:linear-gradient(135deg,var(--accent),var(--accent2));border-color:transparent;color:#fff}
-.account-panel{display:none;grid-template-columns:minmax(0,1fr) minmax(320px,1.35fr);gap:14px;align-items:center;border:1px solid var(--line);background:linear-gradient(180deg,rgba(17,24,39,.9),rgba(15,23,42,.78));border-radius:var(--radius2);padding:16px;margin:0 0 24px}.account-panel.open{display:grid}.account-panel h2{margin:0 0 4px;font-size:19px}.account-panel p{margin:0;color:var(--muted);line-height:1.7;font-size:13px}.account-forms{display:grid;grid-template-columns:1fr 1fr;gap:10px}.account-forms form,.account-signed{display:grid;gap:8px}.account-signed{grid-template-columns:auto minmax(180px,1fr) auto;align-items:center}.account-signed form{display:grid;grid-template-columns:minmax(160px,1fr) auto;gap:8px}.account-chip{display:grid;gap:2px;border:1px solid var(--line);background:rgba(255,255,255,.055);border-radius:var(--radius);padding:9px 11px}.account-chip span{color:var(--muted);font-size:11px}.account-chip strong{font-size:13px}.account-status{grid-column:1/-1;color:#bfdbfe;font-size:12px;min-height:1em}
+.account-panel{display:none;grid-template-columns:minmax(0,1fr) minmax(320px,1.35fr);gap:14px;align-items:center;border:1px solid var(--line);background:linear-gradient(180deg,rgba(17,24,39,.9),rgba(15,23,42,.78));border-radius:var(--radius2);padding:16px;margin:0 0 24px}.account-panel.open{display:grid}.account-panel h2{margin:0 0 4px;font-size:19px}.account-panel p{margin:0;color:var(--muted);line-height:1.7;font-size:13px}.account-forms form,.account-signed{display:grid;gap:8px}.account-forms form{grid-template-columns:repeat(3,minmax(0,1fr)) auto}.account-signed{grid-template-columns:auto minmax(180px,1fr) auto;align-items:center}.account-signed form{display:grid;grid-template-columns:minmax(160px,1fr) auto;gap:8px}.account-chip{display:grid;gap:2px;border:1px solid var(--line);background:rgba(255,255,255,.055);border-radius:var(--radius);padding:9px 11px}.account-chip span{color:var(--muted);font-size:11px}.account-chip strong{font-size:13px}.account-status{grid-column:1/-1;color:#bfdbfe;font-size:12px;min-height:1em}
 .section{margin:34px 0}.section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:14px}.section h2{font-size:clamp(20px,3vw,28px);margin:0;letter-spacing:0}.section small{color:var(--muted)}.section-line{height:1px;flex:1;background:linear-gradient(90deg,rgba(148,163,184,.35),transparent);margin:0 10px 8px}
 .rail{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(176px,214px);gap:14px;overflow-x:auto;overscroll-behavior-x:contain;padding:2px 2px 12px;scrollbar-width:thin}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:16px}.grid.compact{grid-template-columns:1fr}
-.section-card{position:relative;overflow:hidden;border:1px solid var(--line);background:linear-gradient(160deg,rgba(17,24,39,.9),rgba(15,23,42,.58));border-radius:var(--radius2);padding:15px;text-align:start;color:#fff;min-height:128px;transition:transform .18s,border-color .18s,box-shadow .18s}.section-card::before{content:"";position:absolute;inset:auto -20% -42% -20%;height:90px;background:radial-gradient(circle,rgba(20,184,166,.2),transparent 62%)}.section-card:hover{transform:translateY(-4px);border-color:rgba(20,184,166,.5);box-shadow:0 18px 42px rgba(0,0,0,.28)}.section-main{width:100%;border:0;background:transparent;color:#fff;text-align:start;padding:0;font:inherit;cursor:pointer}.section-main strong{display:block;font-size:16px}.section-main span{display:block;color:var(--muted);font-size:12px;margin-top:5px}.folder-row{display:flex;gap:7px;flex-wrap:wrap;margin-top:13px}.folder-row button{border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.24);color:#dbeafe;border-radius:999px;padding:6px 9px;font:inherit;font-size:11px;font-weight:900;cursor:pointer}
+.section-card{position:relative;overflow:hidden;border:1px solid var(--line);background:linear-gradient(160deg,rgba(17,24,39,.9),rgba(15,23,42,.58));border-radius:var(--radius2);padding:15px;text-align:start;color:#fff;min-height:150px;transition:transform .18s,border-color .18s,box-shadow .18s}.section-card.has-cover{background-image:linear-gradient(180deg,rgba(7,9,15,.26),rgba(7,9,15,.9)),var(--folder-cover);background-size:cover;background-position:center}.section-card::before{content:"";position:absolute;inset:auto -20% -42% -20%;height:90px;background:radial-gradient(circle,rgba(20,184,166,.2),transparent 62%)}.section-card:hover{transform:translateY(-4px);border-color:rgba(20,184,166,.5);box-shadow:0 18px 42px rgba(0,0,0,.28)}.section-main{width:100%;border:0;background:transparent;color:#fff;text-align:start;padding:0;font:inherit;cursor:pointer;position:relative;z-index:1}.section-main strong{display:block;font-size:16px}.section-main span{display:block;color:#dbeafe;font-size:12px;margin-top:5px}.folder-row{display:flex;gap:7px;flex-wrap:wrap;margin-top:13px;position:relative;z-index:1}.folder-row button{border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.34);color:#dbeafe;border-radius:999px;padding:6px 9px;font:inherit;font-size:11px;font-weight:900;cursor:pointer;backdrop-filter:blur(8px)}
 .tile{position:relative;display:block;min-width:0;text-decoration:none;color:#fff;background:rgba(17,24,39,.78);border:1px solid var(--line);border-radius:var(--radius2);overflow:hidden;transition:transform .18s,border-color .18s,background .18s,box-shadow .18s;outline:none;box-shadow:0 12px 34px rgba(0,0,0,.2)}.tile:hover,.tile:focus-visible{transform:translateY(-5px);border-color:rgba(20,184,166,.58);background:rgba(17,24,39,.96);box-shadow:0 22px 52px rgba(0,0,0,.34)}
 .poster{aspect-ratio:2/3;background:#1f2937 center/cover no-repeat;display:grid;place-items:center;color:rgba(255,255,255,.38);font-size:40px;font-weight:900;position:relative;overflow:hidden}.poster::after{content:"";position:absolute;inset:auto 0 0 0;height:48%;background:linear-gradient(180deg,transparent,rgba(0,0,0,.86))}.poster.audio{aspect-ratio:1;background:linear-gradient(135deg,#1f2937,#0f3d42)}.kind-badge{position:absolute;bottom:9px;left:9px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.62);backdrop-filter:blur(8px);border-radius:999px;padding:5px 8px;font-size:10px;font-weight:950;color:#e5e7eb;z-index:1}.status-badges{position:absolute;top:9px;left:9px;display:flex;gap:5px;flex-wrap:wrap;z-index:2}.status-badge{border:1px solid rgba(255,255,255,.18);background:rgba(20,184,166,.86);color:#042f2e;border-radius:999px;padding:4px 7px;font-size:10px;font-weight:950}.status-badge.progressed{background:rgba(37,99,235,.88);color:#eff6ff}.meta{padding:11px 12px 13px}.title{font-size:13px;font-weight:950;line-height:1.35;min-height:36px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.sub{font-size:11px;color:var(--muted);margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.overview{display:none;color:#cbd5e1;font-size:12px;line-height:1.55;margin-top:8px}
 .progress{height:4px;background:rgba(255,255,255,.12)}.progress i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2))}.quick{position:absolute;top:9px;right:9px;display:flex;gap:6px;z-index:2;opacity:0;transform:translateY(-4px);transition:.18s}.tile:hover .quick,.tile:focus-within .quick{opacity:1;transform:none}.quick button{width:34px;height:34px;border:1px solid rgba(255,255,255,.18);background:rgba(0,0,0,.58);color:#fff;border-radius:999px;cursor:pointer;font-weight:950;backdrop-filter:blur(8px)}.quick button.on{background:rgba(239,68,68,.92)}
 .grid.compact .tile{display:grid;grid-template-columns:98px minmax(0,1fr);min-height:126px}.grid.compact .poster{aspect-ratio:2/3;height:126px}.grid.compact .meta{padding:13px 15px}.grid.compact .title{font-size:15px;min-height:0}.grid.compact .overview{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.grid.compact .progress{position:absolute;left:98px;right:0;bottom:0}
 .empty{border:1px dashed var(--line);background:rgba(255,255,255,.045);border-radius:var(--radius2);padding:34px;color:var(--muted);line-height:1.8;text-align:center}.empty strong{display:block;color:#fff;margin-bottom:4px}
 @media(max-width:1100px){.tools{position:static;grid-template-columns:1fr 1fr 1fr}.hero{min-height:56vh}.top{margin-bottom:38px}.account-panel,.account-signed{grid-template-columns:1fr}.account-signed form{grid-template-columns:1fr}.stats{grid-template-columns:repeat(4,minmax(82px,1fr))}}
-@media(max-width:700px){.hero{min-height:54vh;padding:16px}.top{align-items:flex-start;margin-bottom:30px}.nav a,.btn{padding:9px 11px}.hero h1{font-size:36px}.stats{grid-template-columns:1fr 1fr}.tools{grid-template-columns:1fr;padding:10px;border-radius:16px}.quick-filter-row{overflow:auto;flex-wrap:nowrap}.account-forms{grid-template-columns:1fr}.rail{grid-auto-columns:minmax(164px,210px)}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}main.library-shell{padding:14px 12px 34px}.section{margin:28px 0}.quick{opacity:1;transform:none}.grid.compact .tile{grid-template-columns:86px minmax(0,1fr)}.grid.compact .poster{height:114px}.grid.compact .progress{left:86px}}
+@media(max-width:700px){.hero{min-height:54vh;padding:16px}.top{align-items:flex-start;margin-bottom:30px}.nav a,.btn{padding:9px 11px}.hero h1{font-size:36px}.stats{grid-template-columns:1fr 1fr}.tools{grid-template-columns:1fr;padding:10px;border-radius:16px}.quick-filter-row{overflow:auto;flex-wrap:nowrap}.account-forms,.account-forms form{grid-template-columns:1fr}.rail{grid-auto-columns:minmax(164px,210px)}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}main.library-shell{padding:14px 12px 34px}.section{margin:28px 0}.quick{opacity:1;transform:none}.grid.compact .tile{grid-template-columns:86px minmax(0,1fr)}.grid.compact .poster{height:114px}.grid.compact .progress{left:86px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
 </style>
 </head>
@@ -1095,8 +1286,8 @@ input,select{width:100%;border:1px solid var(--line2);background:#0b1220;color:#
 <section class="hero" id="hero">
   <div class="hero-inner">
     <div class="top">
-      <div class="brand">${theme.logoUrl ? `<img src="${escapeHtml(theme.logoUrl)}" style="height:32px;vertical-align:middle;margin-inline-end:8px">` : ''}${escapeHtml(theme.brandName)}</div>
-      <nav class="nav"><a href="/" class="primary">${escapeHtml(text.channels)}</a><button class="btn ghost" id="accountToggle" type="button">${escapeHtml(text.openAccount)}</button></nav>
+      <div class="brand">${theme.logoUrl ? `<img src="${escapeHtml(theme.logoUrl)}" alt="">` : '<img src="/wiva-logo.png" alt="">'}<span class="brand-text"><strong>${escapeHtml(theme.brandName)}</strong><small>${escapeHtml(theme.tagline || '')}</small></span></div>
+      <nav class="nav"><a href="/" class="primary">${escapeHtml(text.liveUrl)}</a><button class="btn ghost" id="messageToggle" type="button">${escapeHtml(text.openMessage)}</button><button class="btn ghost" id="accountToggle" type="button">${escapeHtml(text.openAccount)}</button></nav>
     </div>
     <span class="eyebrow" id="heroKind">${escapeHtml(text.featured)}</span>
     <h1 id="heroTitle">${escapeHtml(theme.brandName)}</h1>
@@ -1138,15 +1329,10 @@ input,select{width:100%;border:1px solid var(--line2);background:#0b1220;color:#
     </div>
     <div class="account-forms" id="guestAccount">
       <form id="signinForm">
-        <input name="email" type="email" autocomplete="email" placeholder="${escapeHtml(text.email)}" required>
-        <input name="password" type="password" autocomplete="current-password" placeholder="${escapeHtml(text.password)}" required>
-        <button class="btn primary">${escapeHtml(text.signIn)}</button>
-      </form>
-      <form id="signupForm">
-        <input name="name" autocomplete="name" placeholder="${escapeHtml(text.name)}">
-        <input name="email" type="email" autocomplete="email" placeholder="${escapeHtml(text.email)}" required>
-        <input name="password" type="password" autocomplete="new-password" placeholder="${escapeHtml(text.password)}" required>
-        <button class="btn ghost">${escapeHtml(text.signUp)}</button>
+        <input name="name" autocomplete="name" placeholder="${escapeHtml(text.name)}" required>
+        <input name="phone" inputmode="tel" autocomplete="tel" placeholder="${escapeHtml(text.phone)}" required>
+        <input name="email" type="email" autocomplete="email" placeholder="${escapeHtml(text.email)}">
+        <button class="btn primary">${escapeHtml(text.signIn)} / ${escapeHtml(text.signUp)}</button>
       </form>
     </div>
     <div class="account-signed" id="signedAccount" hidden>
@@ -1195,7 +1381,7 @@ function syncAccountUi() {
   const account = viewer.account;
   guest.hidden = !!account;
   signed.hidden = !account;
-  if (account) name.textContent = account.name || account.email || '';
+  if (account) name.textContent = [account.name, account.phone].filter(Boolean).join(' · ') || account.email || '';
 }
 async function handleAccountForm(form, path) {
   try {
@@ -1315,15 +1501,21 @@ function render(){
   syncQuickFilters();
 }
 const accountToggle = document.getElementById('accountToggle');
+const messageToggle = document.getElementById('messageToggle');
 const accountPanel = document.getElementById('accountPanel');
-accountToggle.addEventListener('click', () => {
-  const open = !accountPanel.classList.contains('open');
+function openAccountPanel(forceOpen) {
+  const open = forceOpen === true ? true : !accountPanel.classList.contains('open');
   accountPanel.classList.toggle('open', open);
   accountToggle.textContent = open ? (text.close || 'Close') : (text.openAccount || 'Account');
   if (open) accountPanel.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+accountToggle.addEventListener('click', () => openAccountPanel());
+messageToggle.addEventListener('click', () => {
+  openAccountPanel(true);
+  const input = document.querySelector('#messageForm input[name="message"], #signinForm input[name="name"]');
+  if (input) input.focus();
 });
 document.getElementById('signinForm').addEventListener('submit', (e)=>{ e.preventDefault(); handleAccountForm(e.target, '/api/viewer/signin'); });
-document.getElementById('signupForm').addEventListener('submit', (e)=>{ e.preventDefault(); handleAccountForm(e.target, '/api/viewer/signup'); });
 document.getElementById('signoutBtn').onclick = async () => { await postJson('/api/viewer/logout', {}).catch(()=>{}); location.reload(); };
 document.getElementById('messageForm').addEventListener('submit', async (e)=>{
   e.preventDefault();
@@ -1342,7 +1534,13 @@ sections.forEach(sec => {
     const f=document.createElement('option'); f.value=folder.name; f.textContent=sec.name+' / '+folder.name+' ('+folder.count+')'; sectionFilter.appendChild(f);
   });
 });
-document.getElementById('sectionRail').innerHTML = sections.map(sec => '<div class="section-card"><button class="section-main" data-section="'+esc(sec.name)+'"><strong>'+esc(sec.name)+'</strong><span>'+sec.count+' '+(text.items || '')+'</span></button><div class="folder-row">'+(sec.folders||[]).slice(0,6).map(folder => '<button type="button" data-folder="'+esc(folder.name)+'">'+esc(folder.name)+' · '+folder.count+'</button>').join('')+'</div></div>').join('');
+const folderCards = sections.flatMap(sec => (sec.folders || []).map(folder => ({
+  name: folder.name || sec.name,
+  section: sec.name,
+  count: folder.count || 0,
+  cover: folder.cover || sec.cover || ''
+})));
+document.getElementById('sectionRail').innerHTML = (folderCards.length ? folderCards : sections).map(row => '<div class="section-card '+(row.cover?'has-cover':'')+'" '+(row.cover?'style="--folder-cover:url(\\''+esc(row.cover)+'\\')"':'')+'><button class="section-main" data-folder="'+esc(row.name)+'" data-section-fallback="'+esc(row.section || row.name)+'"><strong>'+esc(row.name)+'</strong><span>'+esc([row.section && row.section !== row.name ? row.section : '', row.count + ' ' + (text.items || '')].filter(Boolean).join(' · '))+'</span></button></div>').join('');
 document.querySelectorAll('[data-section],[data-folder]').forEach(btn=>btn.onclick=()=>{ sectionFilter.value=btn.dataset.section || btn.dataset.folder; render(); });
 document.querySelectorAll('[data-quick-view]').forEach(btn => btn.onclick = () => {
   const kind = document.getElementById('kind');
@@ -1469,8 +1667,9 @@ function playerPage(id, req, res) {
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(title)} - WIVA</title>
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap');
 :root{color-scheme:dark;--bg:#07090f;--panel:#10182f;--line:rgba(226,232,240,.12);--text:#eef2ff;--muted:#a7b3cf;--accent:${escapeHtml(theme.accent)};--accent2:${escapeHtml(theme.accent2 || theme.accent)};--radius:18px}
-*{box-sizing:border-box}body{margin:0;min-height:100vh;background:linear-gradient(90deg,rgba(7,9,15,.99),rgba(7,9,15,.78)),url('${escapeHtml(poster)}');background-size:cover;background-position:center;color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:linear-gradient(90deg,rgba(7,9,15,.99),rgba(7,9,15,.78)),url('${escapeHtml(poster)}');background-size:cover;background-position:center;color:var(--text);font-family:"Cairo",system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;-webkit-font-smoothing:antialiased}
 body::before{content:"";position:fixed;inset:0;pointer-events:none;background:linear-gradient(180deg,transparent,rgba(7,9,15,.92) 72%);z-index:-1}.wrap{max-width:1440px;margin:auto;padding:18px 22px 46px}.bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px}.bar a,.btn{border:1px solid var(--line);background:rgba(255,255,255,.08);color:#fff;text-decoration:none;border-radius:14px;padding:10px 13px;font-weight:900;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;min-height:42px}.bar a:hover,.btn:hover{background:rgba(255,255,255,.13)}
 .layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px}.player{background:#000;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:0 28px 90px rgba(0,0,0,.5);position:relative}
 video,audio{width:100%;display:block;background:#000}video{aspect-ratio:16/9;max-height:76vh}.audioBox{min-height:400px;display:grid;place-items:center;background:radial-gradient(circle at 50% 38%,rgba(20,184,166,.22),transparent 36%),linear-gradient(135deg,#111936,#123c4a)}.audioBox audio{max-width:620px;padding:0 18px}
@@ -1599,7 +1798,8 @@ async function streamRemote(req, res, remoteUrl) {
 
 function createHandler(options = {}) {
   return async (req, res) => {
-    const u = url.parse(req.url, true);
+    const parsedUrl = new URL(req.url || '/', 'http://127.0.0.1');
+    const u = { pathname: parsedUrl.pathname, query: Object.fromEntries(parsedUrl.searchParams.entries()) };
     const configuredAdminPath = '/' + String(typeof options.getAdminPath === 'function' ? options.getAdminPath() : 'admin')
       .replace(/^\/+|\/+$/g, '')
       .replace(/[^\w\-./]/g, '');
@@ -1718,7 +1918,18 @@ function createHandler(options = {}) {
         viewer: db.viewerState(getViewerId(req, res)),
       });
     }
-    let m = /^\/player\/(\d+)$/.exec(u.pathname);
+    let m = /^\/media-art\/(\d+)\/poster$/.exec(u.pathname);
+    if (m) {
+      if (!featureAllowed(options, 'media')) return denyFeature(req, res, options, 'media');
+      const item = db.getMedia(parseInt(m[1], 10));
+      const art = findArtworkFile(item);
+      if (!art) return send(res, 404, 'Artwork not found', { 'Content-Type': 'text/plain; charset=utf-8' });
+      return send(res, 200, fs.readFileSync(art), {
+        'Content-Type': artworkMime(art),
+        'Cache-Control': 'public, max-age=86400',
+      });
+    }
+    m = /^\/player\/(\d+)$/.exec(u.pathname);
     if (m) {
       if (!featureAllowed(options, 'media')) return denyFeature(req, res, options, 'media');
       const html = playerPage(m[1], req, res);
@@ -1731,6 +1942,9 @@ function createHandler(options = {}) {
         broadcast: db.listBroadcastChannels(),
         iptv: db.listIptv(),
         cloudIptv: safeCloudIptvList(),
+        iptvPolicy: typeof options.getIptvPolicy === 'function' ? options.getIptvPolicy() : {},
+        cloudIptvStatus: cloudIptv.status(),
+        iptvStatus: iptv.status(),
         media: db.listMedia({ limit: 500 }),
         mediaStats: db.mediaStats(),
         sessions: db.listSessions(),
@@ -1749,6 +1963,18 @@ function createHandler(options = {}) {
         const id = db.addIptv({ ...body, enabled: true });
         if (options.onChannelsChanged) options.onChannelsChanged();
         return sendJson(res, 200, db.getIptv(id));
+      } catch (e) { return sendJson(res, 500, { error: e.message }); }
+    }
+    if (u.pathname === '/api/admin/iptv-policy' && req.method === 'PUT') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      try {
+        const body = await parseJsonBody(req);
+        const fallback = {
+          iptvGlobalLimitBytes: Math.max(0, Number(body.iptvGlobalLimitBytes || 0) || 0),
+          cloudIptvRefreshMinutes: Math.max(1, Math.min(1440, Number(body.cloudIptvRefreshMinutes || 3) || 3)),
+        };
+        const policy = typeof options.updateIptvPolicy === 'function' ? options.updateIptvPolicy(fallback) : fallback;
+        return sendJson(res, 200, { ok: true, policy, cloudIptvStatus: cloudIptv.status() });
       } catch (e) { return sendJson(res, 500, { error: e.message }); }
     }
     let adminMatch = /^\/api\/admin\/iptv\/(\d+)(?:\/toggle)?$/.exec(u.pathname);
@@ -1909,8 +2135,7 @@ function createHandler(options = {}) {
       try {
         const anonymousViewerId = getViewerId(req, res);
         const body = await parseJsonBody(req);
-        db.createViewerAccount({ ...body, fromViewerId: anonymousViewerId });
-        const session = db.authenticateViewerAccount({ email: body.email, password: body.password, fromViewerId: anonymousViewerId });
+        const session = db.authenticateViewerProfile({ ...body, fromViewerId: anonymousViewerId });
         setViewerAccountCookies(res, session.token, session.account.viewerId);
         return sendJson(res, 200, { ok: true, account: session.account, viewer: db.viewerState(session.account.viewerId) });
       } catch (e) {
@@ -1921,7 +2146,7 @@ function createHandler(options = {}) {
       try {
         const anonymousViewerId = getViewerId(req, res);
         const body = await parseJsonBody(req);
-        const session = db.authenticateViewerAccount({ ...body, fromViewerId: anonymousViewerId });
+        const session = db.authenticateViewerProfile({ ...body, fromViewerId: anonymousViewerId });
         setViewerAccountCookies(res, session.token, session.account.viewerId);
         return sendJson(res, 200, { ok: true, account: session.account, viewer: db.viewerState(session.account.viewerId) });
       } catch (e) {
@@ -1941,6 +2166,7 @@ function createHandler(options = {}) {
         const msg = db.addViewerMessage(ctx.viewerId, {
           ...body,
           name: body.name || ctx.account?.name || '',
+          phone: body.phone || ctx.account?.phone || '',
           email: body.email || ctx.account?.email || '',
         });
         return sendJson(res, 200, { ok: true, message: msg });

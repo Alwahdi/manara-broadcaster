@@ -3,7 +3,7 @@
 // - Windows auto-start at boot via app.setLoginItemSettings
 // - Embedded HTTP + WebSocket signaling server (multi-channel)
 // - License verification (online + 30-day offline grace) with 7-day trial
-// - Auto-update via electron-updater from Manara cloud releases bucket
+// - Auto-update via electron-updater from WIVA cloud releases bucket
 
 const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell, desktopCapturer, session, dialog } = require('electron');
 const path = require('path');
@@ -17,6 +17,7 @@ const loadedEnvFiles = loadLocalEnv(__dirname);
 const { startSignalingServer } = require('./server/signaling.cjs');
 const { verifyLicense, getHardwareId } = require('./licensing/verify.cjs');
 const { autoUpdater } = require('electron-updater');
+const QRCode = require('qrcode');
 const libraryDb = require('./library/db.cjs');
 const libraryScanner = require('./library/scanner.cjs');
 const libraryServer = require('./library/media-server.cjs');
@@ -233,6 +234,7 @@ function defaultSettings() {
     platformContactPhone: '',
     platformChannel: 'stable',
     iptvGlobalLimitBytes: 0,
+    cloudIptvRefreshMinutes: 3,
     cloudIptvOverrides: {},
     channels: [],
     localIptvChannels: [],
@@ -463,7 +465,7 @@ function refreshSettingsChannelMirror(reason = 'mirror') {
     settings.localIptvChannels = Array.isArray(exported.iptv) ? exported.iptv : [];
     saveSettingsAndBackup(reason);
   } catch (e) {
-    console.error('[Manara] settings channel mirror failed:', e.message);
+    console.error('[WIVA] settings channel mirror failed:', e.message);
   }
 }
 
@@ -488,7 +490,7 @@ async function pushDeviceState(reason = 'change') {
     return state;
   } catch (e) {
     lastDeviceSync = { state: 'offline', at: new Date().toISOString(), error: e.message, reason };
-    console.warn('[Manara] device-state push skipped:', e.message);
+    console.warn('[WIVA] device-state push skipped:', e.message);
     return null;
   }
 }
@@ -516,14 +518,14 @@ async function pullDeviceStateIfEmpty() {
       settings.channels = restored.broadcast;
       settings.localIptvChannels = restored.iptv;
       saveSettings(settings);
-      console.log('[Manara] restored device state from cloud backup:', settings.channels.length, remoteIptv.length);
+      console.log('[WIVA] restored device state from cloud backup:', settings.channels.length, remoteIptv.length);
       notifyStorageReady();
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('local-state-updated');
     }
     lastDeviceSync = { state: 'pulled', at: new Date().toISOString(), error: '' };
   } catch (e) {
     lastDeviceSync = { state: 'offline', at: new Date().toISOString(), error: e.message };
-    console.warn('[Manara] device-state pull skipped:', e.message);
+    console.warn('[WIVA] device-state pull skipped:', e.message);
   }
 }
 
@@ -536,14 +538,14 @@ function syncBroadcastChannelsFromDb({ persist = true } = {}) {
     const dbChannels = libraryDb.listBroadcastChannels();
     if ((!dbChannels || dbChannels.length === 0) && Array.isArray(settings.channels) && settings.channels.length) {
       settings.channels = libraryDb.setBroadcastChannels(settings.channels);
-      console.log('[Manara] migrated broadcast channels from settings to DB:', settings.channels.length);
+      console.log('[WIVA] migrated broadcast channels from settings to DB:', settings.channels.length);
     } else {
       settings.channels = dbChannels || [];
     }
     try { settings.localIptvChannels = libraryDb.listIptv(); } catch {}
     if (persist) saveSettingsAndBackup('broadcast-sync');
   } catch (e) {
-    console.error('[Manara] broadcast channel DB sync failed:', e.message);
+    console.error('[WIVA] broadcast channel DB sync failed:', e.message);
   }
   return settings.channels || [];
 }
@@ -557,7 +559,7 @@ function notifyStorageReady() {
 function applyLoginItem() {
   try {
     if (process.platform === 'darwin' && !app.isPackaged) {
-      console.log('[Manara] skipping macOS login item setup in npm start dev mode');
+      console.log('[WIVA] skipping macOS login item setup in npm start dev mode');
       return;
     }
     if (process.platform === 'win32' || process.platform === 'darwin') {
@@ -659,7 +661,21 @@ function mediaServerOptions() {
     },
     getIptvPolicy: () => ({
       iptvGlobalLimitBytes: Number(settings.iptvGlobalLimitBytes) || 0,
+      cloudIptvRefreshMinutes: Math.max(1, Number(settings.cloudIptvRefreshMinutes) || 3),
     }),
+    updateIptvPolicy: (patch = {}) => {
+      settings = {
+        ...settings,
+        iptvGlobalLimitBytes: Math.max(0, Number(patch.iptvGlobalLimitBytes ?? settings.iptvGlobalLimitBytes) || 0),
+        cloudIptvRefreshMinutes: Math.max(1, Math.min(1440, Number(patch.cloudIptvRefreshMinutes ?? settings.cloudIptvRefreshMinutes) || 3)),
+      };
+      saveSettingsAndBackup('web-admin-iptv-policy');
+      cloudIptv.startAutoRefresh(() => settings.licenseKey || '', settings.cloudIptvRefreshMinutes * 60 * 1000);
+      return {
+        iptvGlobalLimitBytes: settings.iptvGlobalLimitBytes,
+        cloudIptvRefreshMinutes: settings.cloudIptvRefreshMinutes,
+      };
+    },
     getCloudIptvChannel: (id) => {
       const ch = cloudIptv.getById(normalizeCloudId(id));
       return ch ? applyCloudIptvOverride(ch) : null;
@@ -1030,6 +1046,15 @@ ipcMain.handle('restart-server', async (_e, port) => {
 });
 ipcMain.handle('launched-at-boot', () => launchedAtBoot);
 ipcMain.handle('open-external', (_e, url) => shell.openExternal(url));
+ipcMain.handle('qr-data-url', async (_e, target) => {
+  const text = String(target || '').trim();
+  if (!text) return '';
+  return QRCode.toDataURL(text, {
+    margin: 1,
+    width: 168,
+    color: { dark: '#07101f', light: '#ffffff' },
+  });
+});
 ipcMain.handle('storage-diagnostics', () => {
   let diag = {};
   try { diag = libraryDb.diagnostics(); } catch (e) { diag = { error: e.message }; }
@@ -1179,10 +1204,10 @@ ipcMain.handle('iptv-list', () => {
   try {
     local = libraryDb.listIptv().map((c) => ({ ...c, source: 'local' }));
   } catch (e) {
-    console.error('[Manara] iptv-list local read failed:', e.message);
+    console.error('[WIVA] iptv-list local read failed:', e.message);
   }
   let cloud = [];
-  try { cloud = cloudIptv.list().map(applyCloudIptvOverride); } catch (e) { console.error('[Manara] iptv-list cloud read failed:', e.message); }
+  try { cloud = cloudIptv.list().map(applyCloudIptvOverride); } catch (e) { console.error('[WIVA] iptv-list cloud read failed:', e.message); }
   return [...cloud, ...local];
 });
 ipcMain.handle('iptv-add', (_e, payload) => {
@@ -1191,10 +1216,10 @@ ipcMain.handle('iptv-add', (_e, payload) => {
     const row = libraryDb.getIptv(id);
     refreshSettingsChannelMirror('iptv-add');
     scheduleDeviceStatePush('iptv-add');
-    console.log('[Manara] iptv-add ok id=' + id + ' name=' + (row?.name || ''));
+    console.log('[WIVA] iptv-add ok id=' + id + ' name=' + (row?.name || ''));
     return { ...row, source: 'local' };
   } catch (e) {
-    console.error('[Manara] iptv-add FAILED:', e.message);
+    console.error('[WIVA] iptv-add FAILED:', e.message);
     throw e;
   }
 });
@@ -1266,17 +1291,17 @@ app.whenReady().then(() => {
     syncBroadcastChannelsFromDb();
     try {
       const d = libraryDb.diagnostics();
-      console.log('[Manara] storage diagnostics:', JSON.stringify(d));
+      console.log('[WIVA] storage diagnostics:', JSON.stringify(d));
     } catch {}
-    console.log('[Manara] persisted broadcast channels on startup:', (settings.channels || []).length);
+    console.log('[WIVA] persisted broadcast channels on startup:', (settings.channels || []).length);
     try {
       const existing = libraryDb.listIptv();
-      console.log('[Manara] persisted local IPTV channels on startup:', existing.length);
+      console.log('[WIVA] persisted local IPTV channels on startup:', existing.length);
     } catch {}
     libraryServerInfo = libraryServer.start(settings.libraryPort || DEFAULT_LIBRARY_PORT, mediaServerOptions());
-    console.log('[Manara] library server on 127.0.0.1:' + libraryServerInfo.port);
+    console.log('[WIVA] library server on 127.0.0.1:' + libraryServerInfo.port);
   } catch (e) {
-    console.error('[Manara] library init failed:', e.message);
+    console.error('[WIVA] library init failed:', e.message);
   }
 
   createWindow();
@@ -1297,22 +1322,22 @@ app.whenReady().then(() => {
     cloudIptv.setNeonDatabaseUrl(settings.neonDatabaseUrl || '');
     // fire and forget immediate fetch so channels appear right after launch
     cloudIptv.refresh(settings.licenseKey || '').then((ch) => {
-      console.log('[Manara] initial cloud-iptv fetch:', (ch || []).length, 'channels');
+      console.log('[WIVA] initial cloud-iptv fetch:', (ch || []).length, 'channels');
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('cloud-iptv-updated');
       }
-    }).catch((e) => console.error('[Manara] initial cloud-iptv fetch failed:', e.message));
-    cloudIptv.startAutoRefresh(() => settings.licenseKey || '');
-  } catch (e) { console.error('[Manara] cloud iptv init failed:', e.message); }
+    }).catch((e) => console.error('[WIVA] initial cloud-iptv fetch failed:', e.message));
+    cloudIptv.startAutoRefresh(() => settings.licenseKey || '', Math.max(1, Number(settings.cloudIptvRefreshMinutes) || 3) * 60 * 1000);
+  } catch (e) { console.error('[WIVA] cloud iptv init failed:', e.message); }
 
   // Platform activation/subscription status. This is owner-controlled from Neon
   // and intentionally does not expose the database URL in the customer UI.
   try {
     platform.setCachePath(path.join(app.getPath('userData'), 'platform-cache.json'));
     platform.setNeonDatabaseUrl(settings.neonDatabaseUrl || '');
-    refreshPlatformStatus().catch((e) => console.warn('[Manara] platform refresh skipped:', e.message));
+    refreshPlatformStatus().catch((e) => console.warn('[WIVA] platform refresh skipped:', e.message));
     setInterval(() => { refreshPlatformStatus().catch(() => {}); }, 60 * 60 * 1000);
-  } catch (e) { console.error('[Manara] platform init failed:', e.message); }
+  } catch (e) { console.error('[WIVA] platform init failed:', e.message); }
 
   // Check for updates on launch + every 6h (only when packaged)
   if (app.isPackaged && settings.autoCheckUpdates !== false) {
@@ -1331,7 +1356,7 @@ app.on('before-quit', () => {
     if (libraryReady) refreshSettingsChannelMirror('before-quit');
     else saveSettings(settings);
   } catch (e) {
-    console.warn('[Manara] before-quit flush failed:', e?.message || e);
+    console.warn('[WIVA] before-quit flush failed:', e?.message || e);
   }
 });
 app.on('window-all-closed', () => {

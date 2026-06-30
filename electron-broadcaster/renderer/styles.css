@@ -14,7 +14,7 @@
 * { box-sizing: border-box; }
 html, body { min-height: 100%; margin: 0; }
 body {
-  font-family: system-ui, -apple-system, "Segoe UI", Tahoma, sans-serif;
+  font-family: "Cairo", system-ui, -apple-system, "Segoe UI", Tahoma, sans-serif;
   background: radial-gradient(circle at top right, rgba(37,99,235,.22), transparent 34%), linear-gradient(180deg, #080a12, #0a0f1d 62%, #07090f);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
@@ -88,6 +88,32 @@ dd { margin: 0; direction: ltr; text-align: left; font-weight: 850; overflow: hi
 .link-row code { direction: ltr; text-align: left; color: #bfdbfe; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .link-row button { min-height: 36px; padding: 7px 10px; font-size: 12px; }
 .muted { color: var(--muted); font-size: 13px; line-height: 1.7; }
+.qr-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.qr-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(226,232,240,.1);
+  background: rgba(255,255,255,.045);
+  border-radius: 8px;
+  padding: 12px;
+}
+.qr-card img {
+  width: 118px;
+  height: 118px;
+  border-radius: 8px;
+  background: #fff;
+  padding: 6px;
+  justify-self: center;
+}
+.qr-card strong { font-size: 13px; color: #fff; }
+.qr-card code { direction: ltr; text-align: left; color: #bfdbfe; font-size: 11px; overflow-wrap: anywhere; }
+.qr-actions { display: flex; gap: 7px; }
+.qr-actions button { flex: 1; min-height: 36px; padding: 7px 10px; font-size: 12px; }
 .stack { flex-direction: column; }
 .stack button { width: 100%; }
 .diagnostics {
@@ -119,6 +145,7 @@ dd { margin: 0; direction: ltr; text-align: left; font-weight: 850; overflow: hi
 @media (max-width: 760px) {
   .shell { padding: 14px; }
   .grid { grid-template-columns: 1fr; }
+  .qr-grid { grid-template-columns: 1fr; }
   .link-row { grid-template-columns: 1fr; }
   .row, dl div { grid-template-columns: 1fr; }
 }

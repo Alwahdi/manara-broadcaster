@@ -1,4 +1,4 @@
-// Manara — Cloud IPTV sync
+// WIVA — Cloud IPTV sync
 // Periodically fetches admin-managed IPTV channels from the cloud
 // and exposes them alongside locally-added channels.
 const fs = require('fs');
@@ -16,7 +16,7 @@ const SUPABASE_ANON_KEY = process.env.MANARA_SUPABASE_ANON_KEY ||
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl2Znl2YW52a2pyZ2FwdWZhdG5uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MzU3OTcsImV4cCI6MjA5NDAxMTc5N30.yx8R7ZpkUWj52cEfaNNtU0uaUrw_QS9lNRNAg-sUsPo';
 const SUPABASE_PUBLIC_REST = SUPABASE_URL +
   '/rest/v1/cloud_iptv_channels?select=id,name,url,logo_url,category,headers,transfer_limit_bytes,is_active,sort_order&is_active=eq.true&order=sort_order.asc';
-const REFRESH_MS = 60 * 60 * 1000; // 1h
+const DEFAULT_REFRESH_MS = 3 * 60 * 1000;
 let runtimeConfig = {};
 try { runtimeConfig = require('./cloud-runtime.cjs'); } catch {}
 let neonDatabaseUrl = process.env.MANARA_NEON_DATABASE_URL || runtimeConfig.neonDatabaseUrl || '';
@@ -47,6 +47,7 @@ let cached = []; // [{id,name,url,logo,category,headers}]
 let lastFetch = 0;
 let lastStatus = { state: 'idle', at: null, error: '', count: 0, source: '' };
 let timer = null;
+let refreshMs = DEFAULT_REFRESH_MS;
 
 function setCachePath(p) {
   cachePath = p;
@@ -72,7 +73,7 @@ function persist() {
 
 function fetchJson(url, headers = {}) {
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers: { 'User-Agent': 'Manara/2.4.2', ...headers } }, (res) => {
+    const req = https.get(url, { headers: { 'User-Agent': 'WIVA-Agent/2.6.3', ...headers } }, (res) => {
       let body = '';
       res.on('data', (c) => { body += c; });
       res.on('end', () => {
@@ -182,11 +183,17 @@ async function refresh(licenseKey) {
   return cached;
 }
 
-function startAutoRefresh(getLicenseKey) {
+function setRefreshIntervalMs(ms) {
+  refreshMs = Math.max(60 * 1000, Math.min(24 * 60 * 60 * 1000, Number(ms) || DEFAULT_REFRESH_MS));
+  return refreshMs;
+}
+
+function startAutoRefresh(getLicenseKey, intervalMs) {
+  setRefreshIntervalMs(intervalMs);
   if (timer) clearInterval(timer);
   // First fetch shortly after start
   setTimeout(() => refresh(getLicenseKey()), 5000);
-  timer = setInterval(() => refresh(getLicenseKey()), REFRESH_MS);
+  timer = setInterval(() => refresh(getLicenseKey()), refreshMs);
 }
 
 function list() {
@@ -204,7 +211,7 @@ function list() {
 }
 
 function status() {
-  return { ...lastStatus, lastFetch };
+  return { ...lastStatus, lastFetch, refreshMs };
 }
 
 function getById(id) {
@@ -212,4 +219,4 @@ function getById(id) {
   return cached.find((c) => String(c.id) === String(id)) || null;
 }
 
-module.exports = { setCachePath, setNeonDatabaseUrl, refresh, startAutoRefresh, list, getById, status };
+module.exports = { setCachePath, setNeonDatabaseUrl, setRefreshIntervalMs, refresh, startAutoRefresh, list, getById, status };

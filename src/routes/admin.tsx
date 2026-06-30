@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import {
   Radio, LogOut, Plus, Pencil, Trash2, Loader2,
   ArrowRight, Shield, Eye, EyeOff, GripVertical, X, Save,
-  Download, MonitorPlay, Wifi, Zap,
+  Download, MonitorPlay, Wifi, Zap, AlertTriangle,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
@@ -15,12 +15,13 @@ import {
   type Channel,
 } from "@/lib/channels";
 import { cn } from "@/lib/utils";
+import { PRODUCT, pageTitle } from "@/lib/product";
 
 const BROADCASTER_DOWNLOAD_BASE = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/releases`;
 
 export const Route = createFileRoute("/admin")({
   component: AdminPage,
-  head: () => ({ meta: [{ title: "لوحة التحكم — تيرا نت" }] }),
+  head: () => ({ meta: [{ title: pageTitle("لوحة التحكم") }] }),
 });
 
 const channelSchema = z.object({
@@ -37,6 +38,7 @@ function AdminPage() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<Channel | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Channel | null>(null);
 
   useEffect(() => {
     if (!loading && !user) navigate({ to: "/login/admin" });
@@ -133,7 +135,7 @@ function AdminPage() {
           </div>
           <div className="flex-1">
             <h1 className="text-base font-extrabold sm:text-lg">لوحة التحكم</h1>
-            <p className="text-[11px] text-muted-foreground">إدارة قنوات تيرا نت</p>
+            <p className="text-[11px] text-muted-foreground">{PRODUCT.adminName} · إدارة القنوات</p>
           </div>
           <Link to="/admin/iptv" className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-primary px-3 py-1.5 text-xs font-bold text-primary-foreground shadow-glow">
             <Radio className="h-3.5 w-3.5" /> IPTV السحابية
@@ -207,9 +209,7 @@ function AdminPage() {
                       <Pencil className="h-4 w-4" />
                     </button>
                     <button
-                      onClick={() => {
-                        if (confirm(`حذف "${ch.name}"؟`)) deleteMut.mutate(ch.id);
-                      }}
+                      onClick={() => setDeleteTarget(ch)}
                       className="rounded-lg p-2 text-muted-foreground hover:bg-destructive/15 hover:text-destructive transition"
                       aria-label="حذف"
                     >
@@ -234,13 +234,25 @@ function AdminPage() {
           submitting={createMut.isPending || updateMut.isPending}
         />
       )}
+      {deleteTarget && (
+        <ConfirmDeleteDialog
+          channel={deleteTarget}
+          submitting={deleteMut.isPending}
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={() => {
+            deleteMut.mutate(deleteTarget.id, {
+              onSuccess: () => setDeleteTarget(null),
+            });
+          }}
+        />
+      )}
     </div>
   );
 }
 
 function BroadcasterDownload() {
   const items = [
-    { os: "Windows", file: "Manara-2.4.9-x64.zip", size: "135 MB", icon: "🪟" },
+    { os: "Windows", file: PRODUCT.downloadFile, size: "135 MB", icon: "🪟" },
   ];
   return (
     <div className="mb-6 glass-panel rounded-3xl p-5 sm:p-6">
@@ -251,7 +263,7 @@ function BroadcasterDownload() {
         <div className="flex-1">
           <h3 className="text-lg font-extrabold sm:text-xl">برنامج البث المحلي</h3>
           <p className="text-xs text-muted-foreground sm:text-sm">
-            ابث من جهازك (USB / شاشة / URL) لكل من على نفس شبكة Wi-Fi — بدون استهلاك إنترنت.
+            ابث من جهازك (USB / شاشة / URL) لكل من على نفس الشبكة المحلية عبر {PRODUCT.agentName}.
           </p>
         </div>
       </div>
@@ -283,11 +295,46 @@ function BroadcasterDownload() {
         </div>
         <div className="flex items-center gap-2 rounded-xl bg-white/[0.03] px-3 py-2">
           <Zap className="h-4 w-4 text-primary-glow" />
-          <span><strong>2.</strong> شغّل Manara</span>
+          <span><strong>2.</strong> شغّل {PRODUCT.name}</span>
         </div>
         <div className="flex items-center gap-2 rounded-xl bg-white/[0.03] px-3 py-2">
           <Wifi className="h-4 w-4 text-primary-glow" />
           <span><strong>3.</strong> شارك الرابط على شبكتك</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConfirmDeleteDialog({
+  channel, submitting, onClose, onConfirm,
+}: {
+  channel: Channel;
+  submitting: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-4" dir="rtl">
+      <div className="w-full max-w-md rounded-t-3xl border border-border bg-card p-5 shadow-elegant sm:rounded-3xl">
+        <div className="mb-4 flex items-start gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-destructive/15 text-destructive">
+            <AlertTriangle className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="text-lg font-extrabold">حذف القناة؟</h3>
+            <p className="mt-1 text-sm leading-7 text-muted-foreground">
+              سيتم حذف <strong className="text-foreground">{channel.name}</strong> من قائمة القنوات السحابية. يمكن إضافتها لاحقاً إذا كان لديك الرابط.
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button type="button" onClick={onClose} className="flex-1 rounded-xl border border-border bg-card px-4 py-3 text-sm font-bold transition hover:bg-surface-2">
+            إلغاء
+          </button>
+          <button type="button" onClick={onConfirm} disabled={submitting} className="flex-1 rounded-xl bg-destructive px-4 py-3 text-sm font-bold text-destructive-foreground transition disabled:opacity-50">
+            {submitting ? "جاري الحذف..." : "حذف"}
+          </button>
         </div>
       </div>
     </div>
@@ -332,7 +379,7 @@ function ChannelFormDialog({
             <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">اسم القناة *</label>
             <input
               value={name} onChange={(e) => setName(e.target.value)} required maxLength={100}
-              placeholder="تيرا 1"
+              placeholder="WIVA 1"
               className="w-full rounded-xl border border-border bg-background/50 px-4 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
             />
           </div>

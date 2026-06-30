@@ -6,6 +6,7 @@ import { Plus, Trash2, Save } from "lucide-react";
 import { AdminShell } from "@/components/AdminShell";
 import { fetchAllPaths, createPath, updatePath, deletePath, type LibPath } from "@/lib/paths";
 import { fetchAllCategories } from "@/lib/categories";
+import { ConfirmAction } from "@/components/ConfirmAction";
 
 export const Route = createFileRoute("/admin/paths")({
   component: () => <AdminShell title="مكتبات الوسائط"><PathsAdmin /></AdminShell>,
@@ -73,7 +74,7 @@ function PathRow({ p, cats, onSave, onDelete }: { p: LibPath; cats: { id: string
       </label>
       <div className="flex gap-1">
         <button className="btn-ghost p-2" onClick={() => onSave({ name: s.name, path: s.path, categoryId: s.categoryId, isActive: s.isActive })}><Save className="h-4 w-4" /></button>
-        <button className="btn-ghost p-2 text-destructive" onClick={() => confirm("حذف؟") && onDelete()}><Trash2 className="h-4 w-4" /></button>
+        <ConfirmAction className="btn-ghost p-2 text-destructive" title="حذف المكتبة؟" message="سيتم حذف مسار المكتبة من الإدارة، ولن يتم حذف الملفات من القرص." confirmText="حذف" onConfirm={onDelete}><Trash2 className="h-4 w-4" /></ConfirmAction>
       </div>
     </div>
   );

@@ -4,11 +4,12 @@ import { Heart, Download, ArrowRight, Loader2 } from "lucide-react";
 import { fetchMediaById } from "@/lib/media";
 import { fetchFavoriteIds, toggleFavorite } from "@/lib/favorites";
 import { useAuth } from "@/hooks/use-auth";
+import { pageTitle } from "@/lib/product";
 
 
 export const Route = createFileRoute("/watch/$id")({
   component: WatchPage,
-  head: ({ params }) => ({ meta: [{ title: `مشاهدة — تيرا نت` }, { name: "description", content: `مشاهدة عنصر ${params.id}` }] }),
+  head: ({ params }) => ({ meta: [{ title: pageTitle("مشاهدة") }, { name: "description", content: `مشاهدة عنصر ${params.id}` }] }),
 });
 
 function WatchPage() {

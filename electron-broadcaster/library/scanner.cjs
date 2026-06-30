@@ -1,4 +1,4 @@
-// Manara — filesystem scanner for media library
+// WIVA — filesystem scanner for media library
 const fs = require('fs');
 const path = require('path');
 const db = require('./db.cjs');

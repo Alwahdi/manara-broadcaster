@@ -5,10 +5,11 @@ import { Heart, Film, Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { fetchFavoriteIds } from "@/lib/favorites";
 import { fetchMediaById } from "@/lib/media";
+import { pageTitle } from "@/lib/product";
 
 export const Route = createFileRoute("/favorites")({
   component: FavoritesPage,
-  head: () => ({ meta: [{ title: "المفضّلة — تيرا نت" }, { name: "description", content: "قائمة المفضّلة الخاصة بك." }] }),
+  head: () => ({ meta: [{ title: pageTitle("المفضّلة") }, { name: "description", content: "قائمة المفضّلة الخاصة بك." }] }),
 });
 
 function FavoritesPage() {

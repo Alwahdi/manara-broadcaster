@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { PRODUCT } from "@/lib/product";
 
 const ALLOWED = new Set([
-  "Manara-2.4.9-x64.zip",
-  "Manara-2.4.8-x64.zip",
-  "Manara-2.4.7-x64.zip",
+  PRODUCT.downloadFile,
+  "WIVA-2.6.3-x64.zip",
 ]);
 
 const CORS_HEADERS = {
@@ -22,7 +22,7 @@ function redirectToDownload(file: string) {
     status: 302,
     headers: {
       ...CORS_HEADERS,
-      Location: `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/${file.startsWith("Manara-") ? "releases" : "tera-downloads"}/${file}`,
+      Location: `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/releases/${file}`,
       "Cache-Control": "public, max-age=3600",
     },
   });

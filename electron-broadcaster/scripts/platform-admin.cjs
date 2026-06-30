@@ -6,7 +6,7 @@ require('../library/env.cjs').loadLocalEnv(path.join(__dirname, '..'));
 const DEFAULT_FEATURES = ['channels', 'iptv', 'media', 'webAdmin', 'analytics', 'branding'];
 
 function usage() {
-  console.log(`Manara platform admin
+  console.log(`WIVA platform admin
 
 Usage:
   node scripts/platform-admin.cjs apply-schema
