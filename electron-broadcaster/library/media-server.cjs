@@ -2383,6 +2383,13 @@ function createHandler(options = {}) {
       return sendJson(res, 200, serviceHealth(options));
     }
     if (u.pathname === '/setup' || u.pathname === '/agent') {
+      const state = typeof options.getSetupState === 'function' ? options.getSetupState() : {};
+      if (state.setupCompleted) {
+        return send(res, 302, '', {
+          Location: adminBase,
+          'Cache-Control': 'no-store',
+        });
+      }
       return send(res, 200, setupPage(options), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     }
     if (u.pathname === '/api/agent/state' || u.pathname === '/api/setup/state') {

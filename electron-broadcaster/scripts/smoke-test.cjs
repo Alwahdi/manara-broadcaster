@@ -65,6 +65,10 @@ async function main() {
     assert.equal(res.status, 200);
     assert.equal((await res.json()).ok, true);
 
+    res = await request(base, '/setup');
+    assert.equal(res.status, 302);
+    assert.equal(res.headers.get('location'), '/admin');
+
     res = await request(base, '/admin/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

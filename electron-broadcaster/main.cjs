@@ -217,8 +217,8 @@ function defaultSettings() {
     accent: '#2563eb',
     accent2: '#14b8a6',
     port: DEFAULT_AGENT_PORT,
-    autoStartOnBoot: false,
-    startMinimized: false,
+    autoStartOnBoot: true,
+    startMinimized: true,
     autoStartChannels: true,
     autoCheckUpdates: true,
     licenseKey: '',
@@ -664,6 +664,7 @@ function mediaServerOptions() {
       next.adminPassword = '';
       settings = { ...settings, ...next };
       saveSettingsAndBackup('web-setup');
+      applyLoginItem();
       if (libraryReady) {
         try {
           libraryDb.setMediaTheme({
@@ -764,6 +765,7 @@ async function restartLiveServer(port) {
     port: port || settings.port || DEFAULT_AGENT_PORT,
     mediaHandler: createMediaHandler(),
     getIptvChannels: publicIptvChannels,
+    getBroadcastChannels: () => syncBroadcastChannelsFromDb({ persist: false }),
     getFeatureAllowed: platformFeatureAllowed,
   });
   serverInfo.setBrand({
@@ -959,7 +961,7 @@ function createWindow() {
     notifyStorageReady();
   });
   mainWindow.on('close', (e) => {
-    if (!app.isQuitting && settings.autoStartOnBoot) {
+    if (!app.isQuitting) {
       e.preventDefault();
       mainWindow.hide();
     }
@@ -973,7 +975,7 @@ function createTray() {
     tray.setToolTip(APP_NAME + ' Agent');
     const menu = Menu.buildFromTemplate([
       { label: 'فتح WIVA Agent', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
-      { label: 'فتح الإعداد من المتصفح', click: () => shell.openExternal(agentUrls().setupLocal) },
+      { label: 'فتح الإعداد / الإدارة', click: () => shell.openExternal(settings.setupCompleted ? agentUrls().adminLocal : agentUrls().setupLocal) },
       { label: 'فتح الإدارة', click: () => shell.openExternal(agentUrls().adminLocal) },
       { type: 'separator' },
       { label: 'إيقاف وخروج', click: () => { app.isQuitting = true; app.quit(); } },
@@ -1026,8 +1028,10 @@ ipcMain.handle('broadcast-remove', (_e, id) => {
   scheduleDeviceStatePush('broadcast-remove');
   return settings.channels;
 });
-ipcMain.handle('save-settings', (_e, next) => {
+ipcMain.handle('save-settings', async (_e, next) => {
   try {
+    const previousLivePort = Number(settings.port) || DEFAULT_AGENT_PORT;
+    const previousLibraryPort = Number(settings.libraryPort) || DEFAULT_LIBRARY_PORT;
     const patch = (next && typeof next === 'object') ? { ...next } : {};
     const hasAdminPasswordPatch = Object.prototype.hasOwnProperty.call(patch, 'adminPassword');
     if (Object.prototype.hasOwnProperty.call(patch, 'adminPassword')) {
@@ -1078,6 +1082,15 @@ ipcMain.handle('save-settings', (_e, next) => {
         accent: settings.accent,
         accent2: settings.accent2,
       });
+    }
+    const nextLivePort = Number(settings.port) || DEFAULT_AGENT_PORT;
+    const nextLibraryPort = Number(settings.libraryPort) || DEFAULT_LIBRARY_PORT;
+    if (nextLivePort !== previousLivePort) {
+      await restartLiveServer(nextLivePort);
+    }
+    if (nextLibraryPort !== previousLibraryPort && libraryServerInfo?.close) {
+      await libraryServerInfo.close();
+      libraryServerInfo = libraryServer.start(nextLibraryPort, mediaServerOptions());
     }
     return publicSettings();
   } catch (e) {
@@ -1319,6 +1332,7 @@ app.whenReady().then(() => {
     port: settings.port,
     mediaHandler: createMediaHandler(),
     getIptvChannels: publicIptvChannels,
+    getBroadcastChannels: () => syncBroadcastChannelsFromDb({ persist: false }),
     getFeatureAllowed: platformFeatureAllowed,
   });
   serverInfo.setBrand({
@@ -1404,5 +1418,6 @@ app.on('before-quit', () => {
   }
 });
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin' && !settings.autoStartOnBoot) app.quit();
+  if (!app.isQuitting) return;
+  if (process.platform !== 'darwin') app.quit();
 });

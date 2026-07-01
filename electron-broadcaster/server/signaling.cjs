@@ -7,7 +7,13 @@ const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
 
-function startSignalingServer({ port = 8787, mediaHandler = null, getIptvChannels = null, getFeatureAllowed = null } = {}) {
+function startSignalingServer({
+  port = 8787,
+  mediaHandler = null,
+  getIptvChannels = null,
+  getBroadcastChannels = null,
+  getFeatureAllowed = null,
+} = {}) {
   const viewerHtml = fs.readFileSync(path.join(__dirname, 'viewer.html'), 'utf8');
   const watchHtml = fs.readFileSync(path.join(__dirname, 'watch.html'), 'utf8');
   const iptvPlayerHtml = fs.readFileSync(path.join(__dirname, 'iptv-player.html'), 'utf8');
@@ -33,12 +39,40 @@ function startSignalingServer({ port = 8787, mediaHandler = null, getIptvChannel
   }
 
   function channelSummary() {
-    const broadcast = featureAllowed('channels') ? [...channels.values()].map(c => ({
-      ...c.meta,
-      type: 'broadcast',
-      viewers: c.viewers.size,
-      live: !!(c.broadcaster && c.broadcaster.readyState === 1),
-    })) : [];
+    let broadcast = [];
+    if (featureAllowed('channels')) {
+      const byId = new Map();
+      try {
+        const saved = typeof getBroadcastChannels === 'function' ? getBroadcastChannels() : [];
+        for (const row of saved || []) {
+          const id = String(row?.id || '').trim();
+          if (!id || row.enabled === false || row.enabled === 0) continue;
+          const liveChannel = channels.get(id);
+          byId.set(id, {
+            ...row,
+            id,
+            type: 'broadcast',
+            name: row.name || liveChannel?.meta?.name || id,
+            description: row.description || liveChannel?.meta?.description || '',
+            viewers: liveChannel?.viewers?.size || 0,
+            live: !!(liveChannel?.broadcaster && liveChannel.broadcaster.readyState === 1),
+          });
+        }
+      } catch {}
+      for (const c of channels.values()) {
+        const id = String(c.meta?.id || '').trim();
+        if (!id) continue;
+        byId.set(id, {
+          ...(byId.get(id) || {}),
+          ...c.meta,
+          id,
+          type: 'broadcast',
+          viewers: c.viewers.size,
+          live: !!(c.broadcaster && c.broadcaster.readyState === 1),
+        });
+      }
+      broadcast = [...byId.values()];
+    }
     let iptv = [];
     try {
       iptv = featureAllowed('iptv') && typeof getIptvChannels === 'function' ? getIptvChannels() : [];
