@@ -177,7 +177,13 @@ function init(dbPath, seed = {}) {
       path TEXT NOT NULL UNIQUE,
       kind TEXT NOT NULL DEFAULT 'movies',
       locked INTEGER NOT NULL DEFAULT 0,
-      added_at INTEGER NOT NULL
+      added_at INTEGER NOT NULL,
+      label TEXT,
+      status TEXT NOT NULL DEFAULT 'connected',
+      last_scan_at INTEGER,
+      last_error TEXT,
+      file_count INTEGER NOT NULL DEFAULT 0,
+      folder_count INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS media_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -197,6 +203,10 @@ function init(dbPath, seed = {}) {
       section TEXT,
       folder TEXT,
       remote_url TEXT,
+      source_id INTEGER,
+      source_path TEXT,
+      source_label TEXT,
+      relative_path TEXT,
       added_at INTEGER NOT NULL,
       scanned_at INTEGER NOT NULL
     );
@@ -221,6 +231,16 @@ function init(dbPath, seed = {}) {
       'ALTER TABLE media_items ADD COLUMN section TEXT',
       'ALTER TABLE media_items ADD COLUMN folder TEXT',
       'ALTER TABLE media_items ADD COLUMN remote_url TEXT',
+      'ALTER TABLE media_items ADD COLUMN source_id INTEGER',
+      'ALTER TABLE media_items ADD COLUMN source_path TEXT',
+      'ALTER TABLE media_items ADD COLUMN source_label TEXT',
+      'ALTER TABLE media_items ADD COLUMN relative_path TEXT',
+      'ALTER TABLE library_paths ADD COLUMN label TEXT',
+      'ALTER TABLE library_paths ADD COLUMN status TEXT NOT NULL DEFAULT "connected"',
+      'ALTER TABLE library_paths ADD COLUMN last_scan_at INTEGER',
+      'ALTER TABLE library_paths ADD COLUMN last_error TEXT',
+      'ALTER TABLE library_paths ADD COLUMN file_count INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE library_paths ADD COLUMN folder_count INTEGER NOT NULL DEFAULT 0',
     ]) {
       try { _db.exec(ddl); } catch {}
     }
@@ -248,13 +268,26 @@ function addPath(p, kind = 'movies', locked = 0) {
   if (!_db) {
     if (!_mediaFallback.library_paths.find((r) => r.path === p)) {
       const id = (_mediaFallback.library_paths.reduce((m, r) => Math.max(m, r.id || 0), 0)) + 1;
-      _mediaFallback.library_paths.push({ id, path: p, kind, locked: locked ? 1 : 0, added_at: Date.now() });
+      _mediaFallback.library_paths.push({
+        id,
+        path: p,
+        kind,
+        locked: locked ? 1 : 0,
+        added_at: Date.now(),
+        label: path.basename(String(p).replace(/[\\/]+$/, '')) || p,
+        status: 'connected',
+        last_scan_at: null,
+        last_error: '',
+        file_count: 0,
+        folder_count: 0,
+      });
       saveMediaFallback();
     }
     return;
   }
-  db().prepare('INSERT OR IGNORE INTO library_paths (path, kind, locked, added_at) VALUES (?,?,?,?)')
-    .run(p, kind, locked ? 1 : 0, Date.now());
+  const label = path.basename(String(p).replace(/[\\/]+$/, '')) || p;
+  db().prepare('INSERT OR IGNORE INTO library_paths (path, kind, locked, added_at, label, status) VALUES (?,?,?,?,?,?)')
+    .run(p, kind, locked ? 1 : 0, Date.now(), label, 'connected');
 }
 function removePath(id) {
   if (!_db) {
@@ -263,6 +296,36 @@ function removePath(id) {
     return;
   }
   db().prepare('DELETE FROM library_paths WHERE id = ? AND locked = 0').run(id);
+}
+function updatePathStatus(id, patch = {}) {
+  const now = Date.now();
+  const clean = {
+    status: String(patch.status || 'connected'),
+    last_scan_at: patch.lastScanAt === undefined ? now : patch.lastScanAt,
+    last_error: String(patch.lastError || ''),
+    file_count: Math.max(0, Number(patch.fileCount || 0) || 0),
+    folder_count: Math.max(0, Number(patch.folderCount || 0) || 0),
+    label: patch.label ? String(patch.label) : null,
+  };
+  if (!_db) {
+    _mediaFallback.library_paths = _mediaFallback.library_paths.map((row) => String(row.id) === String(id)
+      ? {
+        ...row,
+        status: clean.status,
+        last_scan_at: clean.last_scan_at,
+        last_error: clean.last_error,
+        file_count: clean.file_count,
+        folder_count: clean.folder_count,
+        label: clean.label || row.label,
+      }
+      : row);
+    saveMediaFallback();
+    return listPaths().find((row) => String(row.id) === String(id)) || null;
+  }
+  db().prepare(`UPDATE library_paths
+    SET status=?, last_scan_at=?, last_error=?, file_count=?, folder_count=?, label=COALESCE(?, label)
+    WHERE id=?`).run(clean.status, clean.last_scan_at, clean.last_error, clean.file_count, clean.folder_count, clean.label, id);
+  return listPaths().find((row) => String(row.id) === String(id)) || null;
 }
 
 // ---- media ----
@@ -283,12 +346,16 @@ function upsertMedia(item) {
         overview: item.overview ?? null,
         rating: item.rating ?? null,
         duration: item.duration ?? null,
-        size: item.size ?? null,
-        section: item.section ?? existing.section ?? null,
-        folder: item.folder ?? existing.folder ?? null,
-        remote_url: item.remote_url ?? existing.remote_url ?? null,
-        scanned_at: now,
-      });
+	        size: item.size ?? null,
+	        section: item.section ?? existing.section ?? null,
+	        folder: item.folder ?? existing.folder ?? null,
+	        remote_url: item.remote_url ?? existing.remote_url ?? null,
+	        source_id: item.source_id ?? existing.source_id ?? null,
+	        source_path: item.source_path ?? existing.source_path ?? null,
+	        source_label: item.source_label ?? existing.source_label ?? null,
+	        relative_path: item.relative_path ?? existing.relative_path ?? null,
+	        scanned_at: now,
+	      });
       saveMediaFallback();
       return existing.id;
     }
@@ -311,6 +378,10 @@ function upsertMedia(item) {
       section: item.section ?? null,
       folder: item.folder ?? null,
       remote_url: item.remote_url ?? null,
+      source_id: item.source_id ?? null,
+      source_path: item.source_path ?? null,
+      source_label: item.source_label ?? null,
+      relative_path: item.relative_path ?? null,
       added_at: now,
       scanned_at: now,
     });
@@ -319,26 +390,29 @@ function upsertMedia(item) {
   }
   const now = Date.now();
   const existing = db().prepare('SELECT id, added_at FROM media_items WHERE path = ?').get(item.path);
-  if (existing) {
-    db().prepare(`UPDATE media_items SET kind=?, title=?, year=?, season=?, episode=?, tmdb_id=?,
-      poster_url=?, backdrop_url=?, overview=?, rating=?, duration=?, size=?,
-      section=?, folder=?, remote_url=?, scanned_at=? WHERE id=?`).run(
-      item.kind, item.title, item.year ?? null, item.season ?? null, item.episode ?? null,
-      item.tmdb_id ?? null, item.poster_url ?? null, item.backdrop_url ?? null,
-      item.overview ?? null, item.rating ?? null, item.duration ?? null, item.size ?? null,
-      item.section ?? null, item.folder ?? null, item.remote_url ?? null,
-      now, existing.id);
-    return existing.id;
-  }
-  const r = db().prepare(`INSERT INTO media_items
-    (path, kind, title, year, season, episode, tmdb_id, poster_url, backdrop_url, overview, rating, duration, size, section, folder, remote_url, added_at, scanned_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
-    item.path, item.kind, item.title, item.year ?? null, item.season ?? null, item.episode ?? null,
-    item.tmdb_id ?? null, item.poster_url ?? null, item.backdrop_url ?? null,
-    item.overview ?? null, item.rating ?? null, item.duration ?? null, item.size ?? null,
-    item.section ?? null, item.folder ?? null, item.remote_url ?? null, now, now);
-  return r.lastInsertRowid;
-}
+	  if (existing) {
+	    db().prepare(`UPDATE media_items SET kind=?, title=?, year=?, season=?, episode=?, tmdb_id=?,
+	      poster_url=?, backdrop_url=?, overview=?, rating=?, duration=?, size=?,
+	      section=?, folder=?, remote_url=?, source_id=?, source_path=?, source_label=?, relative_path=?, scanned_at=? WHERE id=?`).run(
+	      item.kind, item.title, item.year ?? null, item.season ?? null, item.episode ?? null,
+	      item.tmdb_id ?? null, item.poster_url ?? null, item.backdrop_url ?? null,
+	      item.overview ?? null, item.rating ?? null, item.duration ?? null, item.size ?? null,
+	      item.section ?? null, item.folder ?? null, item.remote_url ?? null,
+	      item.source_id ?? null, item.source_path ?? null, item.source_label ?? null, item.relative_path ?? null,
+	      now, existing.id);
+	    return existing.id;
+	  }
+	  const r = db().prepare(`INSERT INTO media_items
+	    (path, kind, title, year, season, episode, tmdb_id, poster_url, backdrop_url, overview, rating, duration, size, section, folder, remote_url, source_id, source_path, source_label, relative_path, added_at, scanned_at)
+	    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+	    item.path, item.kind, item.title, item.year ?? null, item.season ?? null, item.episode ?? null,
+	    item.tmdb_id ?? null, item.poster_url ?? null, item.backdrop_url ?? null,
+	    item.overview ?? null, item.rating ?? null, item.duration ?? null, item.size ?? null,
+	    item.section ?? null, item.folder ?? null, item.remote_url ?? null,
+	    item.source_id ?? null, item.source_path ?? null, item.source_label ?? null, item.relative_path ?? null,
+	    now, now);
+	  return r.lastInsertRowid;
+	}
 function listMedia({ kind, q, limit = 200 } = {}) {
   if (!_db) {
     const query = String(q || '').trim().toLowerCase();
@@ -488,7 +562,34 @@ function deleteMissing(existingPaths) {
   }
   if (!existingPaths.length) return;
   const placeholders = existingPaths.map(() => '?').join(',');
-  db().prepare(`DELETE FROM media_items WHERE path NOT IN (${placeholders})`).run(...existingPaths);
+	  db().prepare(`DELETE FROM media_items WHERE path NOT IN (${placeholders})`).run(...existingPaths);
+	}
+function deleteMissingForSource(sourceId, existingPaths = []) {
+  if (!sourceId) return;
+  if (!_db) {
+    const keep = new Set(existingPaths || []);
+    const removedIds = new Set();
+    _mediaFallback.media_items = _mediaFallback.media_items.filter((item) => {
+      if (String(item.source_id || '') !== String(sourceId)) return true;
+      const keepItem = keep.has(item.path);
+      if (!keepItem) removedIds.add(String(item.id));
+      return keepItem;
+    });
+    if (removedIds.size) {
+      _mediaFallback.subtitles = _mediaFallback.subtitles.filter((sub) => !removedIds.has(String(sub.media_id)));
+      for (const key of Object.keys(_mediaFallback.watch_progress)) {
+        if (removedIds.has(String(key))) delete _mediaFallback.watch_progress[key];
+      }
+    }
+    saveMediaFallback();
+    return;
+  }
+  if (!existingPaths.length) {
+    db().prepare('DELETE FROM media_items WHERE source_id = ?').run(sourceId);
+    return;
+  }
+  const placeholders = existingPaths.map(() => '?').join(',');
+  db().prepare(`DELETE FROM media_items WHERE source_id = ? AND path NOT IN (${placeholders})`).run(sourceId, ...existingPaths);
 }
 function setProgress(mediaId, position, duration) {
   if (!_db) {
@@ -1200,8 +1301,8 @@ function diagnostics() {
 
 module.exports = {
   init, diagnostics, reloadChannelsFromDisk,
-  listPaths, addPath, removePath,
-  upsertMedia, listMedia, getMedia, updateMedia, removeMedia, mediaStats, deleteMissing,
+  listPaths, addPath, removePath, updatePathStatus,
+  upsertMedia, listMedia, getMedia, updateMedia, removeMedia, mediaStats, deleteMissing, deleteMissingForSource,
   setProgress, addSubtitle, listSubtitles, getSubtitle,
   listIptv, getIptv, addIptv, updateIptv, removeIptv,
   listBroadcastChannels, upsertBroadcastChannel, setBroadcastChannels, removeBroadcastChannel,

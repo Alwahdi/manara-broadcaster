@@ -339,6 +339,38 @@ function listLibraryItems(query = {}) {
   });
 }
 
+function sourceLabelFromPath(sourcePath) {
+  return path.basename(String(sourcePath || '').replace(/[\\/]+$/, '')) || sourcePath || 'مصدر المكتبة';
+}
+
+function sourceInfoForItem(item, sources = db.listPaths()) {
+  const storedSource = item.source_path || '';
+  const byId = item.source_id ? sources.find((source) => String(source.id) === String(item.source_id)) : null;
+  const byStoredPath = storedSource ? sources.find((source) => String(source.path) === String(storedSource)) : null;
+  const byPrefix = sources
+    .slice()
+    .sort((a, b) => String(b.path || '').length - String(a.path || '').length)
+    .find((source) => {
+      const sourcePath = String(source.path || '');
+      return sourcePath && String(item.path || '').startsWith(sourcePath);
+    });
+  const source = byId || byStoredPath || byPrefix || null;
+  const sourcePath = source?.path || item.source_path || '';
+  const label = source?.label || item.source_label || sourceLabelFromPath(sourcePath) || 'مصدر المكتبة';
+  const relativePath = item.relative_path || (sourcePath && item.path && String(item.path).startsWith(sourcePath)
+    ? path.relative(sourcePath, item.path)
+    : path.basename(item.path || ''));
+  const folder = item.folder || (relativePath ? path.dirname(relativePath) : '');
+  return {
+    id: source?.id || item.source_id || '',
+    path: sourcePath,
+    label,
+    status: source?.status || 'connected',
+    relativePath,
+    folder: folder && folder !== '.' ? folder : '',
+  };
+}
+
 function uniqueByPath(rows) {
   const seen = new Set();
   return rows.filter((row) => {
@@ -1355,6 +1387,7 @@ function libraryPage(req, res) {
   const viewer = db.viewerState(viewerId);
   const theme = db.mediaTheme();
   const items = listLibraryItems({ limit: 1200 });
+  const sources = db.listPaths();
   const movies = items.filter((item) => item.kind === 'movie');
   const episodes = items.filter((item) => item.kind === 'episode');
   const audio = items.filter((item) => item.kind === 'audio');
@@ -1362,25 +1395,31 @@ function libraryPage(req, res) {
     .filter((item) => Number(item.position || 0) > 20 && Number(item.wp_duration || 0) > Number(item.position || 0) + 20)
     .sort((a, b) => Number(b.position || 0) - Number(a.position || 0))
     .slice(0, 18);
-  const payload = jsonForScript(items.map((item) => ({
-    id: item.id,
-    title: mediaTitle(item),
-    baseTitle: item.title || '',
-    kind: item.kind || 'movie',
-    year: item.year || '',
-    rating: item.rating || '',
-    overview: item.overview || '',
-    poster: mediaPosterUrl(item),
-    backdrop: mediaBackdropUrl(item),
-    size: item.size || 0,
-    position: item.position || 0,
-    duration: item.wp_duration || item.duration || 0,
-    addedAt: item.added_at || item.scanned_at || 0,
-    file: path.basename(item.path || ''),
-    section: item.section || '',
-    folder: item.folder || '',
-    folderSegments: String(item.folder || item.section || '').split(/[\\/]+/).filter(Boolean),
-  })));
+  const payload = jsonForScript(items.map((item) => {
+    const source = sourceInfoForItem(item, sources);
+    const folderSegments = [source.label].concat(String(source.folder || '').split(/[\\/]+/).filter(Boolean));
+    return {
+      id: item.id,
+      title: mediaTitle(item),
+      baseTitle: item.title || '',
+      kind: item.kind || 'movie',
+      year: item.year || '',
+      rating: item.rating || '',
+      overview: item.overview || '',
+      poster: mediaPosterUrl(item),
+      backdrop: mediaBackdropUrl(item),
+      size: item.size || 0,
+      position: item.position || 0,
+      duration: item.wp_duration || item.duration || 0,
+      addedAt: item.added_at || item.scanned_at || 0,
+      file: path.basename(item.path || ''),
+      section: source.label,
+      folder: source.folder,
+      source,
+      relativePath: source.relativePath,
+      folderSegments,
+    };
+  }));
   const viewerPayload = jsonForScript({
     id: viewer.id,
     account: viewerContext.account,
@@ -1460,6 +1499,10 @@ function libraryPage(req, res) {
     folderRoot: 'الرئيسية',
     openFolder: 'فتح المجلد',
     files: 'ملفات',
+    gridView: 'شبكة',
+    listView: 'قائمة',
+    back: 'رجوع',
+    disconnected: 'غير متصل',
   } : {
     pageTitle: 'WIVA Media Library',
     channels: 'Channels',
@@ -1530,6 +1573,10 @@ function libraryPage(req, res) {
     folderRoot: 'Home',
     openFolder: 'Open folder',
     files: 'Files',
+    gridView: 'Grid',
+    listView: 'List',
+    back: 'Back',
+    disconnected: 'Disconnected',
   };
   const textPayload = jsonForScript(text);
   return `<!doctype html>
@@ -1554,7 +1601,7 @@ input,select{width:100%;border:1px solid var(--line2);background:#0b1220;color:#
 .section{margin:34px 0}.section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:14px}.section h2{font-size:clamp(20px,3vw,28px);margin:0;letter-spacing:0}.section small{color:var(--muted)}.section-line{height:1px;flex:1;background:linear-gradient(90deg,rgba(148,163,184,.35),transparent);margin:0 10px 8px}
 .rail{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(176px,214px);gap:14px;overflow-x:auto;overscroll-behavior-x:contain;padding:2px 2px 12px;scrollbar-width:thin}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:16px}.grid.compact{grid-template-columns:1fr}
 .section-card{position:relative;overflow:hidden;border:1px solid var(--line);background:linear-gradient(160deg,rgba(17,24,39,.9),rgba(15,23,42,.58));border-radius:var(--radius2);padding:15px;text-align:start;color:#fff;min-height:150px;transition:transform .18s,border-color .18s,box-shadow .18s}.section-card.has-cover{background-image:linear-gradient(180deg,rgba(7,9,15,.26),rgba(7,9,15,.9)),var(--folder-cover);background-size:cover;background-position:center}.section-card::before{content:"";position:absolute;inset:auto -20% -42% -20%;height:90px;background:radial-gradient(circle,rgba(20,184,166,.2),transparent 62%)}.section-card:hover{transform:translateY(-4px);border-color:rgba(20,184,166,.5);box-shadow:0 18px 42px rgba(0,0,0,.28)}.section-main{width:100%;border:0;background:transparent;color:#fff;text-align:start;padding:0;font:inherit;cursor:pointer;position:relative;z-index:1}.section-main strong{display:block;font-size:16px}.section-main span{display:block;color:#dbeafe;font-size:12px;margin-top:5px}.folder-row{display:flex;gap:7px;flex-wrap:wrap;margin-top:13px;position:relative;z-index:1}.folder-row button{border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.34);color:#dbeafe;border-radius:999px;padding:6px 9px;font:inherit;font-size:11px;font-weight:900;cursor:pointer;backdrop-filter:blur(8px)}
-.folder-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}.breadcrumb{display:flex;gap:7px;flex-wrap:wrap}.breadcrumb button{border:1px solid var(--line);background:rgba(255,255,255,.06);color:#e5edff;border-radius:999px;padding:7px 10px;font:inherit;font-size:12px;font-weight:900;cursor:pointer}.folder-tree-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}.folder-card{border:1px solid var(--line);background:linear-gradient(150deg,rgba(17,24,39,.94),rgba(15,23,42,.66));border-radius:var(--radius2);min-height:124px;padding:14px;text-align:start;color:#fff;cursor:pointer;transition:transform .18s,border-color .18s}.folder-card:hover{transform:translateY(-3px);border-color:rgba(248,197,28,.5)}.folder-card b{display:block;font-size:15px;margin-bottom:7px}.folder-card span{color:var(--muted);font-size:12px}.folder-card.file{cursor:default}.folder-card.file a{display:inline-flex;margin-top:10px;color:#fde68a;text-decoration:none;font-weight:950}
+.folder-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}.folder-toolbar-actions{display:flex;gap:8px;flex-wrap:wrap}.breadcrumb{display:flex;gap:7px;flex-wrap:wrap}.breadcrumb button{border:1px solid var(--line);background:rgba(255,255,255,.06);color:#e5edff;border-radius:999px;padding:7px 10px;font:inherit;font-size:12px;font-weight:900;cursor:pointer}.folder-tree-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}.folder-tree-grid.list{grid-template-columns:1fr}.folder-card{border:1px solid var(--line);background:linear-gradient(150deg,rgba(17,24,39,.94),rgba(15,23,42,.66));border-radius:var(--radius2);min-height:124px;padding:14px;text-align:start;color:#fff;cursor:pointer;transition:transform .18s,border-color .18s;position:relative;overflow:hidden}.folder-card.has-cover{background-size:cover;background-position:center}.folder-card:hover{transform:translateY(-3px);border-color:rgba(248,197,28,.5)}.folder-card b{display:block;font-size:15px;margin-bottom:7px}.folder-card span{display:block;color:var(--muted);font-size:12px;line-height:1.7}.folder-card small{display:inline-flex;margin-top:8px;border:1px solid rgba(248,113,113,.25);background:rgba(127,29,29,.28);color:#fecaca;border-radius:999px;padding:4px 8px;font-size:10px;font-weight:950}.folder-card.file{cursor:default}.folder-card.file a{display:inline-flex;margin-top:10px;color:#fde68a;text-decoration:none;font-weight:950}.folder-tree-grid.list .folder-card{min-height:82px;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}.folder-tree-grid.list .folder-card a{margin-top:0}
 .tile{position:relative;display:block;min-width:0;text-decoration:none;color:#fff;background:rgba(17,24,39,.78);border:1px solid var(--line);border-radius:var(--radius2);overflow:hidden;transition:transform .18s,border-color .18s,background .18s,box-shadow .18s;outline:none;box-shadow:0 12px 34px rgba(0,0,0,.2)}.tile:hover,.tile:focus-visible{transform:translateY(-5px);border-color:rgba(20,184,166,.58);background:rgba(17,24,39,.96);box-shadow:0 22px 52px rgba(0,0,0,.34)}
 .poster{aspect-ratio:2/3;background:#1f2937 center/cover no-repeat;display:grid;place-items:center;color:rgba(255,255,255,.38);font-size:40px;font-weight:900;position:relative;overflow:hidden}.poster::after{content:"";position:absolute;inset:auto 0 0 0;height:48%;background:linear-gradient(180deg,transparent,rgba(0,0,0,.86))}.poster.audio{aspect-ratio:1;background:linear-gradient(135deg,#1f2937,#0f3d42)}.kind-badge{position:absolute;bottom:9px;left:9px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.62);backdrop-filter:blur(8px);border-radius:999px;padding:5px 8px;font-size:10px;font-weight:950;color:#e5e7eb;z-index:1}.status-badges{position:absolute;top:9px;left:9px;display:flex;gap:5px;flex-wrap:wrap;z-index:2}.status-badge{border:1px solid rgba(255,255,255,.18);background:rgba(20,184,166,.86);color:#042f2e;border-radius:999px;padding:4px 7px;font-size:10px;font-weight:950}.status-badge.progressed{background:rgba(37,99,235,.88);color:#eff6ff}.meta{padding:11px 12px 13px}.title{font-size:13px;font-weight:950;line-height:1.35;min-height:36px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.sub{font-size:11px;color:var(--muted);margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.overview{display:none;color:#cbd5e1;font-size:12px;line-height:1.55;margin-top:8px}
 .progress{height:4px;background:rgba(255,255,255,.12)}.progress i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2))}.quick{position:absolute;top:9px;right:9px;display:flex;gap:6px;z-index:2;opacity:0;transform:translateY(-4px);transition:.18s}.tile:hover .quick,.tile:focus-within .quick{opacity:1;transform:none}.quick button{width:34px;height:34px;border:1px solid rgba(255,255,255,.18);background:rgba(0,0,0,.58);color:#fff;border-radius:999px;cursor:pointer;font-weight:950;backdrop-filter:blur(8px)}.quick button.on{background:rgba(239,68,68,.92)}
@@ -1632,7 +1679,7 @@ input,select{width:100%;border:1px solid var(--line2);background:#0b1220;color:#
     </div>
     <div class="account-status" id="accountStatus"></div>
   </section>
-  <section class="section" id="folderTreeSection"><div class="section-head"><div><h2>${escapeHtml(text.folderTreeTitle)}</h2><small>${escapeHtml(text.folderTreeHint)}</small></div><i class="section-line"></i></div><div class="folder-toolbar"><div class="breadcrumb" id="folderBreadcrumb"></div><button class="chip-btn" type="button" id="resetFolderTree">${escapeHtml(text.folderRoot)}</button></div><div class="folder-tree-grid" id="folderTreeGrid"></div></section>
+  <section class="section" id="folderTreeSection"><div class="section-head"><div><h2>${escapeHtml(text.folderTreeTitle)}</h2><small>${escapeHtml(text.folderTreeHint)}</small></div><i class="section-line"></i></div><div class="folder-toolbar"><div class="breadcrumb" id="folderBreadcrumb"></div><div class="folder-toolbar-actions"><button class="chip-btn" type="button" id="folderBackBtn">${escapeHtml(text.back)}</button><button class="chip-btn" type="button" id="resetFolderTree">${escapeHtml(text.folderRoot)}</button><button class="chip-btn active" type="button" id="folderGridBtn">${escapeHtml(text.gridView)}</button><button class="chip-btn" type="button" id="folderListBtn">${escapeHtml(text.listView)}</button></div></div><div class="folder-tree-grid" id="folderTreeGrid"></div></section>
   <section class="section" id="sectionBrowser"><div class="section-head"><div><h2>${escapeHtml(text.folders)}</h2><small>${escapeHtml(text.folderHint)}</small></div><i class="section-line"></i></div><div class="rail" id="sectionRail"></div></section>
   <section class="section" id="continueSection"><div class="section-head"><div><h2>${escapeHtml(text.continue)}</h2><small>${escapeHtml(text.continueHint)}</small></div><i class="section-line"></i></div><div class="rail" id="continueRail"></div></section>
   <section class="section" id="favoritesSection"><div class="section-head"><div><h2>${escapeHtml(text.favorites)}</h2><small>${escapeHtml(text.favoritesHint)}</small></div><i class="section-line"></i></div><div class="rail" id="favoritesRail"></div></section>
@@ -1713,6 +1760,7 @@ function card(item){
 function renderList(el, list, emptyText){ el.innerHTML = list.length ? list.map(card).join('') : '<div class="empty">'+emptyText+'</div>'; bindQuick(el); }
 function bindQuick(root){ root.querySelectorAll('[data-fav],[data-watch]').forEach(btn=>btn.onclick=(e)=>{ e.preventDefault(); e.stopPropagation(); storage.toggle(btn.dataset.fav?'favorites':'watchLater', btn.dataset.fav || btn.dataset.watch); }); }
 let folderPath = [];
+let folderLayout = 'grid';
 function samePrefix(segments, prefix) {
   return prefix.every((part, index) => segments[index] === part);
 }
@@ -1724,9 +1772,13 @@ function folderItemsAt(prefix) {
     if (!samePrefix(segments, prefix)) continue;
     if (segments.length > prefix.length) {
       const name = segments[prefix.length];
-      const current = dirs.get(name) || { name, count: 0, cover: '' };
+      const current = dirs.get(name) || { name, count: 0, cover: '', sourceStatus: '', sourceLabel: '' };
       current.count += 1;
       if (!current.cover) current.cover = item.poster || item.backdrop || '';
+      if (prefix.length === 0 && item.source) {
+        current.sourceStatus = item.source.status || 'connected';
+        current.sourceLabel = item.source.label || name;
+      }
       dirs.set(name, current);
     } else {
       files.push(item);
@@ -1738,11 +1790,19 @@ function renderFolderTree() {
   const grid = document.getElementById('folderTreeGrid');
   const crumb = document.getElementById('folderBreadcrumb');
   const tree = folderItemsAt(folderPath);
+  grid.classList.toggle('list', folderLayout === 'list');
+  document.getElementById('folderBackBtn').disabled = folderPath.length === 0;
+  document.getElementById('folderGridBtn').classList.toggle('active', folderLayout === 'grid');
+  document.getElementById('folderListBtn').classList.toggle('active', folderLayout === 'list');
   const crumbs = [{ label:text.folderRoot || 'Home', index:0 }].concat(folderPath.map((part, index) => ({ label:part, index:index + 1 })));
   crumb.innerHTML = crumbs.map((row) => '<button type="button" data-crumb-index="'+row.index+'">'+esc(row.label)+'</button>').join('');
   crumb.querySelectorAll('[data-crumb-index]').forEach((btn) => btn.onclick = () => { folderPath = folderPath.slice(0, Number(btn.dataset.crumbIndex)); renderFolderTree(); });
-  const folderCards = tree.dirs.map((dir) => '<button class="folder-card '+(dir.cover?'has-cover':'')+'" type="button" data-folder-open="'+esc(dir.name)+'" '+(dir.cover?'style="background-image:linear-gradient(180deg,rgba(7,9,15,.34),rgba(7,9,15,.92)),url(\\''+esc(dir.cover)+'\\');background-size:cover;background-position:center"':'')+'><b>'+esc(dir.name)+'</b><span>'+dir.count+' '+(text.items || '')+'</span></button>');
-  const fileCards = tree.files.map((item) => '<div class="folder-card file"><b>'+esc(item.title)+'</b><span>'+esc([kindLabel(item.kind), durationText(item.duration), bytes(item.size)].filter(Boolean).join(' · '))+'</span><a href="/player/'+item.id+'">'+esc(text.playNow || 'Play')+'</a></div>');
+  const folderCards = tree.dirs.map((dir) => {
+    const disconnected = dir.sourceStatus && dir.sourceStatus !== 'connected' && folderPath.length === 0;
+    const status = disconnected ? '<small>'+esc(text.disconnected || 'Disconnected')+'</small>' : '';
+    return '<button class="folder-card '+(dir.cover?'has-cover':'')+'" type="button" data-folder-open="'+esc(dir.name)+'" '+(dir.cover?'style="background-image:linear-gradient(180deg,rgba(7,9,15,.34),rgba(7,9,15,.92)),url(\\''+esc(dir.cover)+'\\')"':'')+'><b>'+esc(dir.name)+'</b><span>'+dir.count+' '+(text.items || '')+'</span>'+status+'</button>';
+  });
+  const fileCards = tree.files.map((item) => '<div class="folder-card file"><b>'+esc(item.file || item.title)+'</b><span>'+esc([item.title !== item.file ? item.title : '', kindLabel(item.kind), durationText(item.duration), bytes(item.size)].filter(Boolean).join(' · '))+'</span><a href="/player/'+item.id+'">'+esc(text.playNow || 'Play')+'</a></div>');
   grid.innerHTML = folderCards.concat(fileCards).join('') || '<div class="empty">'+esc(text.empty || '')+'</div>';
   grid.querySelectorAll('[data-folder-open]').forEach((btn) => btn.onclick = () => { folderPath = folderPath.concat(btn.dataset.folderOpen); renderFolderTree(); document.getElementById('folderTreeSection').scrollIntoView({ behavior:'smooth', block:'start' }); });
 }
@@ -1876,6 +1936,9 @@ document.querySelectorAll('[data-quick-view]').forEach(btn => btn.onclick = () =
   document.getElementById('grid').scrollIntoView({ behavior:'smooth', block:'start' });
 });
 document.getElementById('resetFolderTree').onclick = () => { folderPath = []; renderFolderTree(); };
+document.getElementById('folderBackBtn').onclick = () => { folderPath = folderPath.slice(0, -1); renderFolderTree(); };
+document.getElementById('folderGridBtn').onclick = () => { folderLayout = 'grid'; renderFolderTree(); };
+document.getElementById('folderListBtn').onclick = () => { folderLayout = 'list'; renderFolderTree(); };
 ['search','kind','view','sort','layout','sectionFilter'].forEach(id=>document.getElementById(id).addEventListener('input', render));
 syncAccountUi();
 render();
@@ -2279,34 +2342,39 @@ function createHandler(options = {}) {
         blockedMessage: db.blockedMessage(),
       });
     }
-    if (u.pathname === '/api/admin/capture-sources') {
+    if (u.pathname === '/api/admin/capture-sources' || u.pathname === '/api/admin/capture/devices' || u.pathname === '/api/admin/capture/screens' || u.pathname === '/api/admin/capture/windows' || u.pathname === '/api/admin/capture/audio-devices') {
       if (!requireAdmin(req, res, options, adminBase)) return;
       try {
         const sources = typeof options.listCaptureSources === 'function'
           ? await options.listCaptureSources()
           : {};
-        return sendJson(res, 200, {
+        const payload = {
           screens: Array.isArray(sources.screens) ? sources.screens : [],
           windows: Array.isArray(sources.windows) ? sources.windows : [],
           videoDevices: Array.isArray(sources.videoDevices) ? sources.videoDevices : [],
           audioDevices: Array.isArray(sources.audioDevices) ? sources.audioDevices : [],
           message: sources.message || '',
-        });
+        };
+        if (u.pathname === '/api/admin/capture/screens') return sendJson(res, 200, { screens: payload.screens });
+        if (u.pathname === '/api/admin/capture/windows') return sendJson(res, 200, { windows: payload.windows });
+        if (u.pathname === '/api/admin/capture/audio-devices') return sendJson(res, 200, { audioDevices: payload.audioDevices });
+        return sendJson(res, 200, payload);
       } catch (e) {
         return sendJson(res, 200, { screens: [], windows: [], videoDevices: [], audioDevices: [], message: e.message || 'تعذر قراءة الأجهزة.' });
       }
     }
-    if (u.pathname === '/api/admin/storage/roots') {
+    if (u.pathname === '/api/admin/storage/roots' || u.pathname === '/api/admin/system/drives') {
       if (!requireAdmin(req, res, options, adminBase)) return;
       return sendJson(res, 200, { roots: storageRoots() });
     }
-    if (u.pathname === '/api/admin/storage/browse') {
+    if (u.pathname === '/api/admin/storage/browse' || u.pathname === '/api/admin/files') {
       if (!requireAdmin(req, res, options, adminBase)) return;
       return sendJson(res, 200, browseStoragePath(u.query.path || ''));
     }
-    if (u.pathname === '/api/admin/storage/validate') {
+    if (u.pathname === '/api/admin/storage/validate' || u.pathname === '/api/admin/files/validate') {
       if (!requireAdmin(req, res, options, adminBase)) return;
-      return sendJson(res, 200, validateLibraryPath(u.query.path || ''));
+      const pathFromBody = req.method === 'POST' ? (await parseJsonBody(req)).path : u.query.path;
+      return sendJson(res, 200, validateLibraryPath(pathFromBody || ''));
     }
     if (u.pathname === '/api/admin/iptv' && req.method === 'POST') {
       if (!requireAdmin(req, res, options, adminBase)) return;

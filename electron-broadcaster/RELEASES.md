@@ -14,6 +14,15 @@ Packaged apps check for updates on startup and every 6 hours. The WIVA Agent
 window also includes a manual update check and install button when an update is
 ready.
 
+## v2.6.5
+
+- Changed the runtime media library to open in a true folder-first browser: source/drive first, then folders, subfolders, and files with breadcrumbs, back navigation, and grid/list modes.
+- Added source metadata to scanned media so every item keeps its library source, source label, relative path, and original folder structure.
+- Hardened scans for external drives: disconnected or permission-blocked sources are marked as unavailable and their existing library items are preserved instead of deleted.
+- Limited missing-file cleanup to the source that was successfully scanned.
+- Added scan reports with source status, folder counts, unsupported counts, and permission/disconnection details.
+- Added clearer admin API aliases for capture and filesystem browsing workflows.
+
 ## v2.6.4
 
 - Added LAN admin capture-source discovery for screens, windows, and Windows AV/capture devices, with clearer source testing and advanced manual fallback.

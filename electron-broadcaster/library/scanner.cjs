@@ -33,13 +33,40 @@ function clean(s) {
   return s.replace(/[._]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-function walk(dir, out = []) {
+function sourceLabel(lp) {
+  return lp.label || path.basename(String(lp.path || '').replace(/[\\/]+$/, '')) || lp.path || 'مصدر المكتبة';
+}
+
+function sourceReadable(dir) {
+  try {
+    const stat = fs.statSync(dir);
+    if (!stat.isDirectory()) return { ok: false, status: 'missing', message: 'المسار ليس مجلداً.' };
+    fs.accessSync(dir, fs.constants.R_OK);
+    return { ok: true, status: 'connected', message: '' };
+  } catch (e) {
+    return {
+      ok: false,
+      status: e && (e.code === 'EACCES' || e.code === 'EPERM') ? 'permission_error' : 'disconnected',
+      message: e?.code === 'EACCES' || e?.code === 'EPERM'
+        ? 'لا توجد صلاحية قراءة لهذا المصدر.'
+        : 'المصدر غير متصل حالياً أو لا يمكن الوصول إليه.',
+    };
+  }
+}
+
+function walk(dir, out = [], report = { folderCount: 0, permissionErrors: [] }) {
   let entries;
   try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
-  catch { return out; }
+  catch (e) {
+    report.permissionErrors.push({ path: dir, error: e.message });
+    return out;
+  }
   for (const e of entries) {
     const full = path.join(dir, e.name);
-    if (e.isDirectory()) walk(full, out);
+    if (e.isDirectory()) {
+      report.folderCount += 1;
+      walk(full, out, report);
+    }
     else if (e.isFile()) out.push(full);
   }
   return out;
@@ -55,68 +82,117 @@ function readUrlFile(file) {
 
 async function scanAll({ tmdbKey, tmdbLang = 'ar' } = {}, onProgress) {
   const paths = db.listPaths();
-  const seenMedia = [];
-  let total = 0, done = 0;
-  const allFiles = [];
+  const report = {
+    total: 0,
+    done: 0,
+    addedOrUpdated: 0,
+    removedMissing: 0,
+    unsupported: 0,
+    disconnectedSources: [],
+    permissionErrors: [],
+    sources: [],
+  };
+  if (onProgress) onProgress({ stage: 'reading_sources', done: 0, total: paths.length, message: 'جاري قراءة مصادر المكتبة' });
   for (const lp of paths) {
-    const files = walk(lp.path);
+    const label = sourceLabel(lp);
+    const readable = sourceReadable(lp.path);
+    if (!readable.ok) {
+      db.updatePathStatus(lp.id, {
+        status: readable.status,
+        lastScanAt: lp.last_scan_at || null,
+        lastError: readable.message,
+        fileCount: Number(lp.file_count || 0),
+        folderCount: Number(lp.folder_count || 0),
+        label,
+      });
+      report.disconnectedSources.push({ id: lp.id, label, path: lp.path, status: readable.status, message: readable.message });
+      if (onProgress) onProgress({ stage: 'source_unavailable', sourceId: lp.id, source: label, message: readable.message });
+      continue;
+    }
+    db.updatePathStatus(lp.id, { status: 'scanning', lastError: '', fileCount: Number(lp.file_count || 0), folderCount: Number(lp.folder_count || 0), label });
+    const walkReport = { folderCount: 0, permissionErrors: [] };
+    const files = walk(lp.path, [], walkReport);
+    report.permissionErrors.push(...walkReport.permissionErrors);
+    const allFiles = [];
     for (const f of files) {
       const ext = path.extname(f).toLowerCase();
+      const relPath = path.relative(lp.path, f);
+      const relDir = path.dirname(relPath);
       if (path.basename(f).toLowerCase() === URL_FILE) {
         const remoteUrl = readUrlFile(f);
-        if (remoteUrl) allFiles.push({ file: f, remoteUrl, libKind: lp.kind, mediaKind: 'video', root: lp.path });
+        if (remoteUrl) allFiles.push({ file: f, remoteUrl, libKind: lp.kind, mediaKind: 'video', root: lp.path, source: lp, sourceLabel: label, relPath, relDir });
         continue;
       }
-      if (VIDEO_EXT.has(ext) || AUDIO_EXT.has(ext)) allFiles.push({ file: f, libKind: lp.kind, mediaKind: AUDIO_EXT.has(ext) ? 'audio' : 'video' });
+      if (VIDEO_EXT.has(ext) || AUDIO_EXT.has(ext)) allFiles.push({ file: f, libKind: lp.kind, mediaKind: AUDIO_EXT.has(ext) ? 'audio' : 'video', root: lp.path, source: lp, sourceLabel: label, relPath, relDir });
+      else if (!SUB_EXT.has(ext)) report.unsupported += 1;
     }
-  }
-  total = allFiles.length;
-  for (const { file, remoteUrl, libKind, mediaKind, root } of allFiles) {
-    try {
-      const stat = fs.statSync(file);
-      const meta = parseName(path.basename(file));
-      const relDir = path.dirname(path.relative(root || paths.find((p) => file.startsWith(p.path))?.path || path.dirname(file), file));
-      const item = {
-        path: remoteUrl || file,
-        kind: mediaKind === 'audio' ? 'audio' : (meta.kind === 'episode' ? 'episode' : (libKind === 'tv' ? 'episode' : 'movie')),
-        title: meta.title,
-        year: meta.year || null,
-        season: meta.season || null,
-        episode: meta.episode || null,
-        size: remoteUrl ? 0 : stat.size,
-        section: relDir && relDir !== '.' ? relDir.split(path.sep)[0] : '',
-        folder: relDir && relDir !== '.' ? relDir : '',
-        remote_url: remoteUrl || null,
-      };
-      // TMDB lookup
-      if (tmdbKey) {
-        try {
-          const info = await tmdb.search(tmdbKey, item.title, item.year, item.kind, tmdbLang);
-          if (info) {
-            item.tmdb_id = info.id;
-            item.poster_url = info.poster;
-            item.backdrop_url = info.backdrop;
-            item.overview = info.overview;
-            item.rating = info.rating;
-          }
-        } catch { /* ignore TMDB errors per-item */ }
-      }
-      const id = db.upsertMedia(item);
-      // sidecar subtitle
-      const baseNoExt = file.replace(/\.[^.]+$/, '');
-      for (const sx of SUB_EXT) {
-        const subPath = baseNoExt + sx;
-        if (fs.existsSync(subPath)) {
-          try { db.addSubtitle(id, 'auto', subPath, path.basename(subPath)); } catch {}
+    const seenMedia = [];
+    let done = 0;
+    report.total += allFiles.length;
+    if (onProgress) onProgress({ stage: 'scanning_source', sourceId: lp.id, source: label, done: 0, total: allFiles.length, message: 'جاري فحص ' + label });
+    for (const { file, remoteUrl, libKind, mediaKind, source, sourceLabel: labelText, relPath, relDir } of allFiles) {
+      try {
+        const stat = fs.statSync(file);
+        const meta = parseName(path.basename(file));
+        const playablePath = remoteUrl || file;
+        const folder = relDir && relDir !== '.' ? relDir : '';
+        const item = {
+          path: playablePath,
+          kind: mediaKind === 'audio' ? 'audio' : (meta.kind === 'episode' ? 'episode' : (libKind === 'tv' ? 'episode' : 'movie')),
+          title: meta.title,
+          year: meta.year || null,
+          season: meta.season || null,
+          episode: meta.episode || null,
+          size: remoteUrl ? 0 : stat.size,
+          section: labelText,
+          folder,
+          remote_url: remoteUrl || null,
+          source_id: source.id,
+          source_path: source.path,
+          source_label: labelText,
+          relative_path: relPath,
+        };
+        if (tmdbKey) {
+          try {
+            const info = await tmdb.search(tmdbKey, item.title, item.year, item.kind, tmdbLang);
+            if (info) {
+              item.tmdb_id = info.id;
+              item.poster_url = info.poster;
+              item.backdrop_url = info.backdrop;
+              item.overview = info.overview;
+              item.rating = info.rating;
+            }
+          } catch { /* ignore TMDB errors per-item */ }
         }
+        const id = db.upsertMedia(item);
+        const baseNoExt = file.replace(/\.[^.]+$/, '');
+        for (const sx of SUB_EXT) {
+          const subPath = baseNoExt + sx;
+          if (fs.existsSync(subPath)) {
+            try { db.addSubtitle(id, 'auto', subPath, path.basename(subPath)); } catch {}
+          }
+        }
+        seenMedia.push(playablePath);
+        report.addedOrUpdated += 1;
+      } catch (e) {
+        report.permissionErrors.push({ path: file, error: e.message });
       }
-      seenMedia.push(remoteUrl || file);
-    } catch (e) { /* skip bad file */ }
-    done++;
-    if (onProgress) onProgress({ done, total });
+      done++;
+      report.done += 1;
+      if (onProgress) onProgress({ stage: 'scanning_source', sourceId: lp.id, source: label, done, total: allFiles.length });
+    }
+    db.deleteMissingForSource(lp.id, seenMedia);
+    db.updatePathStatus(lp.id, {
+      status: 'connected',
+      lastError: '',
+      fileCount: seenMedia.length,
+      folderCount: walkReport.folderCount,
+      label,
+    });
+    report.sources.push({ id: lp.id, label, path: lp.path, fileCount: seenMedia.length, folderCount: walkReport.folderCount });
   }
-  db.deleteMissing(seenMedia);
-  return { total, done };
+  if (onProgress) onProgress({ stage: 'done', done: report.done, total: report.total, message: 'اكتمل فحص المكتبة' });
+  return report;
 }
 
 module.exports = { scanAll, parseName };

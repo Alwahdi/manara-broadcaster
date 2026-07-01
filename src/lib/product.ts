@@ -8,7 +8,7 @@ export const PRODUCT = {
   arabicName: "ويفا",
   legacyName: "Manara",
   repo: "manara-broadcaster",
-  downloadFile: "WIVA-2.6.4-x64.zip",
+  downloadFile: "WIVA-2.6.5-x64.zip",
   supportEmail: "support@wiva.app",
 } as const;
 
