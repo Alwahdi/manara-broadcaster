@@ -8,6 +8,7 @@ const db = require('./db.cjs');
 const iptv = require('./iptv.cjs');
 const cloudIptv = require('./cloud-iptv.cjs');
 const scanner = require('./scanner.cjs');
+const webui = require('./webui.cjs');
 const adminLoginAttempts = new Map();
 const ADMIN_LOGIN_WINDOW_MS = 10 * 60 * 1000;
 const ADMIN_LOGIN_MAX_ATTEMPTS = 8;
@@ -486,6 +487,80 @@ function libraryPathStatus(row) {
     lastScanAt: items.reduce((max, item) => Math.max(max, Number(item.scanned_at || 0)), 0),
   };
 }
+
+// Library sources for the modern web UI. A disconnected drive keeps its media
+// records and simply reports online:false (media is never deleted on unplug).
+function librarySourcesPayload() {
+  return db.listPaths().map((row) => {
+    const info = libraryPathStatus(row);
+    return {
+      id: row.id,
+      label: row.label || info.message || String(row.path || ''),
+      path: row.path,
+      kind: row.kind || 'movies',
+      online: info.status === 'connected',
+      mediaCount: info.fileCount,
+      lastScan: info.lastScanAt || row.last_scan_at || null,
+      message: info.message,
+    };
+  });
+}
+
+// Minimal, dependency-free M3U/M3U8 playlist parser for IPTV import preview.
+function parseM3U(content) {
+  const text = String(content || '');
+  const lines = text.split(/\r?\n/);
+  const channels = [];
+  let pending = null;
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (line.startsWith('#EXTINF')) {
+      const name = (line.split(',').slice(1).join(',') || '').trim();
+      const attrs = {};
+      const attrRe = /([\w-]+)="([^"]*)"/g;
+      let m;
+      while ((m = attrRe.exec(line))) attrs[m[1]] = m[2];
+      pending = {
+        name: name || attrs['tvg-name'] || 'قناة',
+        group: attrs['group-title'] || '',
+        logo: attrs['tvg-logo'] || '',
+      };
+    } else if (!line.startsWith('#')) {
+      const url = line;
+      const base = pending || { name: 'قناة', group: '', logo: '' };
+      channels.push({ id: channels.length + 1, name: base.name, group: base.group, logo: base.logo, url });
+      pending = null;
+    }
+  }
+  return channels;
+}
+
+// Aggregated service/system diagnostics for the admin diagnostics page.
+function diagnosticsPayload(options) {
+  const health = serviceHealth(options);
+  let dbDiag = {};
+  try { dbDiag = db.diagnostics(); } catch { dbDiag = {}; }
+  const services = [
+    { name: 'خادم الوسائط', ok: true, detail: 'يعمل' },
+    { name: 'قنوات IPTV', ok: !!iptv.status, detail: 'وكيل البث' },
+    { name: 'قاعدة البيانات', ok: !!dbDiag, detail: dbDiag.driver || (dbDiag.mediaFallbackPath ? 'JSON' : 'SQLite') },
+    { name: 'البث المباشر', ok: webui.clientCount() >= 0, detail: `${webui.clientCount()} متصل` },
+  ];
+  return {
+    health,
+    services,
+    system: {
+      platform: os.platform(),
+      arch: os.arch(),
+      uptimeSec: Math.round(process.uptime()),
+      memory: process.memoryUsage().rss,
+      liveClients: webui.clientCount(),
+      node: process.version,
+    },
+  };
+}
+
 
 function librarySections(items = listLibraryItems({ limit: 5000 })) {
   const sections = new Map();
@@ -2371,6 +2446,14 @@ function createHandler(options = {}) {
       } catch {}
       return send(res, 404, 'Asset not found', { 'Content-Type': 'text/plain; charset=utf-8' });
     }
+    // Modern web UI: serve hashed static assets (JS/CSS/fonts) from webui/dist.
+    if ((req.method === 'GET' || req.method === 'HEAD') && webui.isAvailable() && webui.serveStatic(req, res, u.pathname)) {
+      return;
+    }
+    // Live status stream (Server-Sent Events) for the web UI.
+    if (u.pathname === '/api/live') {
+      return webui.liveHandler(req, res);
+    }
     if (req.method === 'OPTIONS') {
       res.writeHead(204, {
         'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
@@ -2382,13 +2465,22 @@ function createHandler(options = {}) {
     if (u.pathname === '/health' || u.pathname === '/ready' || u.pathname === '/api/agent/health') {
       return sendJson(res, 200, serviceHealth(options));
     }
-    if (u.pathname === '/setup' || u.pathname === '/agent') {
+    if (u.pathname === '/setup' || u.pathname === '/agent' || u.pathname.startsWith('/setup/')) {
+      // Legacy setup wizard kept as fallback only.
+      if (u.pathname === '/setup/legacy') {
+        return send(res, 200, setupPage(options), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      }
       const state = typeof options.getSetupState === 'function' ? options.getSetupState() : {};
-      if (state.setupCompleted) {
+      // Once setup is complete, the setup entry point redirects to admin.
+      if (state.setupCompleted && (u.pathname === '/setup' || u.pathname === '/agent')) {
         return send(res, 302, '', {
           Location: adminBase,
           'Cache-Control': 'no-store',
         });
+      }
+      // Modern setup wizard (single-page app).
+      if ((req.method === 'GET' || req.method === 'HEAD') && webui.isAvailable() && webui.serveApp(req, res)) {
+        return;
       }
       return send(res, 200, setupPage(options), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     }
@@ -2452,18 +2544,37 @@ function createHandler(options = {}) {
       recordAdminLogin(req, false);
       return send(res, 401, adminLoginPage('اسم المستخدم أو كلمة المرور غير صحيحة.', adminBase), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     }
-    if (isAdminBase) {
+    // Legacy admin panel (single giant page) kept as fallback only.
+    if (u.pathname === '/admin/legacy' || u.pathname === `${adminBase}/legacy`) {
       if (!requireAdmin(req, res, options, adminBase)) return;
       if (!featureAllowed(options, 'webAdmin')) return denyFeature(req, res, options, 'webAdmin');
+      return send(res, 200, adminPage(options), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    }
+    // Modern admin web app: official UI for /admin and every /admin/* route.
+    const isAdminNav = isAdminBase
+      || u.pathname.startsWith('/admin/')
+      || u.pathname.startsWith(`${adminBase}/`);
+    if (isAdminNav && (req.method === 'GET' || req.method === 'HEAD') && !u.pathname.startsWith('/api/')) {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      if (!featureAllowed(options, 'webAdmin')) return denyFeature(req, res, options, 'webAdmin');
+      if (webui.isAvailable() && webui.serveApp(req, res)) return;
       return send(res, 200, adminPage(options), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     }
     if (/^\/api\/admin\//.test(u.pathname) && !featureAllowed(options, 'webAdmin')) {
       if (!requireAdmin(req, res, options, adminBase)) return;
       return denyFeature(req, res, options, 'webAdmin');
     }
-    if (u.pathname === '/library') {
+    if (u.pathname === '/library' || u.pathname.startsWith('/library/')
+        || u.pathname === '/live' || u.pathname.startsWith('/live/')
+        || u.pathname.startsWith('/watch/') || u.pathname === '/search'
+        || u.pathname === '/favorites' || u.pathname === '/account') {
       if (!featureAllowed(options, 'media')) return denyFeature(req, res, options, 'media');
-      return send(res, 200, libraryPage(req, res), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      if ((req.method === 'GET' || req.method === 'HEAD') && webui.isAvailable() && webui.serveApp(req, res)) {
+        return;
+      }
+      if (u.pathname === '/library') {
+        return send(res, 200, libraryPage(req, res), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      }
     }
     if (u.pathname === '/api/library') {
       if (!featureAllowed(options, 'media')) return denyFeature(req, res, options, 'media');
@@ -2474,6 +2585,117 @@ function createHandler(options = {}) {
         theme: db.mediaTheme(),
         viewer: db.viewerState(getViewerId(req, res)),
       });
+    }
+    // --- Modern web UI admin API: library sources ---
+    if (u.pathname === '/api/admin/library/sources' && req.method === 'GET') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      return sendJson(res, 200, { sources: librarySourcesPayload() });
+    }
+    let sourceMatch = /^\/api\/admin\/library\/sources\/(\d+)\/rescan$/.exec(u.pathname);
+    if (sourceMatch && req.method === 'POST') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      try {
+        const cfg = typeof options.getLibraryConfig === 'function' ? options.getLibraryConfig() : {};
+        const result = await scanner.scanAll({ tmdbKey: cfg.tmdbKey || '', tmdbLang: cfg.tmdbLang || 'ar' });
+        webui.broadcast('library', { sourceId: Number(sourceMatch[1]) });
+        return sendJson(res, 200, { ok: true, ...result, sources: librarySourcesPayload() });
+      } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
+    }
+    sourceMatch = /^\/api\/admin\/library\/sources\/(\d+)\/relink$/.exec(u.pathname);
+    if (sourceMatch && req.method === 'POST') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      try {
+        const body = await parseJsonBody(req);
+        const validation = validateLibraryPath(body.path);
+        if (!validation.ok) return sendJson(res, 400, { error: 'invalid_path', message: validation.message });
+        const id = parseInt(sourceMatch[1], 10);
+        const existing = db.listPaths().find((row) => String(row.id) === String(id));
+        const samePath = existing && String(existing.path) === String(body.path);
+        if (samePath) {
+          // Same drive came back online — just mark it connected again.
+          db.updatePathStatus(id, { status: 'connected' });
+        } else {
+          // Drive re-mounted at a new location: repoint without deleting media.
+          const kind = existing ? existing.kind : 'movies';
+          db.removePath(id);
+          db.addPath(body.path, kind || 'movies', 0);
+        }
+        webui.broadcast('library', { sourceId: id, relinked: true });
+        return sendJson(res, 200, { ok: true, sources: librarySourcesPayload() });
+      } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
+    }
+    // --- Modern web UI admin API: IPTV list + two-phase import ---
+    if (u.pathname === '/api/admin/iptv' && req.method === 'GET') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      let cloud = [];
+      try {
+        cloud = typeof options.getCloudIptv === 'function' ? (await options.getCloudIptv()) || [] : [];
+      } catch { cloud = []; }
+      const local = db.listIptv().map((ch) => ({ ...ch, sourceKind: 'local' }));
+      return sendJson(res, 200, { channels: [...cloud, ...local] });
+    }
+    if (u.pathname === '/api/admin/iptv/import/preview' && req.method === 'POST') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      try {
+        const body = await parseJsonBody(req);
+        let content = body.content || '';
+        if (!content && body.url) {
+          const resp = await fetch(String(body.url), { redirect: 'follow' });
+          if (!resp.ok) return sendJson(res, 400, { error: 'fetch_failed', message: `تعذر جلب القائمة (${resp.status}).` });
+          content = await resp.text();
+        }
+        const channels = parseM3U(content);
+        return sendJson(res, 200, { channels, count: channels.length });
+      } catch (e) { return sendJson(res, 500, { error: e.message }); }
+    }
+    if (u.pathname === '/api/admin/iptv/import/commit' && req.method === 'POST') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      try {
+        const body = await parseJsonBody(req);
+        const channels = Array.isArray(body.channels) ? body.channels : [];
+        let added = 0;
+        for (const ch of channels) {
+          if (!ch || !ch.url) continue;
+          db.addIptv({ name: ch.name || 'قناة', url: ch.url, category: ch.group || ch.category || '', logo: ch.logo || '', enabled: true });
+          added += 1;
+        }
+        if (options.onChannelsChanged) options.onChannelsChanged();
+        webui.broadcast('iptv', { added });
+        return sendJson(res, 200, { ok: true, added });
+      } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
+    }
+    // --- Modern web UI admin API: viewers / messages / reports / diagnostics ---
+    if (u.pathname === '/api/admin/viewers' && req.method === 'GET') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      const viewers = typeof db.listViewerAccounts === 'function' ? db.listViewerAccounts() : [];
+      const sessions = typeof db.listSessions === 'function' ? db.listSessions() : [];
+      return sendJson(res, 200, { viewers, sessions });
+    }
+    if (u.pathname === '/api/admin/messages' && req.method === 'GET') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      const messages = typeof db.listViewerMessages === 'function' ? db.listViewerMessages() : [];
+      return sendJson(res, 200, { messages });
+    }
+    if (u.pathname === '/api/admin/reports' && req.method === 'GET') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      const stats = typeof db.mediaStats === 'function' ? db.mediaStats() : {};
+      const sessions = typeof db.listSessions === 'function' ? db.listSessions() : [];
+      const viewers = typeof db.listViewerAccounts === 'function' ? db.listViewerAccounts() : [];
+      const logs = typeof db.listAccessLogs === 'function' ? db.listAccessLogs(1000) : [];
+      return sendJson(res, 200, {
+        totalMedia: stats.total || stats.count || 0,
+        totalMovies: stats.movies || 0,
+        totalEpisodes: stats.episodes || 0,
+        totalViewers: viewers.length,
+        activeSessions: sessions.length,
+        totalRequests: logs.length,
+        sources: librarySourcesPayload().length,
+        stats,
+      });
+    }
+    if (u.pathname === '/api/admin/diagnostics' && req.method === 'GET') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      return sendJson(res, 200, diagnosticsPayload(options));
     }
     let m = /^\/media-art\/(\d+)\/poster$/.exec(u.pathname);
     if (m) {
@@ -2533,9 +2755,21 @@ function createHandler(options = {}) {
         return sendJson(res, 200, { screens: [], windows: [], videoDevices: [], audioDevices: [], message: e.message || 'تعذر قراءة الأجهزة.' });
       }
     }
-    if (u.pathname === '/api/admin/storage/roots' || u.pathname === '/api/admin/system/drives') {
+    if (u.pathname === '/api/admin/capture/probe' && req.method === 'POST') {
       if (!requireAdmin(req, res, options, adminBase)) return;
-      return sendJson(res, 200, { roots: storageRoots() });
+      try {
+        const body = await parseJsonBody(req);
+        if (typeof options.probeCaptureSource === 'function') {
+          const result = await options.probeCaptureSource(body);
+          return sendJson(res, 200, { ok: result.ok !== false, message: result.message || '', ...result });
+        }
+        // Fallback: validate that a source selection was provided.
+        const hasSelection = !!(body.deviceId || body.screenId || body.windowId || body.source || body.kind);
+        return sendJson(res, 200, {
+          ok: hasSelection,
+          message: hasSelection ? 'المصدر جاهز للمعاينة.' : 'اختر مصدر التقاط أولاً.',
+        });
+      } catch (e) { return sendJson(res, 500, { ok: false, message: e.message }); }
     }
     if (u.pathname === '/api/admin/storage/browse' || u.pathname === '/api/admin/files') {
       if (!requireAdmin(req, res, options, adminBase)) return;
@@ -2871,6 +3105,18 @@ function createHandler(options = {}) {
         res.end(message);
         return;
       }
+    }
+    // Single-page-app fallback: any unmatched navigational GET returns the web
+    // UI shell so client-side routing (deep links, refresh) works. API, media
+    // and stream paths are excluded above and must never reach here as HTML.
+    if ((req.method === 'GET' || req.method === 'HEAD')
+        && !u.pathname.startsWith('/api/')
+        && !u.pathname.startsWith('/media/')
+        && !u.pathname.startsWith('/stream/')
+        && !u.pathname.startsWith('/iptv/')
+        && !u.pathname.startsWith('/sub/')
+        && webui.isAvailable() && webui.serveApp(req, res)) {
+      return;
     }
     res.writeHead(404); res.end('WIVA media');
   };

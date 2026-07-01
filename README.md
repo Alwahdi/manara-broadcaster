@@ -27,6 +27,37 @@ The setup wizard can change the ports and custom admin path.
 - GitHub Releases auto-update support.
 - Sentry support when `SENTRY_DSN` is configured.
 
+## Modern Web UI
+
+The official viewer, admin, and setup experience is a modern single-page app in
+`electron-broadcaster/webui/` (Vite + React + TanStack Router + TanStack Query +
+TypeScript). It is fully Arabic and right-to-left, ships local Tajawal/Cairo
+fonts (no internet dependency), and is designed to work on phones, desktops, and
+TVs across the LAN.
+
+- The WIVA Agent (`library/media-server.cjs`) serves the built app from
+  `webui/dist` and exposes only REST APIs, media/IPTV streams, and a live
+  Server-Sent Events channel at `/api/live`.
+- Server files no longer build large HTML pages. The legacy single-page admin
+  (`adminPage()`) is kept only as a fallback at `/admin/legacy` and is used
+  automatically when `webui/dist` has not been built.
+- Routes are real pages: viewer (`/`, `/live`, `/library`, `/watch/...`,
+  `/search`, `/favorites`, `/account`), admin (`/admin/*`), and setup
+  (`/setup/*`). Every screen has explicit loading, empty, and error states.
+
+Develop the web UI:
+
+```bash
+cd electron-broadcaster/webui
+npm install
+npm run dev      # Vite dev server, proxies /api to the Agent on :8788
+npm run build    # type-check + emit webui/dist
+```
+
+`npm --prefix electron-broadcaster run dist` (and `release`) build the web UI
+automatically before packaging, and `webui/dist/**` is included in the app
+bundle.
+
 ## Development
 
 ```bash
