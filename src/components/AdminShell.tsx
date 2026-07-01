@@ -50,7 +50,7 @@ export function AdminShell({ title, children }: { title: string; children: React
             <ArrowRight className="h-3 w-3" /> الرئيسية
           </Link>
         </div>
-        <nav className="mx-auto max-w-7xl px-4 sm:px-6 pb-2 flex gap-1 overflow-x-auto">
+        <nav className="mx-auto hidden max-w-7xl gap-1 overflow-x-auto px-4 pb-2 sm:px-6 md:flex">
           {items.map((it) => (
             <Link
               key={it.to}
@@ -65,7 +65,23 @@ export function AdminShell({ title, children }: { title: string; children: React
           ))}
         </nav>
       </header>
-      <main className="mx-auto max-w-7xl px-4 sm:px-6 py-6">{children}</main>
+      <main className="mx-auto max-w-7xl px-4 py-6 pb-24 sm:px-6 md:pb-6">{children}</main>
+      <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-background/90 px-2 py-2 backdrop-blur-2xl md:hidden">
+        <div className="flex gap-1 overflow-x-auto">
+          {items.map((it) => (
+            <Link
+              key={it.to}
+              to={it.to}
+              className="grid min-w-[72px] place-items-center gap-1 rounded-2xl px-2 py-2 text-[10px] font-bold text-muted-foreground"
+              activeProps={{ className: "grid min-w-[72px] place-items-center gap-1 rounded-2xl bg-primary/15 px-2 py-2 text-[10px] font-black text-primary" }}
+              activeOptions={{ exact: true }}
+            >
+              <it.icon className="h-4 w-4" />
+              <span>{it.label}</span>
+            </Link>
+          ))}
+        </div>
+      </nav>
     </div>
   );
 }

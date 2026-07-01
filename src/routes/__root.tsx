@@ -113,7 +113,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <BrandingProvider>
         <Outlet />
-        <Toaster position="top-center" richColors theme="dark" toastOptions={{ style: { fontFamily: '"Tajawal", "Cairo", system-ui, sans-serif' } }} />
+        <Toaster position="top-center" richColors theme="dark" toastOptions={{ style: { fontFamily: '"Cairo", "Tajawal", system-ui, sans-serif' } }} />
       </BrandingProvider>
     </QueryClientProvider>
   );

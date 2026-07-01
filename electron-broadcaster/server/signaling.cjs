@@ -76,7 +76,7 @@ function startSignalingServer({ port = 8787, mediaHandler = null, getIptvChannel
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true })); return;
     }
-    if (mediaHandler && /^(\/favicon\.ico|\/wiva-logo\.png|\/iptv\/|\/setup(?:\/|\?|$)|\/api\/setup\/|\/agent(?:\/|\?|$)|\/api\/agent\/|\/admin(?:\/|\?|$)|\/api\/admin\/|\/library(?:\?|$)|\/api\/library(?:\?|$)|\/player\/|\/api\/media\/|\/api\/viewer\/|\/media\/|\/sub\/)/.test(url)) {
+    if (mediaHandler && /^(\/favicon\.ico|\/wiva-logo\.png|\/library-assets\/|\/iptv\/|\/setup(?:\/|\?|$)|\/api\/setup\/|\/agent(?:\/|\?|$)|\/api\/agent\/|\/admin(?:\/|\?|$)|\/api\/admin\/|\/library(?:\?|$)|\/api\/library(?:\?|$)|\/player\/|\/api\/media\/|\/api\/viewer\/|\/media\/|\/sub\/)/.test(url)) {
       return mediaHandler(req, res);
     }
     res.writeHead(404); res.end('Not Found');

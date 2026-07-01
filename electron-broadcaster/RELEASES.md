@@ -14,6 +14,16 @@ Packaged apps check for updates on startup and every 6 hours. The WIVA Agent
 window also includes a manual update check and install button when an update is
 ready.
 
+## v2.6.6
+
+- Added a bundled WIVA media asset pack for folders, sources, video, audio, image, live, link, PDF, APK, EXE, and the media library hero.
+- Served bundled media artwork through `/library-assets/*` so the LAN library looks polished without internet or TMDB artwork.
+- Improved the runtime media library with richer folder/file cards, fallback artwork, and stronger Arabic mobile layout rules.
+- Improved the LAN admin mobile experience with a bottom navigation bar, touch-friendly controls, better modal sizing, and scrollable tables.
+- Reworked the React media library into a source/folder-first experience using the same WIVA artwork style.
+- Improved the React admin shell mobile navigation and polished library path management into source cards with clearer stats and actions.
+- Applied Cairo-first typography consistently across viewer, player, agent, and admin surfaces.
+
 ## v2.6.5
 
 - Changed the runtime media library to open in a true folder-first browser: source/drive first, then folders, subfolders, and files with breadcrumbs, back navigation, and grid/list modes.

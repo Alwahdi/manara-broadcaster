@@ -87,7 +87,7 @@ function WatchPage() {
             <h2 className="text-2xl font-black">{media.title}</h2>
             <div className="mt-2 flex flex-wrap gap-2 text-sm text-muted-foreground">
               {media.year && <span>{media.year}</span>}
-              {media.durationSec ? <span>{formatDuration(media.durationSec)}</span> : null}
+              {media.durationSeconds ? <span>{formatDuration(media.durationSeconds)}</span> : null}
               <span>مكتبة ويفا</span>
             </div>
             {media.overview && <p className="mt-4 whitespace-pre-wrap text-sm leading-8 text-muted-foreground">{media.overview}</p>}

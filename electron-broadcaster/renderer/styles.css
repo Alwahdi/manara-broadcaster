@@ -1,6 +1,6 @@
 :root {
   color-scheme: dark;
-  --font-arabic: "Tajawal", "Cairo", system-ui, -apple-system, "Segoe UI", Tahoma, sans-serif;
+  --font-arabic: "Cairo", "Tajawal", system-ui, -apple-system, "Segoe UI", Tahoma, sans-serif;
   --bg: #050507;
   --panel: #0B0D12;
   --panel2: #141720;
