@@ -384,6 +384,49 @@ function checkPortAvailability(port) {
   return { ok: true, available: true, port: p, message: `Port ${p} is available.` };
 }
 
+function windowsAvDevices() {
+  if (process.platform !== 'win32') return { videoDevices: [], audioDevices: [] };
+  const script = "Get-CimInstance Win32_PnPEntity | Where-Object { $_.PNPClass -in @('Camera','Image','MEDIA','AudioEndpoint') } | Select-Object Name,PNPClass,DeviceID | ConvertTo-Json -Compress";
+  const raw = runShell(`powershell -NoProfile -Command "${script.replace(/"/g, '\\"')}"`).trim();
+  if (!raw) return { videoDevices: [], audioDevices: [] };
+  try {
+    const rows = JSON.parse(raw);
+    const list = Array.isArray(rows) ? rows : [rows];
+    const videoDevices = [];
+    const audioDevices = [];
+    for (const row of list) {
+      const name = String(row.Name || '').trim();
+      const cls = String(row.PNPClass || '').toLowerCase();
+      const id = String(row.DeviceID || name || '').trim();
+      if (!name) continue;
+      const item = { id, name, type: cls || 'device' };
+      if (cls === 'audioendpoint' || /audio|sound|microphone|speaker/i.test(name)) audioDevices.push(item);
+      else if (cls === 'camera' || cls === 'image' || /camera|capture|usb|hdmi|video/i.test(name)) videoDevices.push(item);
+    }
+    return { videoDevices, audioDevices };
+  } catch {
+    return { videoDevices: [], audioDevices: [] };
+  }
+}
+
+async function listCaptureSourcesForAdmin() {
+  const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 0, height: 0 } });
+  const screens = sources
+    .filter((source) => String(source.id || '').startsWith('screen:'))
+    .map((source, index) => ({ id: source.id, name: source.name || `شاشة ${index + 1}`, type: 'screen' }));
+  const windows = sources
+    .filter((source) => String(source.id || '').startsWith('window:'))
+    .slice(0, 80)
+    .map((source) => ({ id: source.id, name: source.name || source.id, type: 'window' }));
+  const platformDevices = windowsAvDevices();
+  return {
+    screens,
+    windows,
+    videoDevices: platformDevices.videoDevices,
+    audioDevices: platformDevices.audioDevices,
+  };
+}
+
 function agentUrls() {
   const livePort = serverInfo?.port || settings.port || DEFAULT_AGENT_PORT;
   const libraryPort = libraryServerInfo?.port || settings.libraryPort || DEFAULT_LIBRARY_PORT;
@@ -590,6 +633,7 @@ function mediaServerOptions() {
     getAdminPath: () => settings.adminPath || 'admin',
     getSetupState: () => agentState(),
     checkPort: (port) => checkPortAvailability(port),
+    listCaptureSources: () => listCaptureSourcesForAdmin(),
     applySetup: async (patch = {}) => {
       const currentLivePort = Number(settings.port) || DEFAULT_AGENT_PORT;
       const currentLibraryPort = Number(settings.libraryPort) || DEFAULT_LIBRARY_PORT;

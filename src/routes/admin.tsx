@@ -138,7 +138,7 @@ function AdminPage() {
             <p className="text-[11px] text-muted-foreground">{PRODUCT.adminName} · إدارة القنوات</p>
           </div>
           <Link to="/admin/iptv" className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-primary px-3 py-1.5 text-xs font-bold text-primary-foreground shadow-glow">
-            <Radio className="h-3.5 w-3.5" /> IPTV السحابية
+            <Radio className="h-3.5 w-3.5" /> البث التلفزيوني السحابي
           </Link>
           <Link to="/" className="hidden sm:inline-flex items-center gap-1.5 rounded-xl glass-btn px-3 py-1.5 text-xs font-bold">
             <ArrowRight className="h-3.5 w-3.5" />
@@ -379,7 +379,7 @@ function ChannelFormDialog({
             <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">اسم القناة *</label>
             <input
               value={name} onChange={(e) => setName(e.target.value)} required maxLength={100}
-              placeholder="WIVA 1"
+              placeholder="ويفا 1"
               className="w-full rounded-xl border border-border bg-background/50 px-4 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
             />
           </div>

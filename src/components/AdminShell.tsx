@@ -9,7 +9,7 @@ const items = [
   { to: "/admin/releases", label: "الإصدارات", icon: Download },
   { to: "/admin/networks", label: "الشبكات", icon: Globe2 },
   { to: "/admin", label: "القنوات", icon: Tv },
-  { to: "/admin/iptv", label: "IPTV", icon: Radio },
+  { to: "/admin/iptv", label: "البث التلفزيوني", icon: Radio },
   { to: "/admin/categories", label: "التصنيفات", icon: FolderTree },
   { to: "/admin/paths", label: "المكتبات", icon: Folder },
   { to: "/admin/themes", label: "العلامة", icon: Palette },

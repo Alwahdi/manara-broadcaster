@@ -14,10 +14,10 @@ function startSignalingServer({ port = 8787, mediaHandler = null, getIptvChannel
   const hlsJs = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'hls.min.js'), 'utf8');
 
   let brand = {
-    brandName: 'WIVA',
+    brandName: 'ويفا',
     brandTagline: 'خدمة مشاهدة داخل الشبكة',
-    accent: '#2563eb',
-    accent2: '#14b8a6',
+    accent: '#F8C51C',
+    accent2: '#FFD84D',
   };
 
   // channelId -> { meta:{id,name,description,active}, broadcaster: ws|null, viewers: Map<viewerId, ws> }

@@ -19,7 +19,7 @@ import { ConfirmAction } from "@/components/ConfirmAction";
 export const Route = createFileRoute("/admin/iptv")({
   component: AdminIptvPage,
   head: () => ({ meta: [
-    { title: pageTitle("إدارة IPTV السحابية") },
+    { title: pageTitle("إدارة البث التلفزيوني السحابي") },
     { name: "robots", content: "noindex" },
   ] }),
 });
@@ -100,7 +100,7 @@ function AdminIptvPage() {
             <Radio className="h-5 w-5 text-primary-foreground" />
           </div>
           <div className="flex-1">
-            <h1 className="text-base font-extrabold sm:text-lg">IPTV السحابية</h1>
+            <h1 className="text-base font-extrabold sm:text-lg">البث التلفزيوني السحابي</h1>
             <p className="text-[11px] text-muted-foreground">القنوات تُدار من هنا وتظهر تلقائياً عند جميع المشتركين</p>
           </div>
           <Link to="/admin" className="hidden sm:inline-flex items-center gap-1.5 rounded-xl glass-btn px-3 py-1.5 text-xs font-bold">
@@ -113,7 +113,7 @@ function AdminIptvPage() {
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-xl font-extrabold sm:text-2xl">قنوات IPTV السحابية</h2>
+            <h2 className="text-xl font-extrabold sm:text-2xl">قنوات البث التلفزيوني السحابي</h2>
             <p className="text-sm text-muted-foreground">{channels.length} قناة</p>
           </div>
           <div className="flex gap-2">
@@ -165,7 +165,7 @@ function AdminIptvPage() {
                     <button onClick={() => { setEditing(ch); setShowForm(true); }} className="rounded-lg glass-btn p-2"><Pencil className="h-4 w-4" /></button>
                     <ConfirmAction
                       className="rounded-lg glass-btn p-2 text-destructive"
-                      title="حذف قناة IPTV؟"
+                      title="حذف قناة بث؟"
                       message={`سيتم حذف "${ch.name}" من القنوات السحابية.`}
                       confirmText="حذف"
                       onConfirm={() => deleteMut.mutate(ch.id)}
@@ -271,7 +271,7 @@ function ChannelForm({ initial, isEdit, busy, onSave, onClose }: {
             <span className="text-sm font-bold">مفعّلة وظاهرة للمشتركين</span>
           </label>
           <label className="block sm:col-span-2">
-            <span className="mb-1 block text-xs font-bold text-muted-foreground">Headers مخصصة (JSON اختياري — مثل User-Agent و Referer)</span>
+            <span className="mb-1 block text-xs font-bold text-muted-foreground">ترويسات مخصصة بصيغة JSON اختيارية، مثل وكيل المستخدم أو المُحيل</span>
             <textarea value={headersText} onChange={(e) => setHeadersText(e.target.value)} rows={3} className="w-full rounded-xl border border-border bg-surface-1 px-3 py-2 text-xs font-mono" dir="ltr" />
           </label>
           <label className="block sm:col-span-2">

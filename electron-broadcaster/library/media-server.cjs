@@ -2,6 +2,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { Readable } = require('stream');
 const db = require('./db.cjs');
 const iptv = require('./iptv.cjs');
@@ -336,6 +337,114 @@ function listLibraryItems(query = {}) {
     kind: query.kind || '',
     limit: Math.min(2000, Math.max(1, Number(query.limit) || 800)),
   });
+}
+
+function uniqueByPath(rows) {
+  const seen = new Set();
+  return rows.filter((row) => {
+    const key = String(row.path || '');
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function storageRoots() {
+  const roots = [];
+  const add = (label, rootPath, type = 'folder') => {
+    try {
+      if (!rootPath || !fs.existsSync(rootPath)) return;
+      const st = fs.statSync(rootPath);
+      roots.push({ label, path: rootPath, type, readable: true, isDirectory: st.isDirectory() });
+    } catch {
+      roots.push({ label, path: rootPath, type, readable: false, isDirectory: true });
+    }
+  };
+  if (process.platform === 'win32') {
+    for (let code = 67; code <= 90; code += 1) {
+      const drive = String.fromCharCode(code) + ':\\';
+      add(drive, drive, 'drive');
+    }
+  } else {
+    add('الجهاز', '/', 'drive');
+    add('الأقراص الخارجية', '/Volumes', 'drive');
+  }
+  add('المجلد الشخصي', os.homedir(), 'home');
+  add('سطح المكتب', path.join(os.homedir(), 'Desktop'), 'folder');
+  add('التنزيلات', path.join(os.homedir(), 'Downloads'), 'folder');
+  return uniqueByPath(roots);
+}
+
+function browseStoragePath(rawPath) {
+  const requested = String(rawPath || '').trim();
+  const target = requested || os.homedir();
+  let stat;
+  try {
+    stat = fs.statSync(target);
+    if (!stat.isDirectory()) {
+      return { ok: false, path: target, message: 'المسار المحدد ليس مجلداً. اختر مجلداً يحتوي على ملفات الوسائط.' };
+    }
+  } catch {
+    return { ok: false, path: target, message: 'لا يمكن فتح هذا المسار. تأكد أن القرص متصل وأن الصلاحيات متاحة.' };
+  }
+  let rows = [];
+  try {
+    rows = fs.readdirSync(target, { withFileTypes: true }).slice(0, 500).map((entry) => {
+      const fullPath = path.join(target, entry.name);
+      let childStat = null;
+      try { childStat = fs.statSync(fullPath); } catch {}
+      return {
+        name: entry.name,
+        path: fullPath,
+        type: entry.isDirectory() ? 'folder' : 'file',
+        readable: !!childStat,
+        size: childStat?.size || 0,
+        modifiedAt: childStat?.mtimeMs || 0,
+      };
+    }).sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name, undefined, { numeric: true }) : a.type === 'folder' ? -1 : 1));
+  } catch {
+    return { ok: false, path: target, message: 'لا توجد صلاحية لقراءة هذا المجلد.' };
+  }
+  return {
+    ok: true,
+    path: target,
+    parent: path.dirname(target) !== target ? path.dirname(target) : '',
+    entries: rows,
+    folders: rows.filter((entry) => entry.type === 'folder').length,
+    files: rows.filter((entry) => entry.type === 'file').length,
+  };
+}
+
+function validateLibraryPath(rawPath) {
+  const target = String(rawPath || '').trim();
+  if (!target) return { ok: false, message: 'اختر مجلداً أولاً.' };
+  try {
+    const stat = fs.statSync(target);
+    if (!stat.isDirectory()) return { ok: false, message: 'هذا المسار ليس مجلداً.' };
+    fs.accessSync(target, fs.constants.R_OK);
+    const preview = browseStoragePath(target);
+    return {
+      ok: true,
+      path: target,
+      message: 'المجلد جاهز للإضافة.',
+      folders: preview.folders || 0,
+      files: preview.files || 0,
+    };
+  } catch {
+    return { ok: false, path: target, message: 'لا يمكن قراءة هذا المجلد. تحقق من توصيل القرص أو صلاحيات الوصول.' };
+  }
+}
+
+function libraryPathStatus(row) {
+  const result = validateLibraryPath(row.path);
+  const items = db.listMedia({ limit: 100000 }).filter((item) => String(item.path || '').startsWith(String(row.path || '')));
+  return {
+    ...row,
+    status: result.ok ? 'connected' : 'disconnected',
+    message: result.message,
+    fileCount: items.length,
+    lastScanAt: items.reduce((max, item) => Math.max(max, Number(item.scanned_at || 0)), 0),
+  };
 }
 
 function librarySections(items = listLibraryItems({ limit: 5000 })) {
@@ -685,8 +794,20 @@ function adminPage(options = {}) {
         <button data-delete-media="${item.id}">إزالة</button>
       </td>
     </tr>`).join('');
-  const pathRows = libraryPaths.map((p) => `
-    <tr><td class="url">${escapeHtml(p.path)}</td><td>${escapeHtml(mediaKindLabel(p.kind))}</td><td>${p.locked ? 'مثبت' : `<button data-path-del="${p.id}">إزالة</button>`}</td></tr>`).join('');
+  const pathRows = libraryPaths.map((p) => {
+    const status = libraryPathStatus(p);
+    const statusLabel = status.status === 'connected' ? 'متصل' : 'غير متصل';
+    const scanLabel = status.lastScanAt ? new Date(status.lastScanAt).toLocaleString() : 'لم يتم الفحص بعد';
+    return `
+    <tr>
+      <td class="url">${escapeHtml(p.path)}</td>
+      <td>${escapeHtml(mediaKindLabel(p.kind))}</td>
+      <td><span class="status-dot ${status.status === 'connected' ? 'ok' : 'bad'}"></span>${statusLabel}<br><span class="muted">${escapeHtml(status.message)}</span></td>
+      <td>${Number(status.fileCount || 0)}</td>
+      <td>${escapeHtml(scanLabel)}</td>
+      <td>${p.locked ? 'مثبت' : `<button data-path-del="${p.id}">إزالة من WIVA</button>`}<button data-browse-path="${escapeHtml(p.path)}" type="button" class="secondary">استعراض</button></td>
+    </tr>`;
+  }).join('');
   const mediaPayload = jsonForScript(mediaItems.map((item) => ({
     id: item.id,
     title: item.title || '',
@@ -726,9 +847,10 @@ table{width:100%;border-collapse:separate;border-spacing:0;margin-top:10px;font-
 thead th{position:sticky;top:0;background:rgba(15,23,42,.96);color:#dbeafe;font-size:11px;text-transform:none;z-index:1}td,th{border-bottom:1px solid rgba(255,255,255,.075);padding:10px;text-align:right;vertical-align:top}tbody tr:hover{background:rgba(255,255,255,.035)}tbody tr:last-child td{border-bottom:0}
 a{color:#93c5fd}.url{word-break:break-all;color:#bfdbfe;direction:ltr;text-align:left}.msg{color:#86efac;font-size:13px;margin-top:8px}.muted{color:var(--muted);font-size:12px;line-height:1.7}
 .statcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:10px 0 12px}.statcard{border:1px solid var(--line);background:rgba(0,0,0,.2);border-radius:var(--radius);padding:13px}.statcard b{display:block;font-size:24px;line-height:1.1}.statcard span{font-size:12px;color:var(--muted);font-weight:800}
-.table-wrap{width:100%;overflow:auto}.section-note{display:flex;gap:8px;align-items:center;color:#bfdbfe;background:rgba(37,99,235,.08);border:1px solid rgba(37,99,235,.22);border-radius:var(--radius);padding:10px 12px;margin:10px 0;font-size:12px;line-height:1.7}.pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:rgba(255,255,255,.055);border-radius:999px;padding:4px 8px;color:#dbeafe;font-size:11px;font-weight:900}
+	.table-wrap{width:100%;overflow:auto}.section-note{display:flex;gap:8px;align-items:center;color:#bfdbfe;background:rgba(37,99,235,.08);border:1px solid rgba(37,99,235,.22);border-radius:var(--radius);padding:10px 12px;margin:10px 0;font-size:12px;line-height:1.7}.pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:rgba(255,255,255,.055);border-radius:999px;padding:4px 8px;color:#dbeafe;font-size:11px;font-weight:900}
+	.wizard-card{border:1px solid rgba(248,197,28,.24);background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.028));border-radius:var(--radius2);padding:16px;margin:10px 0 14px}.wizard-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}.wizard-head h3{margin:0 0 4px}.wizard-head p{margin:0;color:var(--muted);font-size:12px;line-height:1.7}.wizard-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.source-preview,.folder-preview{border:1px solid rgba(148,163,184,.18);background:rgba(0,0,0,.22);border-radius:var(--radius);padding:11px 12px;margin-top:10px;color:#dbeafe;font-size:12px;line-height:1.7}.advanced{border:1px solid rgba(148,163,184,.16);border-radius:var(--radius);padding:10px 12px;background:rgba(0,0,0,.18);margin-top:10px}.advanced summary{cursor:pointer;color:#fde68a;font-weight:900}.folder-browser{display:grid;grid-template-columns:260px minmax(0,1fr);gap:12px;margin-top:12px}.browser-pane{border:1px solid rgba(148,163,184,.16);background:rgba(0,0,0,.18);border-radius:var(--radius);padding:10px;min-height:260px}.browser-list{display:grid;gap:6px;max-height:330px;overflow:auto}.browser-item{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;text-align:start;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.08);border-radius:10px;color:#fff;padding:9px 10px}.browser-item small{color:var(--muted);direction:ltr}.browser-path{direction:ltr;text-align:left;color:#bfdbfe;word-break:break-all;margin:0 0 8px;font-size:12px}.status-dot{display:inline-block;width:8px;height:8px;border-radius:999px;margin-left:6px}.status-dot.ok{background:var(--good);box-shadow:0 0 0 4px rgba(34,197,94,.12)}.status-dot.bad{background:var(--danger);box-shadow:0 0 0 4px rgba(239,68,68,.12)}
 .modal-host{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:rgba(3,7,18,.72);padding:18px;backdrop-filter:blur(14px)}.modal-host[hidden]{display:none}.modal-card{width:min(520px,100%);border:1px solid var(--line);background:#101827;border-radius:var(--radius2);box-shadow:0 28px 90px rgba(0,0,0,.5);padding:18px}.modal-card h3{margin:0 0 8px;font-size:18px}.modal-card p{color:#cbd5e1;line-height:1.75;margin:0 0 14px}.modal-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}.modal-danger{background:#dc2626}.modal-fields{display:grid;gap:10px;margin:12px 0}.modal-fields textarea{min-height:100px;direction:rtl;text-align:right;font-family:inherit}
-@media (max-width:980px){.grid{grid-template-columns:1fr}.shell-head{align-items:flex-start;flex-direction:column}.head-actions{justify-content:flex-start}table{display:block;overflow:auto}.admin-nav{position:static}}
+	@media (max-width:980px){.grid{grid-template-columns:1fr}.shell-head{align-items:flex-start;flex-direction:column}.head-actions{justify-content:flex-start}table{display:block;overflow:auto}.admin-nav{position:static}.folder-browser{grid-template-columns:1fr}}
 @media (max-width:720px){main{padding:14px}.statcards{grid-template-columns:1fr 1fr}.head-actions a,.admin-nav a{flex:1;text-align:center}.shell-head h1{font-size:24px}}
 </style>
 </head>
@@ -770,20 +892,34 @@ a{color:#93c5fd}.url{word-break:break-all;color:#bfdbfe;direction:ltr;text-align
 </section>
 <section id="broadcast">
   <h2>قنوات البث وأجهزة الالتقاط</h2>
-  <p class="tabs-note">أضف قنوات البث من الشاشة، النافذة، USB/HDMI أو رابط مباشر بدون تعديل JSON.</p>
-  <form id="broadcastForm" class="mini-form">
-    <div class="admin-tools">
+  <p class="tabs-note">أضف قناة بخطوات واضحة: اختر المصدر، افحصه، اضبط الجودة، ثم احفظ. الإدخال اليدوي موجود فقط في الخيارات المتقدمة.</p>
+  <form id="broadcastForm" class="wizard-card">
+    <div class="wizard-head">
+      <div><h3>إضافة قناة جديدة</h3><p>WIVA يحاول قراءة الشاشات والنوافذ وأجهزة الالتقاط المتاحة. إذا لم يظهر جهازك، استخدم إعادة الفحص أو الإدخال المتقدم.</p></div>
+      <div class="wizard-actions"><button type="button" class="secondary" id="refreshCaptureSources">إعادة فحص الأجهزة</button><button type="button" id="testCaptureSource">اختبار المصدر</button></div>
+    </div>
+    <div class="form-grid">
       <label>اسم القناة<input name="name" required placeholder="القناة الرئيسية"></label>
-      <label>نوع المصدر<select name="sourceType"><option value="screen">شاشة</option><option value="window">نافذة</option><option value="device">USB / HDMI</option><option value="url">رابط</option></select></label>
-      <label>معرف الجهاز أو الرابط<input name="sourceId" placeholder="اتركه فارغاً للشاشة الافتراضية"></label>
-      <label>معرف الصوت<input name="audioDeviceId" value="none" placeholder="none"></label>
-      <label>الدقة<input name="resolution" value="1280x720"></label>
+      <label>نوع المصدر<select name="sourceType" id="sourceType"><option value="screen">شاشة</option><option value="window">نافذة</option><option value="device">USB / HDMI</option><option value="url">رابط مباشر</option></select></label>
+      <label id="sourcePickerLabel">المصدر المتاح<select id="sourcePicker"></select></label>
+      <label id="sourceUrlLabel" hidden>رابط المصدر<input id="sourceUrl" placeholder="https://... أو rtsp://..."></label>
+      <input name="sourceId" id="sourceId" type="hidden">
+      <label>مصدر الصوت<select name="audioDeviceId" id="audioPicker"><option value="none">بدون صوت منفصل</option></select></label>
+      <label>الدقة<select name="resolution"><option value="854x480">480p خفيف</option><option value="1280x720" selected>720p متوازن</option><option value="1920x1080">1080p واضح</option></select></label>
       <label>FPS<input name="fps" type="number" min="1" max="120" value="30"></label>
       <label>Bitrate Kbps<input name="bitrateKbps" type="number" min="250" step="250" value="2500"></label>
       <label class="check"><input name="autoStart" type="checkbox" checked> تشغيل تلقائي</label>
       <label class="check"><input name="enabled" type="checkbox" checked> مفعل</label>
-      <div><button>إضافة القناة</button></div>
     </div>
+    <div class="source-preview" id="sourcePreview">جاري قراءة المصادر المتاحة...</div>
+    <details class="advanced">
+      <summary>إدخال متقدم</summary>
+      <div class="form-grid">
+        <label>معرف مصدر يدوي<input id="manualSourceId" placeholder="اتركه فارغاً للشاشة الافتراضية"></label>
+        <label>معرف صوت يدوي<input id="manualAudioId" placeholder="none"></label>
+      </div>
+    </details>
+    <div class="wizard-actions"><button>حفظ القناة</button></div>
   </form>
   <textarea id="broadcastJson" hidden>${broadcastJson}</textarea>
   <div class="table-wrap"><table><thead><tr><th>الاسم</th><th>المصدر</th><th>معرف المصدر</th><th>الصوت</th><th>الدقة</th><th>FPS</th><th>Bitrate</th><th>الحالة</th><th>الإجراء</th></tr></thead><tbody id="broadcastRows">${broadcastRows || '<tr><td colspan="9">لا توجد قنوات بث محفوظة.</td></tr>'}</tbody></table></div>
@@ -803,12 +939,35 @@ a{color:#93c5fd}.url{word-break:break-all;color:#bfdbfe;direction:ltr;text-align
     <div class="statcard"><b>${health.missingFiles.length + health.unsupportedFormats.length + health.brokenSubtitles.length}</b><span>تنبيهات تحتاج مراجعة</span></div>
   </div>
   <h3>المجلدات والفحص</h3>
-  <form id="pathForm">
-    <label>مسار المجلد على هذا الجهاز</label><input name="path" required placeholder="C:\\Media\\Movies أو /Users/name/Movies">
-    <label>النوع</label><select name="kind"><option value="movies">أفلام</option><option value="tv">مسلسلات / حلقات</option><option value="audio">صوتيات</option></select>
-    <button>إضافة المجلد</button><button type="button" id="scanNowBtn">فحص الآن</button>
+  <form id="pathForm" class="wizard-card">
+    <div class="wizard-head">
+      <div><h3>إضافة مجلد أو هارد</h3><p>اختر القرص ثم المجلد كما في متصفح الملفات. بعد الاختيار تستطيع المعاينة والإضافة بدون كتابة المسار يدوياً.</p></div>
+      <div class="wizard-actions"><button type="button" class="secondary" id="refreshStorageRoots">إعادة فحص الأقراص</button><button type="button" id="scanNowBtn">فحص الآن</button></div>
+    </div>
+    <div class="form-grid">
+      <label>المجلد المختار<input name="path" id="selectedLibraryPath" required readonly placeholder="اختر مجلداً من المتصفح أدناه"></label>
+      <label>النوع<select name="kind"><option value="movies">أفلام</option><option value="tv">مسلسلات / حلقات</option><option value="audio">صوتيات</option></select></label>
+    </div>
+    <div class="folder-browser">
+      <div class="browser-pane">
+        <strong>الأقراص والمواقع</strong>
+        <div class="browser-list" id="storageRoots"></div>
+      </div>
+      <div class="browser-pane">
+        <p class="browser-path" id="currentBrowsePath">اختر قرصاً أو مجلداً للبدء.</p>
+        <div class="wizard-actions"><button type="button" class="secondary" id="browseParent" disabled>رجوع للمجلد السابق</button><button type="button" id="chooseCurrentFolder" disabled>اختيار هذا المجلد</button></div>
+        <div class="browser-list" id="storageEntries"></div>
+      </div>
+    </div>
+    <div class="folder-preview" id="folderPreview">لم يتم اختيار مجلد بعد.</div>
+    <details class="advanced">
+      <summary>كتابة مسار يدوي متقدم</summary>
+      <label>مسار يدوي<input id="manualLibraryPath" placeholder="C:\\Media\\Movies أو /Users/name/Movies"></label>
+      <button type="button" class="secondary" id="useManualLibraryPath">استخدام هذا المسار</button>
+    </details>
+    <div class="wizard-actions"><button>إضافة المجلد</button></div>
   </form>
-  <div class="table-wrap"><table><thead><tr><th>المسار</th><th>النوع</th><th>الإجراء</th></tr></thead><tbody>${pathRows || '<tr><td colspan="3">لم تتم إضافة أي مجلدات بعد.</td></tr>'}</tbody></table></div>
+  <div class="table-wrap"><table><thead><tr><th>المسار</th><th>النوع</th><th>الحالة</th><th>العناصر</th><th>آخر فحص</th><th>الإجراء</th></tr></thead><tbody>${pathRows || '<tr><td colspan="6">لم تتم إضافة أي مجلدات بعد.</td></tr>'}</tbody></table></div>
   <h3>التخصيص</h3>
   <form id="themeForm" class="grid">
     <label>اسم الواجهة<input name="brandName" value="${escapeHtml(mediaTheme.brandName)}"></label>
@@ -880,8 +1039,11 @@ const msg = document.getElementById('msg');
 const modalHost = document.getElementById('modalHost');
 async function api(path, opts) {
   const r = await fetch(path, opts);
-  if (!r.ok) throw new Error(await r.text());
-  return r.json();
+  const text = await r.text();
+  let body = {};
+  try { body = text ? JSON.parse(text) : {}; } catch { body = { message: text }; }
+  if (!r.ok) throw new Error(body.message || body.error || text || 'تعذر تنفيذ الطلب');
+  return body;
 }
 function closeModal(){ modalHost.hidden = true; modalHost.innerHTML = ''; }
 function confirmAction({ title, body, okText = 'تأكيد', danger = false }){
@@ -915,6 +1077,109 @@ function parseJsonSafe(text) {
   if (!String(text || '').trim()) return {};
   try { return JSON.parse(text); } catch { return {}; }
 }
+let captureSources = { screens: [], windows: [], videoDevices: [], audioDevices: [] };
+function sourceRowsFor(type) {
+  if (type === 'screen') return captureSources.screens || [];
+  if (type === 'window') return captureSources.windows || [];
+  if (type === 'device') return captureSources.videoDevices || [];
+  return [];
+}
+function syncSourceControls() {
+  const type = document.getElementById('sourceType').value;
+  const picker = document.getElementById('sourcePicker');
+  const pickerLabel = document.getElementById('sourcePickerLabel');
+  const urlLabel = document.getElementById('sourceUrlLabel');
+  const sourceId = document.getElementById('sourceId');
+  const manualSource = document.getElementById('manualSourceId').value.trim();
+  const manualAudio = document.getElementById('manualAudioId').value.trim();
+  pickerLabel.hidden = type === 'url';
+  urlLabel.hidden = type !== 'url';
+  if (type === 'url') {
+    sourceId.value = manualSource || document.getElementById('sourceUrl').value.trim();
+  } else {
+    const rows = sourceRowsFor(type);
+    picker.innerHTML = rows.length
+      ? rows.map((row) => '<option value="'+escapeHtmlClient(row.id || '')+'">'+escapeHtmlClient(row.name || row.id || '')+'</option>').join('')
+      : '<option value="">'+(type === 'device' ? 'لم يتم العثور على جهاز USB/HDMI' : 'استخدم المصدر الافتراضي')+'</option>';
+    sourceId.value = manualSource || picker.value || '';
+  }
+  if (manualAudio) document.getElementById('audioPicker').value = manualAudio;
+}
+async function loadCaptureSources() {
+  const preview = document.getElementById('sourcePreview');
+  preview.textContent = 'جاري قراءة المصادر المتاحة...';
+  try {
+    captureSources = await api('/api/admin/capture-sources');
+    const audio = captureSources.audioDevices || [];
+    document.getElementById('audioPicker').innerHTML = '<option value="none">بدون صوت منفصل</option>' + audio.map((row) => '<option value="'+escapeHtmlClient(row.id || '')+'">'+escapeHtmlClient(row.name || row.id || '')+'</option>').join('');
+    syncSourceControls();
+    const total = (captureSources.screens || []).length + (captureSources.windows || []).length + (captureSources.videoDevices || []).length;
+    preview.textContent = total ? 'تم العثور على ' + total + ' مصدر. اختر المصدر ثم اضغط اختبار المصدر قبل الحفظ.' : 'لم تظهر مصادر تلقائية. يمكنك استخدام الشاشة الافتراضية أو الإدخال المتقدم.';
+  } catch (e) {
+    preview.textContent = 'تعذر قراءة الأجهزة الآن. استخدم الإدخال المتقدم أو حاول إعادة الفحص.';
+  }
+}
+document.getElementById('sourceType').addEventListener('change', syncSourceControls);
+document.getElementById('sourcePicker').addEventListener('change', syncSourceControls);
+document.getElementById('sourceUrl').addEventListener('input', syncSourceControls);
+document.getElementById('manualSourceId').addEventListener('input', syncSourceControls);
+document.getElementById('manualAudioId').addEventListener('input', syncSourceControls);
+document.getElementById('refreshCaptureSources').onclick = loadCaptureSources;
+document.getElementById('testCaptureSource').onclick = () => {
+  syncSourceControls();
+  const type = document.getElementById('sourceType').value;
+  const id = document.getElementById('sourceId').value;
+  const label = type === 'url' ? 'الرابط' : (document.getElementById('sourcePicker').selectedOptions[0]?.textContent || 'المصدر الافتراضي');
+  document.getElementById('sourcePreview').textContent = id || type === 'screen'
+    ? 'المصدر جاهز للحفظ: ' + label + '.'
+    : 'اختر مصدراً واضحاً أو اكتب المعرف يدوياً من الخيارات المتقدمة.';
+};
+let currentBrowse = { path: '', parent: '' };
+function renderRoots(rows) {
+  document.getElementById('storageRoots').innerHTML = rows.length ? rows.map((row) => '<button class="browser-item" type="button" data-root-path="'+escapeHtmlClient(row.path)+'"><span>'+escapeHtmlClient(row.label || row.path)+'</span><small>'+escapeHtmlClient(row.path)+'</small></button>').join('') : '<div class="muted">لم تظهر أقراص قابلة للقراءة.</div>';
+  document.querySelectorAll('[data-root-path]').forEach((btn) => btn.onclick = () => browsePath(btn.dataset.rootPath));
+}
+function renderEntries(data) {
+  currentBrowse = { path: data.path || '', parent: data.parent || '' };
+  document.getElementById('currentBrowsePath').textContent = data.path || '';
+  document.getElementById('browseParent').disabled = !data.parent;
+  document.getElementById('chooseCurrentFolder').disabled = !data.path || !data.ok;
+  document.getElementById('storageEntries').innerHTML = data.ok
+    ? (data.entries || []).map((entry) => '<button class="browser-item" type="button" '+(entry.type === 'folder' ? 'data-folder-path="'+escapeHtmlClient(entry.path)+'"' : 'disabled')+'><span>'+(entry.type === 'folder' ? 'مجلد ' : 'ملف ') + escapeHtmlClient(entry.name)+'</span><small>'+escapeHtmlClient(entry.type === 'folder' ? 'مجلد' : '')+'</small></button>').join('') || '<div class="muted">هذا المجلد فارغ.</div>'
+    : '<div class="muted">'+escapeHtmlClient(data.message || 'تعذر فتح المجلد.')+'</div>';
+  document.querySelectorAll('[data-folder-path]').forEach((btn) => btn.onclick = () => browsePath(btn.dataset.folderPath));
+}
+async function browsePath(target) {
+  const data = await api('/api/admin/storage/browse?path=' + encodeURIComponent(target || ''));
+  renderEntries(data);
+}
+async function validateSelectedPath(target) {
+  const data = await api('/api/admin/storage/validate?path=' + encodeURIComponent(target || ''));
+  document.getElementById('folderPreview').textContent = data.ok
+    ? data.message + ' يحتوي الآن على ' + data.files + ' ملف و ' + data.folders + ' مجلد.'
+    : data.message;
+  return data.ok;
+}
+async function chooseLibraryPath(target) {
+  document.getElementById('selectedLibraryPath').value = target || '';
+  await validateSelectedPath(target);
+}
+async function loadStorageRoots() {
+  document.getElementById('storageRoots').innerHTML = '<div class="muted">جاري فحص الأقراص...</div>';
+  const data = await api('/api/admin/storage/roots');
+  renderRoots(data.roots || []);
+}
+document.getElementById('refreshStorageRoots').onclick = loadStorageRoots;
+document.getElementById('browseParent').onclick = () => currentBrowse.parent && browsePath(currentBrowse.parent);
+document.getElementById('chooseCurrentFolder').onclick = () => chooseLibraryPath(currentBrowse.path);
+document.getElementById('useManualLibraryPath').onclick = () => chooseLibraryPath(document.getElementById('manualLibraryPath').value.trim());
+document.querySelectorAll('[data-browse-path]').forEach((btn) => btn.onclick = async () => {
+  await browsePath(btn.dataset.browsePath);
+  await chooseLibraryPath(btn.dataset.browsePath);
+  document.getElementById('pathForm').scrollIntoView({ behavior:'smooth', block:'start' });
+});
+loadCaptureSources();
+loadStorageRoots();
 document.getElementById('iptvForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const data = Object.fromEntries(new FormData(e.target).entries());
@@ -961,7 +1226,12 @@ function formDataFromContainer(container){
   return data;
 }
 function channelFromForm(form, id){
+  if (form instanceof HTMLFormElement && form.id === 'broadcastForm') syncSourceControls();
   const data = form instanceof HTMLFormElement ? Object.fromEntries(new FormData(form).entries()) : formDataFromContainer(form);
+  if (form instanceof HTMLFormElement && form.id === 'broadcastForm') {
+    const manualAudio = document.getElementById('manualAudioId').value.trim();
+    if (manualAudio) data.audioDeviceId = manualAudio;
+  }
   const sourceType = data.sourceType || 'screen';
   const sourceId = String(data.sourceId || '').trim();
   return {
@@ -1017,8 +1287,13 @@ document.getElementById('iptvPolicyForm').addEventListener('submit', async (e) =
 });
 document.getElementById('pathForm').addEventListener('submit', async (e) => {
   e.preventDefault();
-  await api('/api/admin/library-paths', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(Object.fromEntries(new FormData(e.target).entries())) });
-  location.reload();
+  try {
+    await api('/api/admin/library-paths', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(Object.fromEntries(new FormData(e.target).entries())) });
+    location.reload();
+  } catch (err) {
+    msg.textContent = String(err.message || '') || 'تعذر إضافة المجلد. تأكد أن القرص متصل وأن المجلد قابل للقراءة.';
+    document.getElementById('folderPreview').textContent = msg.textContent;
+  }
 });
 document.querySelectorAll('[data-path-del]').forEach((b) => b.onclick = async () => {
   await api('/api/admin/library-paths/' + b.dataset.pathDel, { method:'DELETE' });
@@ -1104,6 +1379,7 @@ function libraryPage(req, res) {
     file: path.basename(item.path || ''),
     section: item.section || '',
     folder: item.folder || '',
+    folderSegments: String(item.folder || item.section || '').split(/[\\/]+/).filter(Boolean),
   })));
   const viewerPayload = jsonForScript({
     id: viewer.id,
@@ -1179,6 +1455,11 @@ function libraryPage(req, res) {
     close: 'إغلاق',
     accountSaved: 'تم الحفظ.',
     accountError: 'تعذر تنفيذ الطلب. تأكد من البيانات وحاول مرة أخرى.',
+    folderTreeTitle: 'تصفح الملفات والمجلدات',
+    folderTreeHint: 'نفس ترتيب الهارد: مجلدات، ثم ملفات داخل كل مجلد',
+    folderRoot: 'الرئيسية',
+    openFolder: 'فتح المجلد',
+    files: 'ملفات',
   } : {
     pageTitle: 'WIVA Media Library',
     channels: 'Channels',
@@ -1244,6 +1525,11 @@ function libraryPage(req, res) {
     close: 'Close',
     accountSaved: 'Saved.',
     accountError: 'Could not complete the request. Check the details and try again.',
+    folderTreeTitle: 'Browse files and folders',
+    folderTreeHint: 'The same drive structure: folders first, then files inside each folder',
+    folderRoot: 'Home',
+    openFolder: 'Open folder',
+    files: 'Files',
   };
   const textPayload = jsonForScript(text);
   return `<!doctype html>
@@ -1268,6 +1554,7 @@ input,select{width:100%;border:1px solid var(--line2);background:#0b1220;color:#
 .section{margin:34px 0}.section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:14px}.section h2{font-size:clamp(20px,3vw,28px);margin:0;letter-spacing:0}.section small{color:var(--muted)}.section-line{height:1px;flex:1;background:linear-gradient(90deg,rgba(148,163,184,.35),transparent);margin:0 10px 8px}
 .rail{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(176px,214px);gap:14px;overflow-x:auto;overscroll-behavior-x:contain;padding:2px 2px 12px;scrollbar-width:thin}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:16px}.grid.compact{grid-template-columns:1fr}
 .section-card{position:relative;overflow:hidden;border:1px solid var(--line);background:linear-gradient(160deg,rgba(17,24,39,.9),rgba(15,23,42,.58));border-radius:var(--radius2);padding:15px;text-align:start;color:#fff;min-height:150px;transition:transform .18s,border-color .18s,box-shadow .18s}.section-card.has-cover{background-image:linear-gradient(180deg,rgba(7,9,15,.26),rgba(7,9,15,.9)),var(--folder-cover);background-size:cover;background-position:center}.section-card::before{content:"";position:absolute;inset:auto -20% -42% -20%;height:90px;background:radial-gradient(circle,rgba(20,184,166,.2),transparent 62%)}.section-card:hover{transform:translateY(-4px);border-color:rgba(20,184,166,.5);box-shadow:0 18px 42px rgba(0,0,0,.28)}.section-main{width:100%;border:0;background:transparent;color:#fff;text-align:start;padding:0;font:inherit;cursor:pointer;position:relative;z-index:1}.section-main strong{display:block;font-size:16px}.section-main span{display:block;color:#dbeafe;font-size:12px;margin-top:5px}.folder-row{display:flex;gap:7px;flex-wrap:wrap;margin-top:13px;position:relative;z-index:1}.folder-row button{border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.34);color:#dbeafe;border-radius:999px;padding:6px 9px;font:inherit;font-size:11px;font-weight:900;cursor:pointer;backdrop-filter:blur(8px)}
+.folder-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}.breadcrumb{display:flex;gap:7px;flex-wrap:wrap}.breadcrumb button{border:1px solid var(--line);background:rgba(255,255,255,.06);color:#e5edff;border-radius:999px;padding:7px 10px;font:inherit;font-size:12px;font-weight:900;cursor:pointer}.folder-tree-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}.folder-card{border:1px solid var(--line);background:linear-gradient(150deg,rgba(17,24,39,.94),rgba(15,23,42,.66));border-radius:var(--radius2);min-height:124px;padding:14px;text-align:start;color:#fff;cursor:pointer;transition:transform .18s,border-color .18s}.folder-card:hover{transform:translateY(-3px);border-color:rgba(248,197,28,.5)}.folder-card b{display:block;font-size:15px;margin-bottom:7px}.folder-card span{color:var(--muted);font-size:12px}.folder-card.file{cursor:default}.folder-card.file a{display:inline-flex;margin-top:10px;color:#fde68a;text-decoration:none;font-weight:950}
 .tile{position:relative;display:block;min-width:0;text-decoration:none;color:#fff;background:rgba(17,24,39,.78);border:1px solid var(--line);border-radius:var(--radius2);overflow:hidden;transition:transform .18s,border-color .18s,background .18s,box-shadow .18s;outline:none;box-shadow:0 12px 34px rgba(0,0,0,.2)}.tile:hover,.tile:focus-visible{transform:translateY(-5px);border-color:rgba(20,184,166,.58);background:rgba(17,24,39,.96);box-shadow:0 22px 52px rgba(0,0,0,.34)}
 .poster{aspect-ratio:2/3;background:#1f2937 center/cover no-repeat;display:grid;place-items:center;color:rgba(255,255,255,.38);font-size:40px;font-weight:900;position:relative;overflow:hidden}.poster::after{content:"";position:absolute;inset:auto 0 0 0;height:48%;background:linear-gradient(180deg,transparent,rgba(0,0,0,.86))}.poster.audio{aspect-ratio:1;background:linear-gradient(135deg,#1f2937,#0f3d42)}.kind-badge{position:absolute;bottom:9px;left:9px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.62);backdrop-filter:blur(8px);border-radius:999px;padding:5px 8px;font-size:10px;font-weight:950;color:#e5e7eb;z-index:1}.status-badges{position:absolute;top:9px;left:9px;display:flex;gap:5px;flex-wrap:wrap;z-index:2}.status-badge{border:1px solid rgba(255,255,255,.18);background:rgba(20,184,166,.86);color:#042f2e;border-radius:999px;padding:4px 7px;font-size:10px;font-weight:950}.status-badge.progressed{background:rgba(37,99,235,.88);color:#eff6ff}.meta{padding:11px 12px 13px}.title{font-size:13px;font-weight:950;line-height:1.35;min-height:36px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.sub{font-size:11px;color:var(--muted);margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.overview{display:none;color:#cbd5e1;font-size:12px;line-height:1.55;margin-top:8px}
 .progress{height:4px;background:rgba(255,255,255,.12)}.progress i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2))}.quick{position:absolute;top:9px;right:9px;display:flex;gap:6px;z-index:2;opacity:0;transform:translateY(-4px);transition:.18s}.tile:hover .quick,.tile:focus-within .quick{opacity:1;transform:none}.quick button{width:34px;height:34px;border:1px solid rgba(255,255,255,.18);background:rgba(0,0,0,.58);color:#fff;border-radius:999px;cursor:pointer;font-weight:950;backdrop-filter:blur(8px)}.quick button.on{background:rgba(239,68,68,.92)}
@@ -1345,6 +1632,7 @@ input,select{width:100%;border:1px solid var(--line2);background:#0b1220;color:#
     </div>
     <div class="account-status" id="accountStatus"></div>
   </section>
+  <section class="section" id="folderTreeSection"><div class="section-head"><div><h2>${escapeHtml(text.folderTreeTitle)}</h2><small>${escapeHtml(text.folderTreeHint)}</small></div><i class="section-line"></i></div><div class="folder-toolbar"><div class="breadcrumb" id="folderBreadcrumb"></div><button class="chip-btn" type="button" id="resetFolderTree">${escapeHtml(text.folderRoot)}</button></div><div class="folder-tree-grid" id="folderTreeGrid"></div></section>
   <section class="section" id="sectionBrowser"><div class="section-head"><div><h2>${escapeHtml(text.folders)}</h2><small>${escapeHtml(text.folderHint)}</small></div><i class="section-line"></i></div><div class="rail" id="sectionRail"></div></section>
   <section class="section" id="continueSection"><div class="section-head"><div><h2>${escapeHtml(text.continue)}</h2><small>${escapeHtml(text.continueHint)}</small></div><i class="section-line"></i></div><div class="rail" id="continueRail"></div></section>
   <section class="section" id="favoritesSection"><div class="section-head"><div><h2>${escapeHtml(text.favorites)}</h2><small>${escapeHtml(text.favoritesHint)}</small></div><i class="section-line"></i></div><div class="rail" id="favoritesRail"></div></section>
@@ -1424,6 +1712,40 @@ function card(item){
 }
 function renderList(el, list, emptyText){ el.innerHTML = list.length ? list.map(card).join('') : '<div class="empty">'+emptyText+'</div>'; bindQuick(el); }
 function bindQuick(root){ root.querySelectorAll('[data-fav],[data-watch]').forEach(btn=>btn.onclick=(e)=>{ e.preventDefault(); e.stopPropagation(); storage.toggle(btn.dataset.fav?'favorites':'watchLater', btn.dataset.fav || btn.dataset.watch); }); }
+let folderPath = [];
+function samePrefix(segments, prefix) {
+  return prefix.every((part, index) => segments[index] === part);
+}
+function folderItemsAt(prefix) {
+  const dirs = new Map();
+  const files = [];
+  for (const item of media) {
+    const segments = Array.isArray(item.folderSegments) ? item.folderSegments : [];
+    if (!samePrefix(segments, prefix)) continue;
+    if (segments.length > prefix.length) {
+      const name = segments[prefix.length];
+      const current = dirs.get(name) || { name, count: 0, cover: '' };
+      current.count += 1;
+      if (!current.cover) current.cover = item.poster || item.backdrop || '';
+      dirs.set(name, current);
+    } else {
+      files.push(item);
+    }
+  }
+  return { dirs: Array.from(dirs.values()).sort((a,b)=>a.name.localeCompare(b.name, undefined, { numeric:true })), files: sorted(files) };
+}
+function renderFolderTree() {
+  const grid = document.getElementById('folderTreeGrid');
+  const crumb = document.getElementById('folderBreadcrumb');
+  const tree = folderItemsAt(folderPath);
+  const crumbs = [{ label:text.folderRoot || 'Home', index:0 }].concat(folderPath.map((part, index) => ({ label:part, index:index + 1 })));
+  crumb.innerHTML = crumbs.map((row) => '<button type="button" data-crumb-index="'+row.index+'">'+esc(row.label)+'</button>').join('');
+  crumb.querySelectorAll('[data-crumb-index]').forEach((btn) => btn.onclick = () => { folderPath = folderPath.slice(0, Number(btn.dataset.crumbIndex)); renderFolderTree(); });
+  const folderCards = tree.dirs.map((dir) => '<button class="folder-card '+(dir.cover?'has-cover':'')+'" type="button" data-folder-open="'+esc(dir.name)+'" '+(dir.cover?'style="background-image:linear-gradient(180deg,rgba(7,9,15,.34),rgba(7,9,15,.92)),url(\\''+esc(dir.cover)+'\\');background-size:cover;background-position:center"':'')+'><b>'+esc(dir.name)+'</b><span>'+dir.count+' '+(text.items || '')+'</span></button>');
+  const fileCards = tree.files.map((item) => '<div class="folder-card file"><b>'+esc(item.title)+'</b><span>'+esc([kindLabel(item.kind), durationText(item.duration), bytes(item.size)].filter(Boolean).join(' · '))+'</span><a href="/player/'+item.id+'">'+esc(text.playNow || 'Play')+'</a></div>');
+  grid.innerHTML = folderCards.concat(fileCards).join('') || '<div class="empty">'+esc(text.empty || '')+'</div>';
+  grid.querySelectorAll('[data-folder-open]').forEach((btn) => btn.onclick = () => { folderPath = folderPath.concat(btn.dataset.folderOpen); renderFolderTree(); document.getElementById('folderTreeSection').scrollIntoView({ behavior:'smooth', block:'start' }); });
+}
 function sorted(list){
   const mode = document.getElementById('sort').value;
   return list.slice().sort((a,b)=>{
@@ -1497,6 +1819,7 @@ function render(){
   const recent = sorted(media).slice(0,18);
   document.getElementById('recentSection').classList.toggle('hide', !recent.length);
   renderList(document.getElementById('recentRail'), recent, text.empty || 'No media is available right now.');
+  renderFolderTree();
   updateHero();
   syncQuickFilters();
 }
@@ -1552,6 +1875,7 @@ document.querySelectorAll('[data-quick-view]').forEach(btn => btn.onclick = () =
   render();
   document.getElementById('grid').scrollIntoView({ behavior:'smooth', block:'start' });
 });
+document.getElementById('resetFolderTree').onclick = () => { folderPath = []; renderFolderTree(); };
 ['search','kind','view','sort','layout','sectionFilter'].forEach(id=>document.getElementById(id).addEventListener('input', render));
 syncAccountUi();
 render();
@@ -1955,6 +2279,35 @@ function createHandler(options = {}) {
         blockedMessage: db.blockedMessage(),
       });
     }
+    if (u.pathname === '/api/admin/capture-sources') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      try {
+        const sources = typeof options.listCaptureSources === 'function'
+          ? await options.listCaptureSources()
+          : {};
+        return sendJson(res, 200, {
+          screens: Array.isArray(sources.screens) ? sources.screens : [],
+          windows: Array.isArray(sources.windows) ? sources.windows : [],
+          videoDevices: Array.isArray(sources.videoDevices) ? sources.videoDevices : [],
+          audioDevices: Array.isArray(sources.audioDevices) ? sources.audioDevices : [],
+          message: sources.message || '',
+        });
+      } catch (e) {
+        return sendJson(res, 200, { screens: [], windows: [], videoDevices: [], audioDevices: [], message: e.message || 'تعذر قراءة الأجهزة.' });
+      }
+    }
+    if (u.pathname === '/api/admin/storage/roots') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      return sendJson(res, 200, { roots: storageRoots() });
+    }
+    if (u.pathname === '/api/admin/storage/browse') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      return sendJson(res, 200, browseStoragePath(u.query.path || ''));
+    }
+    if (u.pathname === '/api/admin/storage/validate') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      return sendJson(res, 200, validateLibraryPath(u.query.path || ''));
+    }
     if (u.pathname === '/api/admin/iptv' && req.method === 'POST') {
       if (!requireAdmin(req, res, options, adminBase)) return;
       try {
@@ -2086,7 +2439,8 @@ function createHandler(options = {}) {
       if (!requireAdmin(req, res, options, adminBase)) return;
       try {
         const body = await parseJsonBody(req);
-        if (!body.path) return sendJson(res, 400, { error: 'path is required' });
+        const validation = validateLibraryPath(body.path);
+        if (!validation.ok) return sendJson(res, 400, { error: 'invalid_path', message: validation.message });
         db.addPath(body.path, body.kind || 'movies', 0);
         return sendJson(res, 200, { paths: db.listPaths() });
       } catch (e) { return sendJson(res, 500, { error: e.message }); }

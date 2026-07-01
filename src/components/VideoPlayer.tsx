@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Play, Pause, Volume2, VolumeX, Maximize, Minimize,
-  PictureInPicture2, RotateCw, Settings, Radio, Keyboard,
+  PictureInPicture2, RotateCw, Settings, Radio, Keyboard, AlertTriangle, ArrowRight, Send,
 } from "lucide-react";
 import { useHlsPlayer } from "@/hooks/use-hls-player";
 import type { Channel } from "@/lib/channels";
@@ -90,13 +90,14 @@ export function VideoPlayer({ channel }: Props) {
   const isLoading = status === "connecting";
   const needsManual = status === "manual";
   const hasError = status === "error";
+  const friendlyStatus = isLoading ? "جاري الاتصال بالبث..." : statusMessage;
 
   return (
     <div
       ref={containerRef}
       onMouseMove={wakeControls}
       onTouchStart={wakeControls}
-      className="group relative w-full overflow-hidden rounded-3xl border border-white/10 bg-black shadow-elegant ring-1 ring-white/5"
+    className="group relative w-full overflow-hidden rounded-[2rem] border border-white/10 bg-black shadow-elegant ring-1 ring-white/5"
       style={{ aspectRatio: "16 / 9" }}
     >
       <video
@@ -106,52 +107,55 @@ export function VideoPlayer({ channel }: Props) {
         onClick={togglePlay}
       />
 
-      {/* LIVE badge */}
       {isPlaying && (
-        <div className="absolute right-4 top-4 flex items-center gap-2 rounded-full glass px-3 py-1.5">
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-live opacity-75"></span>
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-live"></span>
-          </span>
-          <span className="text-xs font-bold tracking-wider text-white">مباشر</span>
+        <div className="absolute right-4 top-4 flex items-center gap-2 rounded-full border border-live/30 bg-live/90 px-3 py-1.5 shadow-lg">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-white" />
+          <span className="text-xs font-black text-white">مباشر</span>
         </div>
       )}
 
-      {/* Channel name top-left */}
       <div className={cn(
-        "absolute left-4 top-4 rounded-xl glass px-3 py-1.5 transition-opacity",
+        "absolute left-4 top-4 rounded-2xl glass px-3 py-1.5 transition-opacity",
         showControls || !isPlaying ? "opacity-100" : "opacity-0"
       )}>
-        <p className="text-xs font-bold text-white">{channel.name}</p>
+        <p className="text-xs font-extrabold text-white">{channel.name}</p>
+        <p className="mt-0.5 text-[10px] text-white/60">تلفزيون ويفا</p>
       </div>
 
-      {/* Loading / Error / Manual overlay */}
       {(isLoading || hasError || needsManual) && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/50 backdrop-blur-md animate-fade-in">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/62 p-5 text-center backdrop-blur-md animate-fade-in">
           {isLoading && (
             <>
               <div className="relative flex h-16 w-16 items-center justify-center">
-                <div className="absolute inset-0 animate-spin rounded-full border-4 border-primary/30 border-t-primary-glow" />
-                <Radio className="h-6 w-6 text-primary-glow animate-pulse" />
+                <div className="absolute inset-0 animate-spin rounded-full border-4 border-primary/25 border-t-primary" />
+                <Radio className="h-6 w-6 animate-pulse text-primary" />
               </div>
-              <p className="text-sm text-white/80">{statusMessage}</p>
+              <p className="text-sm font-bold text-white/85">{friendlyStatus}</p>
             </>
           )}
           {hasError && (
             <>
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl glass-strong">
-                <Radio className="h-8 w-8 text-destructive" />
+              <div className="flex h-16 w-16 items-center justify-center rounded-3xl border border-destructive/30 bg-destructive/15">
+                <AlertTriangle className="h-8 w-8 text-destructive" />
               </div>
-              <div className="text-center">
-                <h3 className="text-xl font-extrabold text-white">البث غير متوفر</h3>
-                <p className="mt-1 text-sm text-white/70">{statusMessage}</p>
+              <div className="max-w-md text-center">
+                <h3 className="text-2xl font-black text-white">القناة غير متاحة حاليًا</h3>
+                <p className="mt-2 text-sm leading-7 text-white/70">
+                  تعذر على ويفا الاتصال بهذا البث. قد يكون المصدر متوقفًا، أو محظورًا، أو يستغرق وقتًا طويلًا للاستجابة.
+                </p>
+                {statusMessage && <details className="mt-3 text-xs text-white/55"><summary className="cursor-pointer text-primary">عرض التفاصيل التقنية</summary><p className="mt-2" dir="ltr">{statusMessage}</p></details>}
               </div>
-              <button
-                onClick={reload}
-                className="rounded-xl bg-gradient-primary px-6 py-2.5 text-sm font-bold text-primary-foreground shadow-glow transition hover:scale-[1.03] active:scale-100"
-              >
-                إعادة المحاولة
-              </button>
+              <div className="flex flex-wrap justify-center gap-2">
+                <button onClick={reload} className="btn-primary inline-flex min-h-11 items-center gap-2 rounded-2xl px-5">
+                  <RotateCw className="h-4 w-4" /> إعادة المحاولة
+                </button>
+                <button onClick={() => history.back()} className="btn-ghost inline-flex min-h-11 items-center gap-2 rounded-2xl px-5">
+                  <ArrowRight className="h-4 w-4" /> اختيار قناة أخرى
+                </button>
+                <button className="btn-ghost inline-flex min-h-11 items-center gap-2 rounded-2xl px-5" type="button">
+                  <Send className="h-4 w-4" /> إبلاغ المدير
+                </button>
+              </div>
             </>
           )}
           {needsManual && (
@@ -162,7 +166,7 @@ export function VideoPlayer({ channel }: Props) {
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/25 ring-1 ring-white/40">
                 <Play className="h-4 w-4" fill="currentColor" />
               </span>
-              تشغيل البث
+              شاهد الآن
             </button>
           )}
         </div>
@@ -210,7 +214,7 @@ export function VideoPlayer({ channel }: Props) {
           <button
             onClick={reload}
             className="glass-btn rounded-full p-2.5 text-white"
-            aria-label="إعادة تحميل"
+            aria-label="إعادة الاتصال"
           >
             <RotateCw className="h-5 w-5" />
           </button>
@@ -263,7 +267,7 @@ export function VideoPlayer({ channel }: Props) {
               onClick={requestPiP}
               className="hidden sm:inline-flex glass-btn rounded-full p-2.5 text-white"
               aria-label="صورة داخل صورة"
-              title="PiP"
+              title="صورة داخل صورة"
             >
               <PictureInPicture2 className="h-5 w-5" />
             </button>
@@ -283,9 +287,9 @@ export function VideoPlayer({ channel }: Props) {
       {/* Keyboard shortcuts help */}
       {showHelp && (
         <div className="absolute bottom-20 left-4 z-10 w-56 rounded-2xl glass-strong p-4 text-xs text-white/90 animate-scale-in shadow-elegant">
-          <p className="mb-2 font-bold text-white">اختصارات</p>
+          <p className="mb-2 font-bold text-white">اختصارات المشغل</p>
           <ul className="space-y-1.5 font-num">
-            <li className="flex justify-between"><span>تشغيل/إيقاف</span><kbd className="rounded bg-white/15 px-1.5">Space</kbd></li>
+            <li className="flex justify-between"><span>تشغيل/إيقاف</span><kbd className="rounded bg-white/15 px-1.5">مسافة</kbd></li>
             <li className="flex justify-between"><span>كتم الصوت</span><kbd className="rounded bg-white/15 px-1.5">M</kbd></li>
             <li className="flex justify-between"><span>ملء الشاشة</span><kbd className="rounded bg-white/15 px-1.5">F</kbd></li>
             <li className="flex justify-between"><span>رفع الصوت</span><kbd className="rounded bg-white/15 px-1.5">↑</kbd></li>

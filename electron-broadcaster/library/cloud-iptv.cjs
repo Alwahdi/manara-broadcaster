@@ -73,7 +73,7 @@ function persist() {
 
 function fetchJson(url, headers = {}) {
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers: { 'User-Agent': 'WIVA-Agent/2.6.3', ...headers } }, (res) => {
+    const req = https.get(url, { headers: { 'User-Agent': 'WIVA-Agent/2.6.4', ...headers } }, (res) => {
       let body = '';
       res.on('data', (c) => { body += c; });
       res.on('end', () => {

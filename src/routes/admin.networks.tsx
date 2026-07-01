@@ -62,10 +62,10 @@ function AdminNetworksPage() {
             <Field label="اسم الشبكة *"><input className="input-base" value={draft.name ?? ""} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></Field>
             <Field label="الخطة">
               <select className="input-base" value={draft.plan} onChange={(e) => setDraft({ ...draft, plan: e.target.value })}>
-                <option value="basic">Basic</option>
-                <option value="pro">Pro</option>
-                <option value="enterprise">Enterprise</option>
-                <option value="lifetime">Lifetime</option>
+                <option value="basic">الأساسية</option>
+                <option value="pro">الاحترافية</option>
+                <option value="enterprise">المؤسسات</option>
+                <option value="lifetime">مدى الحياة</option>
               </select>
             </Field>
             <Field label="المدينة"><input className="input-base" value={draft.city ?? ""} onChange={(e) => setDraft({ ...draft, city: e.target.value })} /></Field>

@@ -14,6 +14,14 @@ Packaged apps check for updates on startup and every 6 hours. The WIVA Agent
 window also includes a manual update check and install button when an update is
 ready.
 
+## v2.6.4
+
+- Added LAN admin capture-source discovery for screens, windows, and Windows AV/capture devices, with clearer source testing and advanced manual fallback.
+- Reworked library path management into a browser-style drive/folder picker with validation, previews, connected/disconnected status, file counts, and last scan details.
+- Added a public media library folder-tree view with breadcrumb navigation so folders and subfolders stay organized instead of being flattened.
+- Improved admin API error handling so invalid paths and failed actions show clear Arabic guidance.
+- Continued WIVA UI/UX polish across admin, library, player, live, and agent surfaces.
+
 ## v2.6.0
 
 - Rebranded the packaged product, installer, icon, tray, desktop shell, setup, admin, and media library surfaces to WIVA.

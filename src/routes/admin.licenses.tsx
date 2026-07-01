@@ -13,6 +13,17 @@ export const Route = createFileRoute("/admin/licenses")({ component: AdminLicens
 const PLANS = ["trial", "basic", "pro", "enterprise", "lifetime_basic", "lifetime_pro", "lifetime_enterprise"];
 const STATUSES = ["active", "suspended", "expired", "revoked"];
 const CYCLES = ["monthly", "yearly", "lifetime"];
+const PLAN_LABELS: Record<string, string> = {
+  trial: "تجربة",
+  basic: "الأساسية",
+  pro: "الاحترافية",
+  enterprise: "المؤسسات",
+  lifetime_basic: "الأساسية مدى الحياة",
+  lifetime_pro: "الاحترافية مدى الحياة",
+  lifetime_enterprise: "المؤسسات مدى الحياة",
+};
+const STATUS_LABELS: Record<string, string> = { active: "نشط", suspended: "معلّق", expired: "منتهي", revoked: "ملغي" };
+const CYCLE_LABELS: Record<string, string> = { monthly: "شهري", yearly: "سنوي", lifetime: "مدى الحياة" };
 
 function emptyDraft(): Partial<License> {
   return {
@@ -94,12 +105,12 @@ function AdminLicensesPage() {
             <Field label="المؤسسة / الشبكة"><input className="input-base" value={draft.organization ?? ""} onChange={(e) => setDraft({ ...draft, organization: e.target.value })} /></Field>
             <Field label="الخطة">
               <select className="input-base" value={draft.plan} onChange={(e) => setDraft({ ...draft, plan: e.target.value })}>
-                {PLANS.map((p) => <option key={p} value={p}>{p}</option>)}
+                {PLANS.map((p) => <option key={p} value={p}>{PLAN_LABELS[p] || p}</option>)}
               </select>
             </Field>
             <Field label="دورة الفوترة">
               <select className="input-base" value={draft.billing_cycle} onChange={(e) => setDraft({ ...draft, billing_cycle: e.target.value })}>
-                {CYCLES.map((c) => <option key={c} value={c}>{c}</option>)}
+                {CYCLES.map((c) => <option key={c} value={c}>{CYCLE_LABELS[c] || c}</option>)}
               </select>
             </Field>
             <Field label="عدد القنوات الأقصى"><input className="input-base" type="number" value={draft.max_channels ?? 0} onChange={(e) => setDraft({ ...draft, max_channels: Number(e.target.value) })} /></Field>
@@ -109,7 +120,7 @@ function AdminLicensesPage() {
             </Field>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={!!draft.white_label} onChange={(e) => setDraft({ ...draft, white_label: e.target.checked })} />
-              تخصيص كامل (White-label)
+              تخصيص كامل للهوية
             </label>
           </div>
           <Field label="ملاحظات"><textarea className="input-base min-h-[60px]" value={draft.notes ?? ""} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} /></Field>
@@ -137,8 +148,8 @@ function AdminLicensesPage() {
                       lic.status === "active" ? "bg-emerald-500/15 text-emerald-400" :
                       lic.status === "suspended" ? "bg-amber-500/15 text-amber-400" :
                       "bg-red-500/15 text-red-400"
-                    }`}>{lic.status}</span>
-                    <span className="text-[10px] rounded-full bg-primary/15 text-primary-glow px-2 py-0.5 font-bold">{lic.plan}</span>
+                    }`}>{STATUS_LABELS[lic.status] || lic.status}</span>
+                    <span className="text-[10px] rounded-full bg-primary/15 text-primary-glow px-2 py-0.5 font-bold">{PLAN_LABELS[lic.plan] || lic.plan}</span>
                   </div>
                   <div className="font-bold">{lic.customer_name}</div>
                   <div className="text-xs text-muted-foreground">
@@ -154,7 +165,7 @@ function AdminLicensesPage() {
                 </div>
                 <div className="flex gap-2">
                   <select value={lic.status} onChange={(e) => handleUpdate(lic.id, { status: e.target.value })} className="input-base text-xs h-8">
-                    {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                    {STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>)}
                   </select>
                   <ConfirmAction
                     className="rounded-lg glass p-2 text-red-400 hover:bg-red-500/10"
