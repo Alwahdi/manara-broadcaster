@@ -16,7 +16,7 @@ Date: 2026-06-25
 - Platform activation/licensing: `electron-broadcaster/library/platform.cjs`.
 - Cloud IPTV: Neon first, public/cloud fallbacks second.
 - Error tracking: Sentry Electron if `SENTRY_DSN` is configured.
-- Separate web app: TanStack/Vite source exists under `src/`, but the production desktop release currently uses the embedded Electron/local web server.
+- Separate web app: TanStack/Vite source exists under `src/` (cloud). The WIVA Agent's official local UI is a separate Vite + React + TanStack Router SPA under `electron-broadcaster/webui/`, served from `webui/dist` by the Agent; server files handle only APIs and streams.
 
 ## Implemented
 
@@ -31,7 +31,9 @@ Date: 2026-06-25
 - Theme selection fields.
 - Custom admin path support with `/admin` compatibility.
 - Web admin panel for IPTV, library paths, scans, uploads, users/messages, blocklist, logs, analytics, reports, and broadcast JSON.
-- Public media library with viewer accounts, favorites, watch later, history, and messages.
+- Modern web UI (`electron-broadcaster/webui/`, Vite + React + TanStack Router/Query + TypeScript): Arabic/RTL, local fonts, cinematic responsive design (mobile/desktop/TV), real viewer/admin/setup pages, per-screen loading/empty/error states, capture-channel add wizard, in-app file browser for storage selection, library file-explorer view, and offline-source indication that never deletes media on drive disconnect.
+- Agent APIs for the web UI: `/api/admin/library/sources` (+ `/rescan`, `/relink`), `/api/admin/iptv` and IPTV import `preview`/`commit`, `/api/admin/viewers`, `/api/admin/messages`, `/api/admin/reports`, `/api/admin/diagnostics`, `/api/admin/capture/probe`, and a live `/api/live` Server-Sent Events stream.
+- Legacy `adminPage()` retained only as a fallback at `/admin/legacy` (used when `webui/dist` is absent).- Public media library with viewer accounts, favorites, watch later, history, and messages.
 - IPTV on-demand proxy and grouped quality options.
 - Service health endpoint: `/health`, `/ready`, `/api/agent/health`.
 - Admin login rate limiting and opaque server-side sessions.
