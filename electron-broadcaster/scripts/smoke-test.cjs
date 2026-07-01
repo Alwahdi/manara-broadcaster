@@ -91,6 +91,54 @@ async function main() {
     const state = await res.json();
     assert.ok(Array.isArray(state.broadcast));
 
+    const auth = { Cookie: cookie.split(';')[0] };
+
+    // Storage roots: the in-app file browser lists the Agent's own disks.
+    res = await request(base, '/api/admin/storage/roots', { headers: auth });
+    assert.equal(res.status, 200);
+    const roots = await res.json();
+    assert.ok(Array.isArray(roots.roots), 'storage roots must be an array');
+    assert.ok(roots.roots.length > 0, 'at least one storage root is expected');
+    assert.ok(roots.roots.every((r) => typeof r.path === 'string'), 'each root has a path');
+
+    // Browsing a known folder returns dir/file entries matching the web UI contract.
+    res = await request(base, '/api/admin/storage/browse?path=' + encodeURIComponent(dir), { headers: auth });
+    assert.equal(res.status, 200);
+    const listing = await res.json();
+    assert.equal(listing.ok, true);
+    assert.ok(Array.isArray(listing.entries));
+    assert.ok(listing.entries.every((e) => e.type === 'dir' || e.type === 'file'), 'entries use dir/file types');
+
+    // Requires admin auth.
+    res = await request(base, '/api/admin/storage/roots');
+    assert.equal(res.status, 401);
+
+    // Adding a single capture channel through the wizard endpoint.
+    res = await request(base, '/api/admin/broadcast', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...auth },
+      body: JSON.stringify({ name: 'كاميرا القاعة', captureKind: 'screen', sourceId: 'screen:0', audioId: null }),
+    });
+    assert.equal(res.status, 200);
+    const created = await res.json();
+    assert.equal(created.name, 'كاميرا القاعة');
+    assert.equal(created.source.type, 'screen');
+    assert.equal(created.source.id, 'screen:0');
+
+    // A name is required.
+    res = await request(base, '/api/admin/broadcast', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...auth },
+      body: JSON.stringify({ captureKind: 'screen', sourceId: 'screen:0' }),
+    });
+    assert.equal(res.status, 400);
+
+    // The new channel is persisted and visible in admin state.
+    res = await request(base, '/api/admin/state', { headers: auth });
+    assert.equal(res.status, 200);
+    const state2 = await res.json();
+    assert.ok(state2.broadcast.some((c) => c.name === 'كاميرا القاعة'), 'created channel appears in state');
+
     res = await request(base, '/api/admin/state');
     assert.equal(res.status, 401);
   } finally {
