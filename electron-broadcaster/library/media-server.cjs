@@ -3,6 +3,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
 const { Readable } = require('stream');
 const db = require('./db.cjs');
 const iptv = require('./iptv.cjs');
@@ -2844,7 +2845,7 @@ function createHandler(options = {}) {
           source = type === 'url' ? { type: 'url', url: sourceId } : { type, id: sourceId };
         }
         const channel = db.upsertBroadcastChannel({
-          id: body.id || ('ch_' + Date.now().toString(36)),
+          id: body.id || ('ch_' + Date.now().toString(36) + '_' + crypto.randomBytes(3).toString('hex')),
           name,
           description: body.description || '',
           source,
