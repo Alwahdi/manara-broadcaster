@@ -38,6 +38,8 @@ Date: 2026-06-25
 - Admin password hashing for new/migrated settings.
 - GitHub release workflow for Windows artifacts.
 - Smoke test for setup, health, admin login, session cookies, and protected admin state.
+- End-to-end test suite (`scripts/e2e-test.cjs`) covering public pages, viewer accounts, admin endpoints, IPTV, and reports.
+- Cinematic media player with resume, subtitle track cycling, playback speed, Picture-in-Picture, theater mode, auto-play-next, and keyboard shortcuts.
 
 ## Partially Implemented
 

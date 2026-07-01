@@ -23,6 +23,7 @@ The setup wizard can change the ports and custom admin path.
 - WIVA Agent desktop shell with local/LAN links, diagnostics, update controls, and tray support.
 - IPTV proxy with on-demand upstream fetching, HLS coalescing/cache, TS fan-out, transfer limits, errors, and analytics.
 - Media library with nested sections, folders, upload/import, scans, subtitles, viewer accounts, favorites, watch later, and history.
+- Cinematic media player with resume, subtitles, playback speed, Picture-in-Picture, theater mode, auto-play next, and keyboard shortcuts.
 - LAN admin panel for IPTV, broadcast channels, viewers, messages, blocklist, reports, logs, theme controls, media paths, upload, and health checks.
 - GitHub Releases auto-update support.
 - Sentry support when `SENTRY_DSN` is configured.
@@ -38,6 +39,19 @@ Run the smoke test:
 ```bash
 npm test
 ```
+
+`npm test` runs the setup/admin smoke test followed by the end-to-end suite
+(`scripts/e2e-test.cjs`), which boots the real HTTP handler and exercises the
+public library, viewer accounts, admin panel, IPTV, and reporting flows. The
+suites can also be run individually with `npm run test:smoke` and
+`npm run test:e2e`.
+
+### Media player shortcuts
+
+The library player (`/player/:id`) supports keyboard controls: `Space`/`k`
+play-pause, `←`/`→` seek 5s (`j`/`l` seek 10s), `↑`/`↓` volume, `f` fullscreen,
+`m` mute, `c` cycle subtitles, `t` theater mode, `n`/`p` next/previous, and
+`0`–`9` to jump through the timeline.
 
 The Electron runtime owns the correct native module ABI. If plain `node` reports a `better-sqlite3` ABI mismatch during local scripts, the app falls back to JSON storage for those checks; use Electron or run `npm --prefix electron-broadcaster run dev:repair-native` when native SQLite is required.
 

@@ -1929,6 +1929,12 @@ function playerPage(id, req, res) {
     secondsSuffix: 'ثانية إذا لم يكن هناك تفاعل.',
     yes: 'نعم، أتابع',
     stop: 'إيقاف الآن',
+    pip: 'صورة داخل صورة',
+    speed: 'السرعة',
+    upNext: 'التالي',
+    autoplayIn: 'التشغيل التلقائي خلال',
+    cancel: 'إلغاء',
+    playNow: 'تشغيل الآن',
   } : {
     library: 'Library',
     channels: 'Channels',
@@ -1957,6 +1963,12 @@ function playerPage(id, req, res) {
     secondsSuffix: 'seconds if there is no activity.',
     yes: 'Yes, continue',
     stop: 'Stop now',
+    pip: 'Picture in picture',
+    speed: 'Speed',
+    upNext: 'Up next',
+    autoplayIn: 'Playing next in',
+    cancel: 'Cancel',
+    playNow: 'Play now',
   };
   const kindText = item.kind === 'episode' ? text.episode : item.kind === 'audio' ? text.audioItem : text.movie;
   const metaChips = [
@@ -1973,6 +1985,10 @@ function playerPage(id, req, res) {
     position: item.position || 0,
     duration: item.wp_duration || item.duration || 0,
     streamUrl,
+    kind: item.kind || 'movie',
+    nextUrl: next ? `/player/${next.id}` : '',
+    prevUrl: prev ? `/player/${prev.id}` : '',
+    nextTitle: next ? mediaTitle(next) : '',
   });
   const viewerPayload = jsonForScript({ favorites: viewer.favorites || [], watchLater: viewer.watchLater || [] });
   const textPayload = jsonForScript(text);
@@ -2003,6 +2019,9 @@ video,audio{width:100%;display:block;background:#000}video{aspect-ratio:16/9;max
 .unsupported{aspect-ratio:16/9;display:grid;place-items:center;background:#121826;padding:22px;text-align:center}.unsupported h2{margin:0 0 8px}.unsupported p{color:var(--muted)}.notice{margin:12px 0 0;border:1px solid rgba(248,113,113,.38);background:rgba(127,29,29,.24);border-radius:14px;padding:12px 14px;color:#fecaca}
 .watch{position:fixed;inset:0;display:none;place-items:center;background:rgba(3,7,18,.78);padding:18px;z-index:5;backdrop-filter:blur(8px)}.watch>div{max-width:430px;background:#101936;border:1px solid var(--line);border-radius:18px;padding:22px;text-align:center;box-shadow:0 24px 80px rgba(0,0,0,.42)}.watch p{color:var(--muted);line-height:1.7}
 body.theater .wrap{max-width:1680px}body.theater .layout{grid-template-columns:1fr}body.theater .side{display:none}body.theater video{max-height:84vh}
+.toast{position:absolute;top:14px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.74);color:#fff;padding:9px 15px;border-radius:12px;font-weight:900;font-size:14px;pointer-events:none;opacity:0;transition:opacity .18s;z-index:6}.toast.show{opacity:1}
+.upnext{position:absolute;bottom:74px;inset-inline-end:18px;background:rgba(3,7,18,.92);border:1px solid var(--line);border-radius:14px;padding:14px 16px;max-width:300px;display:none;z-index:6;box-shadow:0 18px 60px rgba(0,0,0,.5);backdrop-filter:blur(10px)}.upnext.show{display:block}.upnext .lbl{color:var(--muted);font-size:12px;font-weight:900;margin-bottom:4px}.upnext .nt{font-weight:900;margin-bottom:10px;line-height:1.32}.upnext .row{display:flex;gap:8px}.upnext .btn{flex:1;font-size:13px;min-height:38px;text-decoration:none}
+.speedSel{border:1px solid var(--line);background:rgba(255,255,255,.08);color:#fff;border-radius:14px;padding:0 10px;font-weight:900;font-family:inherit;min-height:42px;cursor:pointer}
 @media(max-width:980px){.wrap{padding:14px 12px 34px}.layout{grid-template-columns:1fr}.side{max-height:none}.bar{flex-wrap:wrap}.bar>a{flex:1}.actions .btn{flex:1 1 142px}}
 </style>
 </head><body>
@@ -2018,6 +2037,8 @@ body.theater .wrap{max-width:1680px}body.theater .layout{grid-template-columns:1
         ${type === 'audio' ? `<div class="audioBox"><audio id="media" controls autoplay src="${streamUrl}"></audio></div>` : ''}
         ${type === 'video' ? `<video id="media" controls autoplay playsinline crossorigin="anonymous" poster="${escapeHtml(item.backdrop_url || item.poster_url || '')}"><source src="${streamUrl}" type="${escapeHtml(MIME[path.extname(item.path || '').toLowerCase()] || 'video/mp4')}">${subtitleTracks}</video>` : ''}
         ${type === 'unsupported' ? `<div class="unsupported"><div><h2>${escapeHtml(text.unsupportedTitle)}</h2><p>${escapeHtml(text.unsupportedBody)}</p></div></div>` : ''}
+        <div class="toast" id="toast" role="status" aria-live="polite"></div>
+        <div class="upnext" id="upNext"><div class="lbl">${escapeHtml(text.upNext)}</div><div class="nt" id="upNextTitle"></div><div class="row"><a class="btn" id="upNextPlay" href="#">${escapeHtml(text.playNow)}</a><button class="btn" id="upNextCancel" type="button">${escapeHtml(text.cancel)}</button></div></div>
       </div>
       <div class="notice" id="playerNotice" hidden>${escapeHtml(text.playbackProblem)}</div>
       <div class="info">
@@ -2029,6 +2050,10 @@ body.theater .wrap{max-width:1680px}body.theater .layout{grid-template-columns:1
           <button class="btn" id="favBtn">${escapeHtml(text.favorite)}</button>
           <button class="btn" id="watchBtn">${escapeHtml(text.watchLater)}</button>
           <button class="btn" id="theaterBtn">${escapeHtml(text.theater)}</button>
+          <button class="btn" id="pipBtn" hidden>${escapeHtml(text.pip)}</button>
+          <select class="speedSel" id="speedSel" aria-label="${escapeHtml(text.speed)}" hidden>
+            <option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option>
+          </select>
           ${prev ? `<a class="btn" href="/player/${prev.id}">${escapeHtml(text.previous)}</a>` : ''}
           ${next ? `<a class="btn" href="/player/${next.id}">${escapeHtml(text.next)}</a>` : ''}
           <button class="btn" id="vlcBtn">${escapeHtml(text.openVlc)}</button>
@@ -2058,6 +2083,56 @@ if(media){
   media.addEventListener('loadedmetadata',()=>{ if(meta.position && meta.position < media.duration - 8) media.currentTime = meta.position; },{once:true});
   let last=0; function save(){ if(!media.duration) return; const now=Date.now(); if(now-last<5000) return; last=now; fetch('/api/media/'+meta.id+'/progress',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({position:media.currentTime,duration:media.duration,completed:(media.currentTime/media.duration)>=0.85}),keepalive:true}).catch(()=>{}); }
   media.addEventListener('timeupdate', save); window.addEventListener('pagehide', save);
+
+  // On-screen toast for feedback
+  const toastEl=document.getElementById('toast'); let toastTimer;
+  function toast(msg){ if(!toastEl) return; toastEl.textContent=msg; toastEl.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>toastEl.classList.remove('show'),1100); }
+
+  // Playback speed
+  const speedSel=document.getElementById('speedSel');
+  if(speedSel){ speedSel.hidden=false; speedSel.addEventListener('change',()=>{ media.playbackRate=parseFloat(speedSel.value)||1; toast(speedSel.value+'\u00d7'); }); }
+
+  // Picture-in-Picture (video only, when supported)
+  const pipBtn=document.getElementById('pipBtn');
+  if(pipBtn && media.tagName==='VIDEO' && document.pictureInPictureEnabled){
+    pipBtn.hidden=false;
+    pipBtn.onclick=async()=>{ try{ if(document.pictureInPictureElement) await document.exitPictureInPicture(); else await media.requestPictureInPicture(); }catch(e){} };
+  }
+
+  // Auto-play next (Up next overlay + on ended)
+  const upNext=document.getElementById('upNext');
+  if(meta.nextUrl && upNext){
+    document.getElementById('upNextTitle').textContent=meta.nextTitle||'';
+    const playLink=document.getElementById('upNextPlay'); playLink.href=meta.nextUrl;
+    let autoTimer, shown=false;
+    function cancelUpNext(){ upNext.classList.remove('show'); shown=false; clearInterval(autoTimer); }
+    document.getElementById('upNextCancel').onclick=cancelUpNext;
+    media.addEventListener('timeupdate',()=>{ if(!media.duration||shown) return; const remain=media.duration-media.currentTime; if(remain>0 && remain<=20){ shown=true; let c=Math.ceil(remain); upNext.classList.add('show'); const base=(text.autoplayIn||'Playing next in'); playLink.textContent=base+' '+c+'\u2026'; autoTimer=setInterval(()=>{ c--; if(c<=0){ clearInterval(autoTimer); location.href=meta.nextUrl; return; } playLink.textContent=base+' '+c+'\u2026'; },1000); } });
+    media.addEventListener('ended',()=>{ location.href=meta.nextUrl; });
+  }
+
+  // Keyboard shortcuts (Jellyfin/YouTube style)
+  function seekBy(sec){ if(!media.duration) return; media.currentTime=Math.min(media.duration,Math.max(0,media.currentTime+sec)); toast((sec>0?'+':'')+sec+'s'); }
+  function toggleFullscreen(){ const el=document.querySelector('.player'); if(document.fullscreenElement) document.exitFullscreen(); else if(el&&el.requestFullscreen) el.requestFullscreen(); }
+  function cycleSubtitles(){ const tracks=media.textTracks; if(!tracks||!tracks.length) return; let active=-1; for(let i=0;i<tracks.length;i++){ if(tracks[i].mode==='showing'){ active=i; tracks[i].mode='hidden'; } } const nextIdx=active+1; if(nextIdx<tracks.length){ tracks[nextIdx].mode='showing'; toast(tracks[nextIdx].label||'CC'); } else { toast('CC off'); } }
+  document.addEventListener('keydown',(e)=>{
+    const t=e.target; if(t&&/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+    if(e.ctrlKey||e.metaKey||e.altKey) return;
+    switch(e.key){
+      case ' ': case 'k': e.preventDefault(); if(media.paused){ media.play(); toast('\u25b6'); } else { media.pause(); toast('\u23f8'); } break;
+      case 'ArrowLeft': case 'j': e.preventDefault(); seekBy(e.key==='j'?-10:-5); break;
+      case 'ArrowRight': case 'l': e.preventDefault(); seekBy(e.key==='l'?10:5); break;
+      case 'ArrowUp': e.preventDefault(); media.volume=Math.min(1,media.volume+0.1); toast(Math.round(media.volume*100)+'%'); break;
+      case 'ArrowDown': e.preventDefault(); media.volume=Math.max(0,media.volume-0.1); toast(Math.round(media.volume*100)+'%'); break;
+      case 'f': e.preventDefault(); toggleFullscreen(); break;
+      case 'm': e.preventDefault(); media.muted=!media.muted; toast(media.muted?'\ud83d\udd07':'\ud83d\udd0a'); break;
+      case 'c': e.preventDefault(); cycleSubtitles(); break;
+      case 't': e.preventDefault(); theaterBtn.click(); break;
+      case 'n': if(meta.nextUrl){ e.preventDefault(); location.href=meta.nextUrl; } break;
+      case 'p': if(meta.prevUrl){ e.preventDefault(); location.href=meta.prevUrl; } break;
+      default: if(e.key>='0'&&e.key<='9'&&media.duration){ e.preventDefault(); media.currentTime=media.duration*(Number(e.key)/10); }
+    }
+  });
 }
 const full = location.origin + meta.streamUrl;
 vlcBtn.onclick=()=>{ location.href='vlc://'+encodeURIComponent(full); setTimeout(()=>open(full,'_blank'),900); };

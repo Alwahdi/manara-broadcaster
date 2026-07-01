@@ -18,7 +18,9 @@
     "platform": "node scripts/platform-admin.cjs",
     "platform:apply-schema": "node scripts/platform-admin.cjs apply-schema",
     "platform:list": "node scripts/platform-admin.cjs list all",
-    "test": "node scripts/smoke-test.cjs"
+    "test": "node scripts/smoke-test.cjs && node scripts/e2e-test.cjs",
+    "test:smoke": "node scripts/smoke-test.cjs",
+    "test:e2e": "node scripts/e2e-test.cjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
