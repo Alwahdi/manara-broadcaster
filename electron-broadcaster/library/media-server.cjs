@@ -437,12 +437,13 @@ function browseStoragePath(rawPath) {
       return {
         name: entry.name,
         path: fullPath,
-        type: entry.isDirectory() ? 'folder' : 'file',
+        // 'dir' | 'file' — matches the web UI StorageEntry contract.
+        type: entry.isDirectory() ? 'dir' : 'file',
         readable: !!childStat,
         size: childStat?.size || 0,
         modifiedAt: childStat?.mtimeMs || 0,
       };
-    }).sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name, undefined, { numeric: true }) : a.type === 'folder' ? -1 : 1));
+    }).sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name, undefined, { numeric: true }) : a.type === 'dir' ? -1 : 1));
   } catch {
     return { ok: false, path: target, message: 'لا توجد صلاحية لقراءة هذا المجلد.' };
   }
@@ -451,7 +452,7 @@ function browseStoragePath(rawPath) {
     path: target,
     parent: path.dirname(target) !== target ? path.dirname(target) : '',
     entries: rows,
-    folders: rows.filter((entry) => entry.type === 'folder').length,
+    folders: rows.filter((entry) => entry.type === 'dir').length,
     files: rows.filter((entry) => entry.type === 'file').length,
   };
 }
@@ -1267,7 +1268,7 @@ function renderEntries(data) {
   document.getElementById('browseParent').disabled = !data.parent;
   document.getElementById('chooseCurrentFolder').disabled = !data.path || !data.ok;
   document.getElementById('storageEntries').innerHTML = data.ok
-    ? (data.entries || []).map((entry) => '<button class="browser-item" type="button" '+(entry.type === 'folder' ? 'data-folder-path="'+escapeHtmlClient(entry.path)+'"' : 'disabled')+'><span>'+(entry.type === 'folder' ? 'مجلد ' : 'ملف ') + escapeHtmlClient(entry.name)+'</span><small>'+escapeHtmlClient(entry.type === 'folder' ? 'مجلد' : '')+'</small></button>').join('') || '<div class="muted">هذا المجلد فارغ.</div>'
+    ? (data.entries || []).map((entry) => '<button class="browser-item" type="button" '+(entry.type === 'dir' ? 'data-folder-path="'+escapeHtmlClient(entry.path)+'"' : 'disabled')+'><span>'+(entry.type === 'dir' ? 'مجلد ' : 'ملف ') + escapeHtmlClient(entry.name)+'</span><small>'+escapeHtmlClient(entry.type === 'dir' ? 'مجلد' : '')+'</small></button>').join('') || '<div class="muted">هذا المجلد فارغ.</div>'
     : '<div class="muted">'+escapeHtmlClient(data.message || 'تعذر فتح المجلد.')+'</div>';
   document.querySelectorAll('[data-folder-path]').forEach((btn) => btn.onclick = () => browsePath(btn.dataset.folderPath));
 }
@@ -2771,6 +2772,14 @@ function createHandler(options = {}) {
         });
       } catch (e) { return sendJson(res, 500, { ok: false, message: e.message }); }
     }
+    if (u.pathname === '/api/admin/storage/roots' && req.method === 'GET') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      // Disks/drives of the *Agent* machine (not the browser device), so the
+      // in-app file browser can list sources without a manual path. An
+      // unreadable drive is reported as offline instead of being hidden.
+      const roots = storageRoots().map((r) => ({ ...r, online: r.readable !== false }));
+      return sendJson(res, 200, { roots });
+    }
     if (u.pathname === '/api/admin/storage/browse' || u.pathname === '/api/admin/files') {
       if (!requireAdmin(req, res, options, adminBase)) return;
       return sendJson(res, 200, browseStoragePath(u.query.path || ''));
@@ -2817,6 +2826,39 @@ function createHandler(options = {}) {
       const updated = db.updateIptv(adminMatch[1], { ...ch, enabled: !ch.enabled });
       if (options.onChannelsChanged) options.onChannelsChanged();
       return sendJson(res, 200, updated);
+    }
+    if (u.pathname === '/api/admin/broadcast' && req.method === 'POST') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      // Add a single broadcast channel. The modern "add channel" wizard sends a
+      // flat payload (captureKind + sourceId + audioId); a pre-built `source`
+      // object is also accepted. This avoids the client having to replace the
+      // whole channel list (PUT) just to append one channel.
+      try {
+        const body = await parseJsonBody(req);
+        const name = String(body.name || '').trim();
+        if (!name) return sendJson(res, 400, { error: 'name_required', message: 'أدخل اسم القناة قبل الحفظ.' });
+        let source = body.source && typeof body.source === 'object' ? body.source : null;
+        if (!source) {
+          const type = String(body.captureKind || body.sourceType || 'screen').trim();
+          const sourceId = String(body.sourceId || '').trim();
+          source = type === 'url' ? { type: 'url', url: sourceId } : { type, id: sourceId };
+        }
+        const channel = db.upsertBroadcastChannel({
+          id: body.id || ('ch_' + Date.now().toString(36)),
+          name,
+          description: body.description || '',
+          source,
+          audioDeviceId: String(body.audioId || body.audioDeviceId || 'none').trim() || 'none',
+          resolution: body.resolution || '1280x720',
+          fps: body.fps || 30,
+          bitrateKbps: body.bitrateKbps || 2500,
+          autoStart: !!body.autoStart,
+          enabled: body.enabled !== false,
+        });
+        if (options.onChannelsChanged) options.onChannelsChanged();
+        webui.broadcast('channels', { added: channel.id });
+        return sendJson(res, 200, channel);
+      } catch (e) { return sendJson(res, 500, { error: e.message }); }
     }
     if (u.pathname === '/api/admin/broadcast' && req.method === 'PUT') {
       if (!requireAdmin(req, res, options, adminBase)) return;
