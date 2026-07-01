@@ -13,6 +13,8 @@ const KIND_LABEL: Record<SourceKind, string> = {
   device: "جهاز التقاط",
 };
 
+// Wizard steps in order. Bounds checks below derive from STEPS.length, so the
+// wizard adapts automatically if steps are added or removed here.
 const STEPS = ["نوع المصدر", "اختيار المصدر", "الصوت", "التسمية والتأكيد"];
 
 /**

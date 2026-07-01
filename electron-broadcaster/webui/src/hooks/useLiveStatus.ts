@@ -42,7 +42,11 @@ export function useLiveStatus(options: UseLiveOptions = {}) {
 
     const wsUrl = () => {
       const proto = location.protocol === "https:" ? "wss:" : "ws:";
-      return `${proto}//${location.host}${wsPath || path.replace(/^\/api\/live/, "/api/live/ws")}`;
+      const derived = wsPath
+        || (path.startsWith("/api/live")
+          ? path.replace(/^\/api\/live/, "/api/live/ws")
+          : `${path.replace(/\/$/, "")}/ws`);
+      return `${proto}//${location.host}${derived}`;
     };
 
     const scheduleReconnect = () => {

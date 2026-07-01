@@ -2470,17 +2470,17 @@ function createHandler(options = {}) {
       if (u.pathname === '/setup/legacy') {
         return send(res, 200, setupPage(options), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       }
-      // Modern setup wizard (single-page app). The app itself redirects to the
-      // admin panel once setup is complete.
-      if ((req.method === 'GET' || req.method === 'HEAD') && webui.isAvailable() && webui.serveApp(req, res)) {
-        return;
-      }
       const state = typeof options.getSetupState === 'function' ? options.getSetupState() : {};
-      if (state.setupCompleted) {
+      // Once setup is complete, the setup entry point redirects to admin.
+      if (state.setupCompleted && (u.pathname === '/setup' || u.pathname === '/agent')) {
         return send(res, 302, '', {
           Location: adminBase,
           'Cache-Control': 'no-store',
         });
+      }
+      // Modern setup wizard (single-page app).
+      if ((req.method === 'GET' || req.method === 'HEAD') && webui.isAvailable() && webui.serveApp(req, res)) {
+        return;
       }
       return send(res, 200, setupPage(options), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     }

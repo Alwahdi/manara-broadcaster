@@ -4,7 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const DIST_DIR = path.join(__dirname, '..', 'webui', 'dist');
+const DIST_DIR = path.resolve(path.join(__dirname, '..', 'webui', 'dist'));
 const INDEX_FILE = path.join(DIST_DIR, 'index.html');
 
 const STATIC_MIME = {
@@ -47,7 +47,7 @@ function contentType(file) {
 function resolveStatic(pathname) {
   const clean = decodeURIComponent(pathname.split('?')[0]);
   const rel = clean.replace(/^\/+/, '');
-  const target = path.normalize(path.join(DIST_DIR, rel));
+  const target = path.resolve(DIST_DIR, rel);
   if (target !== DIST_DIR && !target.startsWith(DIST_DIR + path.sep)) return null;
   try {
     if (fs.existsSync(target) && fs.statSync(target).isFile()) return target;
