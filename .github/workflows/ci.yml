@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - hardening-ci-foundation
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  agent:
+    name: Agent smoke, web UI typecheck, audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: electron-broadcaster
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: electron-broadcaster/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Smoke test
+        run: npm test
+
+      - name: Load test baseline
+        run: npm run test:load
+        env:
+          WIVA_LOAD_CONCURRENCY: 40
+          WIVA_LOAD_REQUESTS: 240
+          WIVA_LOAD_MAX_P95_MS: 1200
+
+      - name: Web UI build and typecheck
+        run: npm run build:webui
+
+      - name: Production dependency audit
+        run: npm run audit:prod
+
+  windows-package:
+    name: Windows package dry run
+    runs-on: windows-latest
+    needs: agent
+    defaults:
+      run:
+        working-directory: electron-broadcaster
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: electron-broadcaster/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Windows package without publishing
+        run: npm run dist
