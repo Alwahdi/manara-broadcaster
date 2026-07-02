@@ -1,78 +1,15 @@
 {
-  "name": "wiva-agent",
-  "productName": "WIVA",
+  "name": "wiva-workspace",
+  "private": true,
   "version": "2.6.10",
-  "description": "WIVA — Local network live TV, IPTV, and media library agent for hotels, hospitals, cafes, and private networks.",
-  "main": "main.cjs",
-  "author": {
-    "name": "WIVA",
-    "email": "support@wiva.app"
-  },
-  "license": "MIT",
+  "description": "Workspace entrypoint for the WIVA Agent. The production Electron app lives in electron-broadcaster/.",
   "scripts": {
     "start": "npm --prefix electron-broadcaster start",
+    "test": "npm --prefix electron-broadcaster test",
+    "test:load": "npm --prefix electron-broadcaster run test:load",
+    "build:webui": "npm --prefix electron-broadcaster run build:webui",
     "dist": "npm --prefix electron-broadcaster run dist",
     "release": "npm --prefix electron-broadcaster run release",
-    "test": "npm --prefix electron-broadcaster test"
-  },
-  "dependencies": {
-    "better-sqlite3": "^12.10.0",
-    "electron-store": "^11.0.2",
-    "electron-updater": "^6.8.3",
-    "ws": "^8.18.0"
-  },
-  "devDependencies": {
-    "electron": "^39.8.5",
-    "electron-builder": "^26.8.1"
-  },
-  "build": {
-    "appId": "app.wiva.agent",
-    "productName": "WIVA",
-    "asar": true,
-    "asarUnpack": [
-      "**/node_modules/better-sqlite3/**"
-    ],
-    "files": [
-      "main.cjs",
-      "preload.cjs",
-      "assets/**/*",
-      "library/**/*",
-      "licensing/**/*",
-      "renderer/**/*",
-      "server/**/*",
-      "package.json"
-    ],
-    "win": {
-      "target": [
-        {
-          "target": "zip",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
-      ],
-      "artifactName": "WIVA-${version}-${arch}.${ext}",
-      "icon": "assets/icon.ico"
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "WIVA"
-    },
-    "publish": {
-      "provider": "github",
-      "owner": "Alwahdi",
-      "repo": "manara-broadcaster",
-      "releaseType": "release"
-    }
+    "ci": "npm --prefix electron-broadcaster run ci"
   }
 }
