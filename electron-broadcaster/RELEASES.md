@@ -42,6 +42,14 @@ locked (antivirus, Search indexing, backup agents). This eliminates the
 intermittent "cannot save on Windows" failures that the old
 `writeFile` + `rename` pattern caused.
 
+## v2.6.14
+
+- Fixed ambiguous admin byte-size rendering so actual usage and media sizes show as real data amounts such as `0 B`, while transfer limits still show `بدون حد` when unlimited.
+- Added shared server-side format helpers and unit coverage for data sizes, transfer limits, and durations.
+- Improved admin diagnostics and reports with Arabic metric labels, friendlier system values, and safer empty-state handling.
+- Made viewing CSV exports Windows/Excel-safe with UTF-8 BOM and CRLF line endings so Arabic text opens correctly.
+- Synced the root workspace version with the packaged Electron app version.
+
 ## v2.6.13
 
 - Added Windows-safe atomic saving (`library/atomic-write.cjs`) with retry, backoff, and in-place fallback so channel, admin-state, media, platform, and cloud IPTV saves no longer fail intermittently on Windows due to file locks.
