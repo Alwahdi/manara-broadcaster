@@ -1,0 +1,81 @@
+name: PR Beta Release
+
+# Builds and publishes a beta (pre-release) Windows build for every pull request
+# so reviewers and testers can install the exact changes under review before they
+# are merged and promoted to a stable release.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: write
+
+# Only keep the newest beta build per pull request; cancel superseded runs.
+concurrency:
+  group: pr-beta-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  beta:
+    name: Build and publish PR beta
+    # Skip drafts and pull requests coming from forks (no write token / secrets).
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: electron-broadcaster
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: electron-broadcaster/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compute beta version
+        id: beta
+        shell: pwsh
+        run: |
+          $pkg = Get-Content package.json -Raw | ConvertFrom-Json
+          $base = $pkg.version
+          $pr = "${{ github.event.pull_request.number }}"
+          $run = "${{ github.run_number }}"
+          $betaVersion = "$base-beta.$pr.$run"
+          "betaVersion=$betaVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "Beta version: $betaVersion"
+
+      - name: Write owner cloud config
+        shell: pwsh
+        env:
+          MANARA_NEON_DATABASE_URL: ${{ secrets.MANARA_NEON_DATABASE_URL }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: |
+          $neon = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($env:MANARA_NEON_DATABASE_URL ?? ""))
+          $sentry = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($env:SENTRY_DSN ?? ""))
+          "module.exports = { neonDatabaseUrl: Buffer.from('$neon', 'base64').toString('utf8'), sentryDsn: Buffer.from('$sentry', 'base64').toString('utf8') };" | Set-Content -Path "library/cloud-runtime.cjs" -Encoding UTF8
+
+      - name: Publish beta release artifacts
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BETA_VERSION: ${{ steps.beta.outputs.betaVersion }}
+        run: npm run release:beta -- -c.extraMetadata.version=$env:BETA_VERSION
+
+      - name: Summarize beta release
+        if: always()
+        shell: pwsh
+        run: |
+          "## PR Beta Release" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "Published pre-release version ``${{ steps.beta.outputs.betaVersion }}`` for PR #${{ github.event.pull_request.number }}." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
