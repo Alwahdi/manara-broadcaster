@@ -161,6 +161,35 @@ async function main() {
     assert.equal(res.status, 200);
     assert.ok((await res.json()).channels.length >= 2);
 
+    // Reports JSON exposes numeric metrics the admin dashboard renders as tiles.
+    res = await request(base, '/api/admin/reports', { headers: auth });
+    assert.equal(res.status, 200);
+    const reports = await res.json();
+    assert.equal(typeof reports.totalMedia, 'number', 'reports expose numeric metrics');
+    assert.equal(typeof reports.activeSessions, 'number');
+
+    // Seed an access log with Arabic text so the CSV export exercises escaping
+    // and UTF-8 handling exactly as a real viewing report would.
+    db.addAccessLog({ ip: '10.0.0.5', action: 'media', targetType: 'media', targetId: '1', targetName: 'فيلم تجريبي', bytes: 2048, status: 200 });
+
+    // CSV export must be Windows/Excel-safe: UTF-8 BOM + CRLF line endings so
+    // Arabic report data is not garbled when opened on Windows. The BOM must be
+    // asserted on the raw bytes because response.text() strips a leading BOM.
+    res = await request(base, '/api/admin/reports/views.csv', { headers: auth });
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('content-type') || '', /text\/csv/);
+    assert.match(res.headers.get('content-disposition') || '', /attachment/);
+    const csvBytes = Buffer.from(await res.arrayBuffer());
+    assert.deepEqual(csvBytes.subarray(0, 3), Buffer.from([0xef, 0xbb, 0xbf]), 'CSV must start with a UTF-8 BOM for Excel on Windows');
+    const csv = csvBytes.toString('utf8');
+    assert.ok(csv.includes('\r\n'), 'CSV must use CRLF line endings');
+    assert.match(csv, /time,action,ip,targetType,targetId,targetName,bytes,status/);
+    assert.ok(csv.includes('فيلم تجريبي'), 'Arabic report text must survive the CSV export intact');
+
+    // Admin export endpoints stay behind authentication.
+    res = await request(base, '/api/admin/reports/views.csv');
+    assert.equal(res.status, 401);
+
     res = await request(base, '/api/admin/state');
     assert.equal(res.status, 401);
   } finally {

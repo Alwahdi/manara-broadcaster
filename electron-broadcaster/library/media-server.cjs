@@ -571,12 +571,21 @@ function srtToVtt(text) {
 
 function csvEscape(value) {
   const s = String(value ?? '');
-  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
+
+// UTF-8 byte-order mark. Excel on Windows opens a BOM-less UTF-8 file with the
+// legacy ANSI code page, which turns Arabic report text into mojibake. Prefixing
+// the BOM makes Excel, LibreOffice, and Numbers detect UTF-8 correctly.
+const CSV_BOM = '\uFEFF';
 
 function reportCsv(rows) {
   const header = ['time', 'action', 'ip', 'targetType', 'targetId', 'targetName', 'bytes', 'status'];
-  return [header.join(',')].concat(rows.map((row) => header.map((key) => csvEscape(key === 'time' ? new Date(row.at).toISOString() : row[key])).join(','))).join('\n');
+  // CRLF line endings are the CSV standard and what Windows/Excel expect.
+  const body = [header.join(',')]
+    .concat((rows || []).map((row) => header.map((key) => csvEscape(key === 'time' ? new Date(row.at).toISOString() : row[key])).join(',')))
+    .join('\r\n');
+  return CSV_BOM + body + '\r\n';
 }
 
 function healthDiagnostics() {
