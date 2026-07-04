@@ -17,7 +17,7 @@
     "typecheck:webui": "cd webui && npm ci && npm run typecheck",
     "dist": "npm run build:webui && electron-builder --win --x64 --publish never",
     "release": "npm run build:webui && electron-builder --win --x64 --publish always",
-    "release:beta": "npm run build:webui && electron-builder --win --x64 --publish always -c.publish.releaseType=prerelease",
+    "release:beta": "npm run build:webui && electron-builder --win --x64 --publish always --config.publish.releaseType=prerelease",
     "platform": "node scripts/platform-admin.cjs",
     "platform:apply-schema": "node scripts/platform-admin.cjs apply-schema",
     "platform:list": "node scripts/platform-admin.cjs list all",

@@ -71,7 +71,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BETA_VERSION: ${{ steps.beta.outputs.betaVersion }}
-        run: npm run release:beta -- -c.extraMetadata.version=$env:BETA_VERSION
+          PUBLISH_FOR_PULL_REQUEST: true
+        run: npm run release:beta -- --config.extraMetadata.version=$env:BETA_VERSION
 
       - name: Summarize beta release
         if: always()
