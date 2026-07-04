@@ -10,6 +10,7 @@ const iptv = require('./iptv.cjs');
 const cloudIptv = require('./cloud-iptv.cjs');
 const scanner = require('./scanner.cjs');
 const webui = require('./webui.cjs');
+const { formatDataBytes, formatTransferLimit, formatDuration } = require('./format.cjs');
 const adminLoginAttempts = new Map();
 const ADMIN_LOGIN_WINDOW_MS = 10 * 60 * 1000;
 const ADMIN_LOGIN_MAX_ATTEMPTS = 8;
@@ -221,32 +222,6 @@ prevBtn.onclick=()=>{idx=Math.max(0,idx-1);render();}; nextBtn.onclick=()=>{idx=
 form.onsubmit=async(e)=>{ e.preventDefault(); const data=Object.fromEntries(new FormData(form).entries()); data.setupCompleted=true; const r=await fetch('/api/setup/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}); const j=await r.json(); const t=document.createElement('div'); t.className='toast'; t.textContent=j.ok?'تم حفظ إعداد WIVA. افتح الروابط الجديدة من شاشة الوكيل.':(j.error||'تعذر الحفظ'); document.body.appendChild(t); setTimeout(()=>t.remove(),4200); if(j.ok && j.state && j.state.urls){ setTimeout(()=>location.href=j.state.urls.adminLocal||'/admin',900); } };
 fill(); status(); render();
 </script></body></html>`;
-}
-
-function formatBytes(bytes) {
-  const n = Number(bytes) || 0;
-  if (n <= 0) return 'بدون حد';
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
-  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
-}
-
-function formatDataBytes(bytes) {
-  const n = Number(bytes) || 0;
-  if (n <= 0) return '0 B';
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
-  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
-}
-
-function formatDuration(seconds) {
-  const total = Math.max(0, Math.floor(Number(seconds) || 0));
-  if (!total) return '';
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  return h ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`;
 }
 
 function mediaTitle(item) {
@@ -800,7 +775,7 @@ function adminPage(options = {}) {
       <td>${escapeHtml(ch.category || '')}</td>
       <td class="url">محفوظ ومخفي عن لوحة الشبكة</td>
       <td>${ch.enabled ? 'مفعل' : 'متوقف'}</td>
-      <td>${formatBytes(ch.transferLimitBytes)}</td>
+      <td>${formatTransferLimit(ch.transferLimitBytes)}</td>
       <td>${status[ch.id]?.viewers || 0}</td>
       <td>${formatDataBytes(status[ch.id]?.totalUpstreamBytes || 0)}</td>
       <td>
@@ -846,7 +821,7 @@ function adminPage(options = {}) {
     <tr>
       <td class="url">${escapeHtml(s.ip)}</td>
       <td>${escapeHtml(s.targetName || s.targetId || s.path || '')}</td>
-      <td>${formatBytes(s.bytes)}</td>
+      <td>${formatDataBytes(s.bytes)}</td>
       <td>${Number(s.requests || 0)}</td>
       <td class="url">${escapeHtml(s.userAgent || '')}</td>
       <td><button data-block-ip="${escapeHtml(s.ip)}">حظر العنوان</button></td>
@@ -888,7 +863,7 @@ function adminPage(options = {}) {
       <td>${escapeHtml(accessActionLabel(l.action))}</td>
       <td class="url">${escapeHtml(l.ip)}</td>
       <td>${escapeHtml(l.targetName || l.targetId || '')}</td>
-      <td>${formatBytes(l.bytes)}</td>
+      <td>${formatDataBytes(l.bytes)}</td>
       <td>${escapeHtml(l.status)}</td>
     </tr>`).join('');
   const topMediaRows = mediaStats.top.map((m) => `
@@ -896,14 +871,14 @@ function adminPage(options = {}) {
       <td>${escapeHtml(m.title)}</td>
       <td>${escapeHtml(mediaKindLabel(m.kind))}</td>
       <td>${Number(m.plays || 0)}</td>
-      <td>${formatBytes(m.bytes)}</td>
+      <td>${formatDataBytes(m.bytes)}</td>
       <td>${m.lastAt ? new Date(m.lastAt).toLocaleString() : '-'}</td>
     </tr>`).join('');
   const mediaRows = mediaItems.map((item) => `
     <tr>
       <td>${escapeHtml(item.titleText)}</td>
       <td>${escapeHtml(mediaKindLabel(item.kind))}</td>
-      <td>${formatBytes(item.size)}</td>
+      <td>${formatDataBytes(item.size)}</td>
       <td>${formatDuration(item.wp_duration || item.duration)}</td>
       <td class="url">${escapeHtml(path.basename(item.path || ''))}</td>
       <td>
@@ -1046,7 +1021,7 @@ a{color:#93c5fd}.url{word-break:break-all;color:#bfdbfe;direction:ltr;text-align
   <h2>مكتبة الوسائط</h2>
   <div class="statcards">
     <div class="statcard"><b>${mediaStats.total}</b><span>كل المحتوى</span></div>
-    <div class="statcard"><b>${formatBytes(mediaStats.totalSize)}</b><span>حجم المكتبة</span></div>
+    <div class="statcard"><b>${formatDataBytes(mediaStats.totalSize)}</b><span>حجم المكتبة</span></div>
     <div class="statcard"><b>${mediaStats.byKind.movie || 0}</b><span>أفلام</span></div>
     <div class="statcard"><b>${mediaStats.uniqueDevices || 0}</b><span>أجهزة مختلفة</span></div>
   </div>
@@ -2261,7 +2236,7 @@ function playerPage(id, req, res) {
     item.year || '',
     item.rating ? `★ ${Number(item.rating).toFixed(1)}` : '',
     formatDuration(item.duration || item.wp_duration || 0),
-    formatBytes(item.size || 0),
+    formatDataBytes(item.size || 0),
   ].filter(Boolean);
   const playlist = items.slice(Math.max(0, index - 12), index + 13);
   const metaJson = jsonForScript({
