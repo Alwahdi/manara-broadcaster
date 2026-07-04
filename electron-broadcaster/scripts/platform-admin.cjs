@@ -13,8 +13,8 @@ Usage:
   node scripts/platform-admin.cjs list [pending|active|expired|suspended|all]
   node scripts/platform-admin.cjs approve <instance-id> [--plan=pro] [--days=365] [--features=all|channels,iptv,media,webAdmin,analytics,branding]
   node scripts/platform-admin.cjs import-hydra-bein [--limit-bytes=0]
-  node scripts/platform-admin.cjs import-hydra-bein-file [--file=scripts/hydra-bein-channels.json] [--limit-bytes=0]
-  node scripts/platform-admin.cjs replace-fiber-bein-file [--file=scripts/fiber-bein-working-channels.json] [--limit-bytes=0]
+  node scripts/platform-admin.cjs import-hydra-bein-file --file=/path/to/authorized-channels.json [--limit-bytes=0]
+  node scripts/platform-admin.cjs replace-fiber-bein-file --file=/path/to/authorized-channels.json [--limit-bytes=0]
   node scripts/platform-admin.cjs suspend <instance-id> [reason]
   node scripts/platform-admin.cjs expire <instance-id>
   node scripts/platform-admin.cjs policy --channel=stable --latest=2.5.13 --minimum=2.5.0 [--mandatory=true] [--notes="..."]
@@ -25,6 +25,12 @@ function arg(name, fallback = '') {
   const prefix = `--${name}=`;
   const found = process.argv.find((v) => v.startsWith(prefix));
   return found ? found.slice(prefix.length) : fallback;
+}
+
+function requiredArg(name, message) {
+  const value = arg(name, '');
+  if (!value) throw new Error(message || `Missing required --${name}=... argument.`);
+  return value;
 }
 
 function parseFeatures(value) {
@@ -168,7 +174,7 @@ async function hydraBeinChannelsFromProvider() {
 }
 
 function hydraBeinChannelsFromFile() {
-  const file = arg('file', 'scripts/hydra-bein-channels.json');
+  const file = requiredArg('file', 'Pass --file=/path/to/authorized-hydra-channels.json. Public provider seed files are not bundled with WIVA.');
   const resolved = path.isAbsolute(file) ? file : path.join(__dirname, '..', file);
   const rows = JSON.parse(fs.readFileSync(resolved, 'utf8'));
   if (!Array.isArray(rows)) throw new Error(`Hydra channel file must contain an array: ${resolved}`);
@@ -215,7 +221,7 @@ async function importHydraBein(sql, { fromFile = false } = {}) {
 }
 
 function fiberBeinChannelsFromFile() {
-  const file = arg('file', 'scripts/fiber-bein-working-channels.json');
+  const file = requiredArg('file', 'Pass --file=/path/to/authorized-fiber-channels.json. Public provider seed files are not bundled with WIVA.');
   const resolved = path.isAbsolute(file) ? file : path.join(__dirname, '..', file);
   const rows = JSON.parse(fs.readFileSync(resolved, 'utf8'));
   if (!Array.isArray(rows)) throw new Error(`Fiber channel file must contain an array: ${resolved}`);
