@@ -1166,7 +1166,10 @@ async function api(path, opts) {
   const text = await r.text();
   let body = {};
   try { body = text ? JSON.parse(text) : {}; } catch { body = { message: text }; }
-  if (!r.ok) throw new Error(body.message || body.error || text || 'تعذر تنفيذ الطلب');
+  if (!r.ok) {
+    const detail = body.message || body.error || text || 'تعذر تنفيذ الطلب';
+    throw new Error(r.status === 404 ? 'المسار المطلوب غير موجود في WIVA. حدّث التطبيق أو افتح لوحة الإدارة من الرابط الصحيح.' : detail);
+  }
   return body;
 }
 function closeModal(){ modalHost.hidden = true; modalHost.innerHTML = ''; }
@@ -1378,10 +1381,14 @@ async function saveBroadcastChannels(channels){
 }
 document.getElementById('broadcastForm').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const channels = readBroadcastChannels();
-  channels.push(channelFromForm(e.target));
-  await saveBroadcastChannels(channels);
-  location.reload();
+  try {
+    const channels = readBroadcastChannels();
+    channels.push(channelFromForm(e.target));
+    await saveBroadcastChannels(channels);
+    location.reload();
+  } catch (error) {
+    msg.textContent = error.message || 'تعذر إنشاء القناة.';
+  }
 });
 document.querySelectorAll('[data-save-broadcast]').forEach((b) => b.onclick = async () => {
   const row = b.closest('[data-broadcast-row]');
@@ -2418,7 +2425,8 @@ function createHandler(options = {}) {
       .replace(/^\/+|\/+$/g, '')
       .replace(/[^\w\-./]/g, '');
     const adminBase = configuredAdminPath === '/' ? '/admin' : configuredAdminPath;
-    const isAdminBase = u.pathname === '/admin' || u.pathname === adminBase;
+    const adminRouteBases = [...new Set(['/admin', adminBase])];
+    const isAdminBase = adminRouteBases.some((base) => u.pathname === base || u.pathname.startsWith(`${base}/`));
     const isAdminLogin = u.pathname === '/admin/login' || u.pathname === `${adminBase}/login`;
     const isAdminLogout = u.pathname === '/admin/logout' || u.pathname === `${adminBase}/logout`;
     setSecurityHeaders(res);
@@ -2828,7 +2836,12 @@ function createHandler(options = {}) {
       if (options.onChannelsChanged) options.onChannelsChanged();
       return sendJson(res, 200, updated);
     }
-    if (u.pathname === '/api/admin/broadcast' && req.method === 'POST') {
+    const broadcastApiPaths = ['/api/admin/broadcast', '/api/admin/channels', '/api/admin/broadcast-channels'];
+    if (broadcastApiPaths.includes(u.pathname) && req.method === 'GET') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      return sendJson(res, 200, { channels: db.listBroadcastChannels() });
+    }
+    if (broadcastApiPaths.includes(u.pathname) && req.method === 'POST') {
       if (!requireAdmin(req, res, options, adminBase)) return;
       // Add a single broadcast channel. The modern "add channel" wizard sends a
       // flat payload (captureKind + sourceId + audioId); a pre-built `source`
@@ -2861,15 +2874,28 @@ function createHandler(options = {}) {
         return sendJson(res, 200, channel);
       } catch (e) { return sendJson(res, 500, { error: e.message }); }
     }
-    if (u.pathname === '/api/admin/broadcast' && req.method === 'PUT') {
+    if (broadcastApiPaths.includes(u.pathname) && req.method === 'PUT') {
       if (!requireAdmin(req, res, options, adminBase)) return;
       try {
         const body = await parseJsonBody(req);
-        if (!Array.isArray(body.channels)) return sendJson(res, 400, { error: 'channels must be an array' });
-        const channels = db.setBroadcastChannels(body.channels);
+        let nextChannels = Array.isArray(body.channels) ? body.channels : null;
+        if (!nextChannels && (body.channel || body.name)) {
+          const existing = db.listBroadcastChannels();
+          nextChannels = [...existing, body.channel || body];
+        }
+        if (!Array.isArray(nextChannels)) return sendJson(res, 400, { error: 'channels must be an array' });
+        const channels = db.setBroadcastChannels(nextChannels);
         if (options.onChannelsChanged) options.onChannelsChanged();
         return sendJson(res, 200, { channels });
       } catch (e) { return sendJson(res, 500, { error: e.message }); }
+    }
+    adminMatch = /^\/api\/admin\/(?:broadcast|channels|broadcast-channels)\/([^/]+)$/.exec(u.pathname);
+    if (adminMatch && req.method === 'DELETE') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      const id = decodeURIComponent(adminMatch[1]);
+      const channels = db.setBroadcastChannels(db.listBroadcastChannels().filter((ch) => String(ch.id) !== String(id)));
+      if (options.onChannelsChanged) options.onChannelsChanged();
+      return sendJson(res, 200, { channels });
     }
     if (u.pathname === '/api/admin/blocklist' && req.method === 'POST') {
       if (!requireAdmin(req, res, options, adminBase)) return;

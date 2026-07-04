@@ -86,6 +86,10 @@ async function main() {
     assert.match(cookie, /manara_admin=/);
     assert.doesNotMatch(cookie, /admin:correct-password/);
 
+    res = await request(base, '/admin/channels/new', { headers: { Cookie: cookie.split(';')[0] } });
+    assert.equal(res.status, 200);
+    assert.match(await res.text(), /لوحة إدارة WIVA/);
+
     res = await request(base, '/api/admin/state', { headers: { Cookie: cookie.split(';')[0] } });
     assert.equal(res.status, 200);
     const state = await res.json();
@@ -138,6 +142,24 @@ async function main() {
     assert.equal(res.status, 200);
     const state2 = await res.json();
     assert.ok(state2.broadcast.some((c) => c.name === 'كاميرا القاعة'), 'created channel appears in state');
+
+    res = await request(base, '/api/admin/channels', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...auth },
+      body: JSON.stringify({
+        name: 'Smoke Camera',
+        source: { type: 'screen', id: '' },
+        audioDeviceId: 'none',
+        enabled: true,
+        autoStart: true,
+      }),
+    });
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).name, 'Smoke Camera');
+
+    res = await request(base, '/api/admin/channels', { headers: auth });
+    assert.equal(res.status, 200);
+    assert.ok((await res.json()).channels.length >= 2);
 
     res = await request(base, '/api/admin/state');
     assert.equal(res.status, 401);
