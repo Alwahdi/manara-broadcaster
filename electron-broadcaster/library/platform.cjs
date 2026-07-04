@@ -5,6 +5,7 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { getHardwareId } = require('../licensing/machine-id.cjs');
+const { writeJsonAtomic } = require('./atomic-write.cjs');
 try { require('./env.cjs').loadLocalEnv(__dirname); } catch {}
 
 let runtimeConfig = {};
@@ -49,10 +50,7 @@ function readJson(file) {
 
 function writeJson(file, value) {
   if (!file) return;
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = file + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(value, null, 2));
-  fs.renameSync(tmp, file);
+  writeJsonAtomic(file, value);
 }
 
 function setCachePath(file) {

@@ -4,6 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const { writeJsonAtomic } = require('./atomic-write.cjs');
 try { require('./env.cjs').loadLocalEnv(__dirname); } catch {}
 
 const CLOUD_BASE = process.env.MANARA_CLOUD_URL ||
@@ -63,10 +64,7 @@ function setCachePath(p) {
 function persist() {
   if (!cachePath) return;
   try {
-    fs.mkdirSync(path.dirname(cachePath), { recursive: true });
-    const tmp = cachePath + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify({ channels: cached, lastFetch }, null, 2));
-    fs.renameSync(tmp, cachePath);
+    writeJsonAtomic(cachePath, { channels: cached, lastFetch });
   }
   catch (e) { console.error('[cloud-iptv] cache write', e.message); }
 }

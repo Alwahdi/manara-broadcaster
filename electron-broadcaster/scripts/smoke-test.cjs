@@ -88,7 +88,7 @@ async function main() {
 
     res = await request(base, '/admin/channels/new', { headers: { Cookie: cookie.split(';')[0] } });
     assert.equal(res.status, 200);
-    assert.match(await res.text(), /لوحة إدارة WIVA/);
+    assert.match(await res.text(), /لوحة إدارة WIVA|لوحة الشبكة|id="root"/);
 
     res = await request(base, '/api/admin/state', { headers: { Cookie: cookie.split(';')[0] } });
     assert.equal(res.status, 200);

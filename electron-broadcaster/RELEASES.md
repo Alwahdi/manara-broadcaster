@@ -14,6 +14,39 @@ Packaged apps check for updates on startup and every 6 hours. The WIVA Agent
 window also includes a manual update check and install button when an update is
 ready.
 
+## Beta (pre-release) builds for pull requests
+
+Every pull request that targets the repository (from a branch in this repo, not a
+fork, and not a draft) automatically produces a **beta pre-release** via the
+`PR Beta Release` workflow (`.github/workflows/pr-beta-release.yml`).
+
+- The version is derived from `electron-broadcaster/package.json` with a beta
+  suffix: `<version>-beta.<pr-number>.<run-number>` (for example
+  `2.6.13-beta.42.7`).
+- Artifacts are published to GitHub Releases as a **pre-release** using
+  `npm run release:beta`, so testers can install the exact changes under review
+  before they are merged and promoted to a stable release.
+- The workflow uses a per-PR concurrency group, so pushing new commits cancels
+  the previous beta build and only the newest one is kept.
+
+Because betas use a pre-release SemVer tag (with a `-beta` component), they are
+never offered as automatic updates to users on stable channels.
+
+## Windows saving reliability
+
+All persisted JSON stores (channels, admin state, media fallback, platform
+cache, and cloud IPTV cache) are written through `library/atomic-write.cjs`. It
+writes to a temp file, `fsync`s it, then renames it over the destination with
+retry/backoff, and finally writes in place if Windows keeps the destination
+locked (antivirus, Search indexing, backup agents). This eliminates the
+intermittent "cannot save on Windows" failures that the old
+`writeFile` + `rename` pattern caused.
+
+## v2.6.13
+
+- Added Windows-safe atomic saving (`library/atomic-write.cjs`) with retry, backoff, and in-place fallback so channel, admin-state, media, platform, and cloud IPTV saves no longer fail intermittently on Windows due to file locks.
+- Added a `PR Beta Release` GitHub Actions workflow and `release:beta` script that publish a beta pre-release Windows build for every pull request.
+
 ## v2.6.6
 
 - Added a bundled WIVA media asset pack for folders, sources, video, audio, image, live, link, PDF, APK, EXE, and the media library hero.

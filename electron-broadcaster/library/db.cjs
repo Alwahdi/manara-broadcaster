@@ -9,6 +9,7 @@
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const { writeJsonAtomic } = require('./atomic-write.cjs');
 
 let Database;
 try { Database = require('better-sqlite3'); } catch (e) { Database = null; }
@@ -120,9 +121,7 @@ function saveChannelsFile() {
     if (fs.existsSync(_channelsPath)) {
       try { fs.copyFileSync(_channelsPath, _channelsPath + '.bak'); } catch {}
     }
-    const tmp = _channelsPath + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(_channels, null, 2));
-    fs.renameSync(tmp, _channelsPath);
+    writeJsonAtomic(_channelsPath, _channels);
     markEmptyIfIntentional();
     _lastChannelSaveError = '';
     return true;
@@ -149,10 +148,7 @@ function loadMediaFallback(dbPath) {
 function saveMediaFallback() {
   if (!_mediaFallbackPath) return;
   try {
-    fs.mkdirSync(path.dirname(_mediaFallbackPath), { recursive: true });
-    const tmp = _mediaFallbackPath + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(_mediaFallback, null, 2));
-    fs.renameSync(tmp, _mediaFallbackPath);
+    writeJsonAtomic(_mediaFallbackPath, _mediaFallback);
   } catch (e) { console.error('[WIVA] media fallback write failed:', e.message); }
 }
 
@@ -684,10 +680,7 @@ function loadAdminState(baseDir) {
 function saveAdminState() {
   if (!_adminStatePath) return;
   try {
-    fs.mkdirSync(path.dirname(_adminStatePath), { recursive: true });
-    const tmp = _adminStatePath + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(_adminState, null, 2));
-    fs.renameSync(tmp, _adminStatePath);
+    writeJsonAtomic(_adminStatePath, _adminState);
   } catch (e) {
     console.error('[WIVA] admin state write failed:', e.message);
   }
