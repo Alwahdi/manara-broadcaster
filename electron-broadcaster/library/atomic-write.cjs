@@ -79,7 +79,12 @@ function writeFileAtomic(destPath, data, options = {}) {
 
     // Rename kept failing (destination stayed locked). Persist in place so the
     // save is not lost, then discard the temp file.
-    fs.writeFileSync(destPath, data, writeOptions);
+    try {
+      fs.writeFileSync(destPath, data, writeOptions);
+    } catch (fallbackErr) {
+      fallbackErr.message = `atomic write failed: rename and in-place write to ${destPath} both failed (${fallbackErr.message})`;
+      throw fallbackErr;
+    }
     try { fs.rmSync(tmp, { force: true }); } catch { /* ignore */ }
   } catch (err) {
     try { fs.rmSync(tmp, { force: true }); } catch { /* ignore */ }
