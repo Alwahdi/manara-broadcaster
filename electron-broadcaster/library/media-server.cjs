@@ -721,6 +721,22 @@ function featureAllowed(options = {}, feature) {
   return false;
 }
 
+// The legacy server-rendered UI (giant single-page admin panel and the old
+// setup wizard) is retained only as an emergency developer fallback. It must
+// never be reachable in normal production use. It stays hidden unless an
+// operator explicitly opts in via the `allowLegacyUi` runtime option or the
+// `WIVA_ALLOW_LEGACY_UI` environment flag.
+function legacyUiAllowed(options = {}) {
+  try {
+    if (typeof options.allowLegacyUi === 'function') return !!options.allowLegacyUi();
+    if (options.allowLegacyUi !== undefined) return !!options.allowLegacyUi;
+  } catch {
+    return false;
+  }
+  const flag = String(process.env.WIVA_ALLOW_LEGACY_UI || '').trim().toLowerCase();
+  return flag === '1' || flag === 'true' || flag === 'yes' || flag === 'on';
+}
+
 function platformGateMessage(status, feature) {
   const label = {
     channels: 'القنوات',
@@ -2460,8 +2476,9 @@ function createHandler(options = {}) {
       return sendJson(res, 200, serviceHealth(options));
     }
     if (u.pathname === '/setup' || u.pathname === '/agent' || u.pathname.startsWith('/setup/')) {
-      // Legacy setup wizard kept as fallback only.
+      // Legacy setup wizard kept as an emergency developer fallback only.
       if (u.pathname === '/setup/legacy') {
+        if (!legacyUiAllowed(options)) { res.writeHead(404); res.end('WIVA media'); return; }
         return send(res, 200, setupPage(options), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       }
       const state = typeof options.getSetupState === 'function' ? options.getSetupState() : {};
@@ -2538,8 +2555,10 @@ function createHandler(options = {}) {
       recordAdminLogin(req, false);
       return send(res, 401, adminLoginPage('اسم المستخدم أو كلمة المرور غير صحيحة.', adminBase), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     }
-    // Legacy admin panel (single giant page) kept as fallback only.
+    // Legacy admin panel (single giant page) kept as an emergency developer
+    // fallback only; hidden unless explicitly re-enabled by an operator.
     if (u.pathname === '/admin/legacy' || u.pathname === `${adminBase}/legacy`) {
+      if (!legacyUiAllowed(options)) { res.writeHead(404); res.end('WIVA media'); return; }
       if (!requireAdmin(req, res, options, adminBase)) return;
       if (!featureAllowed(options, 'webAdmin')) return denyFeature(req, res, options, 'webAdmin');
       return send(res, 200, adminPage(options), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });

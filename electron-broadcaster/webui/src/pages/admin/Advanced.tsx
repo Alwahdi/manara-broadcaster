@@ -12,7 +12,6 @@ export function AdminAdvanced() {
         <h3>روابط مفيدة</h3>
         <div className="row">
           <a className="btn btn-ghost btn-sm" href="/api/agent/health" target="_blank" rel="noreferrer">فحص الصحة</a>
-          <a className="btn btn-ghost btn-sm" href="/admin/legacy">الواجهة القديمة</a>
           <a className="btn btn-ghost btn-sm" href="/setup/welcome">إعادة الإعداد</a>
         </div>
       </div>
