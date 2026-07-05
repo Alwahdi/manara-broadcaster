@@ -82,6 +82,9 @@ function startSignalingServer({
 
   const server = http.createServer((req, res) => {
     const url = req.url || '/';
+    if (mediaHandler && /^(\/$|\/index\.html(?:\?|$)|\/live(?:\/|\?|$)|\/watch(?:\/|\?|$)|\/iptv-player(?:\/|\?|$)|\/favicon\.ico|\/wiva-logo\.png|\/library-assets\/|\/iptv\/|\/setup(?:\/|\?|$)|\/api\/setup\/|\/agent(?:\/|\?|$)|\/api\/agent\/|\/admin(?:\/|\?|$)|\/api\/admin\/|\/library(?:\?|\/|$)|\/api\/library(?:\?|\/|$)|\/player\/|\/api\/media\/|\/api\/viewer\/|\/media\/|\/sub\/)/.test(url)) {
+      return mediaHandler(req, res);
+    }
     if (url === '/' || url === '/index.html') {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       res.end(viewerHtml); return;
@@ -109,9 +112,6 @@ function startSignalingServer({
     if (url === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true })); return;
-    }
-    if (mediaHandler && /^(\/favicon\.ico|\/wiva-logo\.png|\/library-assets\/|\/iptv\/|\/setup(?:\/|\?|$)|\/api\/setup\/|\/agent(?:\/|\?|$)|\/api\/agent\/|\/admin(?:\/|\?|$)|\/api\/admin\/|\/library(?:\?|$)|\/api\/library(?:\?|$)|\/player\/|\/api\/media\/|\/api\/viewer\/|\/media\/|\/sub\/)/.test(url)) {
-      return mediaHandler(req, res);
     }
     res.writeHead(404); res.end('Not Found');
   });
@@ -228,13 +228,17 @@ function startSignalingServer({
     });
   });
 
-  server.listen(port, '0.0.0.0', () => console.log('[WIVA] signaling on :' + port));
+  server.listen(port, '0.0.0.0', () => {
+    const actual = server.address()?.port || port;
+    console.log('[WIVA] signaling on :' + actual);
+  });
 
   return {
-    port,
+    get port() { return server.address()?.port || port; },
     setBrand: (b) => { brand = { ...brand, ...b }; },
     onStats: (fn) => { broadcasterListeners.add(fn); return () => broadcasterListeners.delete(fn); },
     getStats: () => ({ channels: channelSummary() }),
+    address: () => server.address(),
     close: () => new Promise((resolve) => {
       try { wss.close(); } catch {}
       try { server.close(() => resolve()); } catch { resolve(); }

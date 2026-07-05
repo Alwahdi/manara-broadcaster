@@ -32,6 +32,7 @@ fs.writeFileSync(cachePath, JSON.stringify({
 cloudIptv.setCachePath(cachePath);
 assert.equal(cloudIptv.getById('secret').url, secretUrl, 'proxy internals can still decrypt cached IPTV URLs');
 assert.equal(cloudIptv.list()[0].url, undefined, 'public cloud IPTV list must not expose source URLs');
+assert.equal(cloudIptv.list({ includeUrl: true })[0].url, secretUrl, 'server internals can request cloud IPTV URLs for safe playable payload construction');
 const persisted = fs.readFileSync(cachePath, 'utf8');
 assert.doesNotMatch(persisted, /secret-token/, 'cloud IPTV cache must not store raw source URLs');
 assert.doesNotMatch(persisted, /Bearer hidden/, 'cloud IPTV cache must not store raw source headers');

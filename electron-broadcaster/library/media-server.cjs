@@ -892,6 +892,18 @@ function createHandler(options = {}) {
       } catch {}
       return send(res, 204, '', { 'Cache-Control': 'public, max-age=86400' });
     }
+    if (u.pathname === '/hls.min.js') {
+      const asset = path.join(__dirname, '..', 'renderer', 'hls.min.js');
+      try {
+        if (fs.existsSync(asset)) {
+          return send(res, 200, fs.readFileSync(asset), {
+            'Content-Type': 'application/javascript; charset=utf-8',
+            'Cache-Control': 'public, max-age=86400',
+          });
+        }
+      } catch {}
+      return send(res, 404, 'hls.js not found', { 'Content-Type': 'text/plain; charset=utf-8' });
+    }
     let assetMatch = /^\/library-assets\/([a-z0-9_.-]+)$/.exec(u.pathname);
     if (assetMatch) {
       const asset = path.join(__dirname, '..', 'assets', 'library', assetMatch[1]);

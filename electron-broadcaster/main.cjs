@@ -1128,7 +1128,10 @@ function publicIptvChannels() {
   if (!platformFeatureAllowed('iptv')) return [];
   const rows = [];
   try {
-    rows.push(...cloudIptv.list().map(applyCloudIptvOverride));
+    // Viewer lists need to know whether a cloud channel is playable, but the
+    // URL must never be returned to the browser. We include it only inside this
+    // process, then map to a safe playUrl-only payload below.
+    rows.push(...cloudIptv.list({ includeUrl: true }).map(applyCloudIptvOverride));
   } catch {}
   try {
     rows.push(...libraryDb.listIptv().map((c) => ({ ...c, source: 'local' })));

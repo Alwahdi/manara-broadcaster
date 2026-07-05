@@ -157,15 +157,15 @@ function IptvRow({
   const isCloud = String(channel.id).startsWith("cloud-") || channel.source === "cloud";
   return (
     <tr>
-      <td>{channel.name}</td>
-      <td className="dim">{isCloud ? "سحابي" : "محلي"}</td>
-      <td className="dim">{channel.group || channel.category || "—"}</td>
-      <td>
+      <td data-label="الاسم">{channel.name}</td>
+      <td data-label="النوع" className="dim">{isCloud ? "سحابي" : "محلي"}</td>
+      <td data-label="المجموعة" className="dim">{channel.group || channel.category || "—"}</td>
+      <td data-label="الحالة">
         <span className={`badge badge-dot ${enabled ? "badge-on" : "badge-off"}`}>
           {enabled ? "مفعّلة" : "متوقفة"}
         </span>
       </td>
-      <td>
+      <td data-label="الإجراءات">
         <div className="row">
           <button className="btn btn-sm btn-ghost" onClick={() => onToggle(channel.id)} disabled={busy}>
             {enabled ? "إيقاف" : "تفعيل"}

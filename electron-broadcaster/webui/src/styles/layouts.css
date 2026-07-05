@@ -543,20 +543,61 @@ button.folder-card {
 .table th { color: var(--text-dim); font-size: 0.82rem; font-weight: 700; }
 .table tbody tr:hover { background: var(--surface); }
 
-/* On small screens wide tables must not overflow the layout. Make them
-   horizontally scrollable within their card, with a soft edge hint, instead of
-   breaking the page (product rule: avoid wide tables as the mobile experience). */
+/* On small screens admin tables become compact cards instead of wide scroll
+   areas. Cells use data-label for readable field names. */
 @media (max-width: 720px) {
-  .card > .table,
-  .card-pad > .table,
-  .table-wrap {
+  .table,
+  .table thead,
+  .table tbody,
+  .table tr,
+  .table td {
     display: block;
     width: 100%;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
   }
-  .table th, .table td { white-space: nowrap; }
+  .table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .table tbody {
+    display: grid;
+    gap: 12px;
+  }
+  .table tbody tr {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: rgba(6, 9, 18, 0.42);
+    padding: 8px 10px;
+  }
+  .table tbody tr:hover {
+    background: rgba(21, 27, 44, 0.7);
+  }
+  .table td {
+    border-bottom: 1px solid rgba(140, 160, 210, 0.1);
+    padding: 10px 0;
+    white-space: normal;
+  }
+  .table td:last-child {
+    border-bottom: 0;
+  }
+  .table td[data-label] {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+  }
+  .table td[data-label]::before {
+    content: attr(data-label);
+    color: var(--text-dim);
+    font-size: 0.78rem;
+    font-weight: 800;
+    flex: 0 0 92px;
+  }
+  .table td .row {
+    justify-content: flex-end;
+  }
 }
 
 /* ---------- Skip link (accessibility) ---------- */

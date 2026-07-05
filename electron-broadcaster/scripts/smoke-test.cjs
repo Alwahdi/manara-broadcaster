@@ -7,6 +7,7 @@ const crypto = require('node:crypto');
 
 const db = require('../library/db.cjs');
 const mediaServer = require('../library/media-server.cjs');
+const { startSignalingServer } = require('../server/signaling.cjs');
 
 function request(base, pathname, options = {}) {
   return fetch(base + pathname, {
@@ -42,7 +43,7 @@ async function main() {
     { id: 'cloud-smoke', name: 'Cloud Smoke IPTV HD', url: 'https://example.com/cloud.m3u8', category: 'سحابي', enabled: false, source: 'cloud' },
   ];
   const sessions = new Set();
-  const server = http.createServer(mediaServer.createHandler({
+  const handlerOptions = {
     getAdminAuth: () => ({ username: 'admin' }),
     getAdminPath: () => 'admin',
     getSetupState: () => setupState,
@@ -132,10 +133,20 @@ async function main() {
       return platformState;
     },
     refreshPlatformStatus: async () => platformState,
-  }));
+  };
+  const server = http.createServer(mediaServer.createHandler(handlerOptions));
 
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
+  const signaling = startSignalingServer({
+    port: 0,
+    mediaHandler: mediaServer.createHandler(handlerOptions),
+    getIptvChannels: handlerOptions.getIptvChannels,
+    getBroadcastChannels: handlerOptions.getBroadcastChannels,
+    getFeatureAllowed: (feature) => platformState.state === 'active' && !!platformState.features?.[feature],
+  });
+  while (!signaling.address()) await new Promise((resolve) => setTimeout(resolve, 10));
+  const signalingBase = `http://127.0.0.1:${signaling.address().port}`;
 
   try {
     let res = await request(base, '/health');
@@ -217,6 +228,22 @@ async function main() {
     // returns a small offline-safe "UI not built" notice (HTTP 503) — never the
     // old giant server-rendered admin/setup/library HTML, which has been removed.
     const spaBuilt = fs.existsSync(path.join(__dirname, '..', 'webui', 'dist', 'index.html'));
+
+    res = await request(signalingBase, '/');
+    const signalingHomeBody = await res.text();
+    assert.doesNotMatch(signalingHomeBody, /id="grid"|\.channel-card|viewer\.html/, 'signaling / must not serve the old viewer HTML');
+    if (spaBuilt) {
+      assert.equal(res.status, 200, 'signaling / serves the modern SPA when built');
+      assert.match(signalingHomeBody, /data-wiva-app="next"|\/_next\/static\//, 'signaling / serves the modern Next SPA shell');
+    }
+
+    res = await request(signalingBase, '/watch/channel/smoke');
+    const signalingWatchBody = await res.text();
+    assert.doesNotMatch(signalingWatchBody, /new RTCPeerConnection|watch\.html/, 'signaling /watch/channel must not serve the old watch HTML');
+    if (spaBuilt) {
+      assert.equal(res.status, 200, 'signaling /watch/channel serves the modern SPA when built');
+      assert.match(signalingWatchBody, /data-wiva-app="next"|\/_next\/static\//, 'signaling watch path serves the modern Next SPA shell');
+    }
 
     res = await request(base, '/admin/channels/new', { headers: { Cookie: cookie.split(';')[0] } });
     if (spaBuilt) {
@@ -483,6 +510,7 @@ async function main() {
     res = await request(base, '/api/admin/state');
     assert.equal(res.status, 401);
   } finally {
+    await signaling.close();
     await new Promise((resolve) => server.close(resolve));
   }
   console.log('WIVA smoke test passed');

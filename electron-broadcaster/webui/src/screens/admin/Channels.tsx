@@ -76,15 +76,15 @@ export function AdminChannels() {
                       : {};
                   return (
                     <tr key={String(ch.id)}>
-                      <td>{ch.name}</td>
-                      <td className="dim">{String(source.name || source.id || source.type || "بث")}</td>
-                      <td className="dim">{ch.audioDeviceName || ch.audioDeviceId || "بدون"}</td>
-                      <td>
+                      <td data-label="الاسم">{ch.name}</td>
+                      <td data-label="المصدر" className="dim">{String(source.name || source.id || source.type || "بث")}</td>
+                      <td data-label="الصوت" className="dim">{ch.audioDeviceName || ch.audioDeviceId || "بدون"}</td>
+                      <td data-label="الحالة">
                         <span className={`badge badge-dot ${enabled ? "badge-on" : "badge-off"}`}>
                           {enabled ? "مفعّلة" : "متوقفة"}
                         </span>
                       </td>
-                      <td>
+                      <td data-label="الإجراءات">
                         <div className="row">
                           <button className="btn btn-sm btn-ghost" onClick={() => toggle.mutate(ch)} disabled={toggle.isPending}>
                             {enabled ? "إيقاف" : "تفعيل"}

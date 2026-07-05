@@ -27,9 +27,9 @@ export function AdminLogs() {
               <tbody>
                 {(d.logs as Record<string, unknown>[]).map((log, i) => (
                   <tr key={i}>
-                    <td className="dim mono">{formatDateTime(log.at as string | number)}</td>
-                    <td>{String(log.action || log.type || "—")}</td>
-                    <td className="dim truncate" style={{ maxWidth: 340 }}>
+                    <td data-label="الوقت" className="dim mono">{formatDateTime(log.at as string | number)}</td>
+                    <td data-label="الحدث">{String(log.action || log.type || "—")}</td>
+                    <td data-label="التفاصيل" className="dim truncate" style={{ maxWidth: 340 }}>
                       {String(log.targetName || log.detail || log.path || "")}
                     </td>
                   </tr>

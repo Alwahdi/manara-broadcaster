@@ -6,8 +6,13 @@ import { QueryBoundary } from "@/components/States";
 
 export function WatchChannel() {
   const id = useAppPath().split("/").filter(Boolean).at(-1) || "";
+  const [selectedQualityId, setSelectedQualityId] = useState(id);
   const state = useQuery({ queryKey: ["viewer-state"], queryFn: api.viewerState });
   const agent = useQuery({ queryKey: ["agent-state"], queryFn: api.agentState });
+
+  useEffect(() => {
+    setSelectedQualityId(id);
+  }, [id]);
 
   return (
     <div>
@@ -20,11 +25,48 @@ export function WatchChannel() {
             ? (data.channels as Channel[])
             : [...(((data.broadcast as Channel[]) || [])), ...(((data.iptv as Channel[]) || []))]);
           const channel = channels.find((ch) => String(ch.id) === String(id));
-          const src = channel?.playUrl || `/iptv/${encodeURIComponent(id)}/index.m3u8`;
+          const qualityOptions = Array.isArray(channel?.qualities) ? channel.qualities : [];
+          const activeQualityId = qualityOptions.some((quality) => String(quality.id) === String(selectedQualityId))
+            ? selectedQualityId
+            : id;
+          const src = channel?.playUrl && String(activeQualityId) === String(channel.id)
+            ? channel.playUrl
+            : `/iptv/${encodeURIComponent(activeQualityId)}/index.m3u8`;
           const isIptv = channel?.type === "iptv" || String(id).startsWith("cloud-") || src.startsWith("/iptv/");
+          const activeQuality = qualityOptions.find((quality) => String(quality.id) === String(activeQualityId));
           return (
             <>
-              {isIptv ? <HlsPlayer src={src} /> : <BroadcastPlayer channelId={id} livePort={Number(agent.data?.ports?.live) || undefined} />}
+              {isIptv ? (
+                <>
+                  {qualityOptions.length > 1 ? (
+                    <div className="card" style={{ marginBottom: 12 }}>
+                      <div className="row-between" style={{ gap: 12 }}>
+                        <strong>جودة البث</strong>
+                        <span className="muted">{activeQuality?.label || activeQuality?.name || "تلقائي"}</span>
+                      </div>
+                      <div className="row" style={{ marginTop: 12 }}>
+                        {qualityOptions.map((quality) => {
+                          const qualityId = String(quality.id);
+                          const active = String(activeQualityId) === qualityId;
+                          return (
+                            <button
+                              key={qualityId}
+                              type="button"
+                              className={`btn ${active ? "btn-primary" : "btn-ghost"} btn-sm`}
+                              onClick={() => setSelectedQualityId(qualityId)}
+                            >
+                              {quality.label || quality.name || "جودة"}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+                  <HlsPlayer src={src} />
+                </>
+              ) : (
+                <BroadcastPlayer channelId={id} livePort={Number(agent.data?.ports?.live) || undefined} />
+              )}
               <div className="row-between">
                 <h1 className="page-title">{channel?.name || `القناة ${id}`}</h1>
                 <span className="badge badge-dot badge-live">بث مباشر</span>
@@ -40,16 +82,165 @@ export function WatchChannel() {
   );
 }
 
+type HlsErrorData = {
+  fatal?: boolean;
+  type?: string;
+  details?: string;
+};
+
+type HlsInstance = {
+  loadSource: (src: string) => void;
+  attachMedia: (media: HTMLMediaElement) => void;
+  on: (event: string, callback: (event: string, data: HlsErrorData) => void) => void;
+  destroy: () => void;
+  startLoad?: () => void;
+  recoverMediaError?: () => void;
+};
+
+type HlsConstructor = {
+  new (config?: Record<string, unknown>): HlsInstance;
+  isSupported: () => boolean;
+  Events: { ERROR: string; MANIFEST_PARSED?: string };
+  ErrorTypes?: { MEDIA_ERROR?: string; NETWORK_ERROR?: string };
+};
+
+let hlsScriptPromise: Promise<void> | null = null;
+
+function getHls() {
+  return (window as Window & { Hls?: HlsConstructor }).Hls;
+}
+
+function loadHlsScript() {
+  if (getHls()) return Promise.resolve();
+  if (hlsScriptPromise) return hlsScriptPromise;
+  hlsScriptPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>('script[data-wiva-hls="true"]');
+    if (existing) {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("تعذر تحميل مشغل البث.")), { once: true });
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "/hls.min.js";
+    script.async = true;
+    script.dataset.wivaHls = "true";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("تعذر تحميل مشغل البث."));
+    document.head.appendChild(script);
+  });
+  return hlsScriptPromise;
+}
+
 function HlsPlayer({ src }: { src: string }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const hlsRef = useRef<HlsInstance | null>(null);
+  const [status, setStatus] = useState("جاري تجهيز البث...");
+  const [error, setError] = useState("");
+  const [retryKey, setRetryKey] = useState(0);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return undefined;
+    const media = video;
+    let closed = false;
+
+    function cleanup() {
+      try { hlsRef.current?.destroy(); } catch {}
+      hlsRef.current = null;
+      try {
+        media.pause();
+        media.removeAttribute("src");
+        media.load();
+      } catch {}
+    }
+
+    async function start() {
+      cleanup();
+      setError("");
+      setStatus("جاري تحميل البث...");
+      if (media.canPlayType("application/vnd.apple.mpegurl")) {
+        media.src = src;
+        try { await media.play(); } catch {}
+        if (!closed) setStatus("");
+        return;
+      }
+      await loadHlsScript();
+      if (closed) return;
+      const Hls = getHls();
+      if (!Hls?.isSupported()) {
+        setStatus("");
+        setError("هذا المتصفح لا يدعم تشغيل هذا النوع من البث.");
+        return;
+      }
+      const hls = new Hls({
+        lowLatencyMode: true,
+        backBufferLength: 30,
+        manifestLoadingTimeOut: 15000,
+        levelLoadingTimeOut: 15000,
+        fragLoadingTimeOut: 20000,
+      });
+      hlsRef.current = hls;
+      hls.loadSource(src);
+      hls.attachMedia(media);
+      if (Hls.Events.MANIFEST_PARSED) {
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          media.play().catch(() => {});
+          setStatus("");
+        });
+      }
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (!data?.fatal) return;
+        if (data.type === Hls.ErrorTypes?.NETWORK_ERROR) {
+          setStatus("انقطع الاتصال بالمصدر. نحاول إعادة الاتصال...");
+          try { hls.startLoad?.(); } catch {}
+          return;
+        }
+        if (data.type === Hls.ErrorTypes?.MEDIA_ERROR) {
+          setStatus("نعالج مشكلة في تشغيل الفيديو...");
+          try { hls.recoverMediaError?.(); } catch {}
+          return;
+        }
+        setStatus("");
+        setError("تعذر تشغيل هذا البث الآن. جرّب جودة أخرى أو أعد المحاولة.");
+      });
+    }
+
+    start().catch((err: Error) => {
+      if (closed) return;
+      setStatus("");
+      setError(err.message || "تعذر تشغيل البث.");
+    });
+
+    return () => {
+      closed = true;
+      cleanup();
+    };
+  }, [src, retryKey]);
+
   return (
-    <div className="card" style={{ overflow: "hidden", marginBottom: 20 }}>
+    <div className="card" style={{ overflow: "hidden", marginBottom: 20, position: "relative" }}>
       <video
+        ref={videoRef}
         controls
         autoPlay
         playsInline
         style={{ width: "100%", aspectRatio: "16/9", background: "#000", display: "block" }}
-        src={src}
       />
+      {status || error ? (
+        <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", padding: 24, textAlign: "center", background: "rgba(2,6,23,.72)" }}>
+          <div>
+            {status && !error ? <div className="spinner" style={{ margin: "0 auto 12px" }} /> : null}
+            <strong>{error || status}</strong>
+            {error ? (
+              <div style={{ marginTop: 14 }}>
+                <button type="button" className="btn btn-primary btn-sm" onClick={() => setRetryKey((value) => value + 1)}>
+                  إعادة المحاولة
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
