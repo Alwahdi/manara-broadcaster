@@ -7,19 +7,12 @@ const https = require('https');
 const { writeJsonAtomic } = require('./atomic-write.cjs');
 try { require('./env.cjs').loadLocalEnv(__dirname); } catch {}
 
-const CLOUD_BASE = process.env.MANARA_CLOUD_URL ||
-  'https://project--67c27b7a-ed28-4f60-b80e-05a2f89dcda5.lovable.app';
-const CLOUD_REST = CLOUD_BASE + '/api/public/iptv/list';
-const SUPABASE_URL = process.env.MANARA_SUPABASE_URL || process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://yvfyvanvkjrgapufatnn.supabase.co';
-const SUPABASE_ANON_KEY = process.env.MANARA_SUPABASE_ANON_KEY ||
-  process.env.SUPABASE_PUBLISHABLE_KEY ||
-  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl2Znl2YW52a2pyZ2FwdWZhdG5uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MzU3OTcsImV4cCI6MjA5NDAxMTc5N30.yx8R7ZpkUWj52cEfaNNtU0uaUrw_QS9lNRNAg-sUsPo';
-const SUPABASE_PUBLIC_REST = SUPABASE_URL +
-  '/rest/v1/cloud_iptv_channels?select=id,name,url,logo_url,category,headers,transfer_limit_bytes,is_active,sort_order&is_active=eq.true&order=sort_order.asc';
-const DEFAULT_REFRESH_MS = 3 * 60 * 1000;
 let runtimeConfig = {};
 try { runtimeConfig = require('./cloud-runtime.cjs'); } catch {}
+
+const CLOUD_BASE = String(process.env.WIVA_CLOUD_URL || process.env.MANARA_CLOUD_URL || runtimeConfig.cloudUrl || '').trim().replace(/\/+$/g, '');
+const CLOUD_REST = CLOUD_BASE ? CLOUD_BASE + '/api/public/iptv/list' : '';
+const DEFAULT_REFRESH_MS = 3 * 60 * 1000;
 let neonDatabaseUrl = process.env.MANARA_NEON_DATABASE_URL || runtimeConfig.neonDatabaseUrl || '';
 
 const DEV_DEMO_CHANNELS = [
@@ -138,42 +131,28 @@ async function refresh(licenseKey) {
   } catch (e) {
     failures.push(`neon postgres: ${e.message}`);
   }
+  if (!neonDatabaseUrl) failures.push('neon postgres: MANARA_NEON_DATABASE_URL is not configured');
 
-  try {
-    const url = CLOUD_REST + (licenseKey ? `?license_key=${encodeURIComponent(licenseKey)}` : '');
-    const payload = await fetchJson(url, licenseKey ? { 'X-License-Key': licenseKey } : {});
-    const rows = Array.isArray(payload) ? payload : payload.channels;
-    if (Array.isArray(rows)) {
-      const normalized = normalizeRows(rows);
-      if (normalized.length === 0) throw new Error('public endpoint returned zero IPTV channels');
-      cached = normalized;
-      lastFetch = Date.now();
-      lastStatus = { state: 'ok', at: new Date().toISOString(), error: '', count: cached.length, source: CLOUD_REST };
-      persist();
-      console.log('[cloud-iptv] refreshed', cached.length, 'channels');
+  if (CLOUD_REST) {
+    try {
+      const url = CLOUD_REST + (licenseKey ? `?license_key=${encodeURIComponent(licenseKey)}` : '');
+      const payload = await fetchJson(url, licenseKey ? { 'X-License-Key': licenseKey } : {});
+      const rows = Array.isArray(payload) ? payload : payload.channels;
+      if (Array.isArray(rows)) {
+        const normalized = normalizeRows(rows);
+        if (normalized.length === 0) throw new Error('public endpoint returned zero IPTV channels');
+        cached = normalized;
+        lastFetch = Date.now();
+        lastStatus = { state: 'ok', at: new Date().toISOString(), error: '', count: cached.length, source: CLOUD_REST };
+        persist();
+        console.log('[cloud-iptv] refreshed', cached.length, 'channels');
+      }
+      return cached;
+    } catch (e) {
+      failures.push(`public endpoint: ${e.message}`);
     }
-    return cached;
-  } catch (e) {
-    failures.push(`public endpoint: ${e.message}`);
-  }
-
-  try {
-    const rows = await fetchJson(SUPABASE_PUBLIC_REST, {
-      apikey: SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-    });
-    if (Array.isArray(rows)) {
-      const normalized = normalizeRows(rows);
-      if (normalized.length === 0) throw new Error('Supabase REST returned zero IPTV channels');
-      cached = normalized;
-      lastFetch = Date.now();
-      lastStatus = { state: 'ok', at: new Date().toISOString(), error: '', count: cached.length, source: 'supabase-rest' };
-      persist();
-      console.log('[cloud-iptv] refreshed from Supabase REST', cached.length, 'channels');
-    }
-    return cached;
-  } catch (e) {
-    failures.push(`supabase rest: ${e.message}`);
+  } else {
+    failures.push('public endpoint: WIVA_CLOUD_URL is not configured');
   }
 
   lastStatus = { state: 'error', at: new Date().toISOString(), error: failures.join(' | '), count: cached.length, source: 'cache' };

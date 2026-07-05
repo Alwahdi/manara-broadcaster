@@ -6,6 +6,8 @@ WIVA is a local network live TV, IPTV, and media library agent for hotels, hospi
 
 The production desktop/runtime app lives in `electron-broadcaster/`. The root package is a workspace entry point only. Do not expand old root app code unless the task explicitly targets it.
 
+The old root Lovable/TanStack/Supabase app was removed. Do not recreate root `src/`, `.lovable/`, or root `supabase/` unless the product direction explicitly changes.
+
 ## Source Of Truth
 
 - Official runtime: `electron-broadcaster/`

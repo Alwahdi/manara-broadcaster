@@ -2,13 +2,10 @@
 
 This document tracks the production-readiness work for WIVA Agent and separates code changes from external secrets/certificates that must be provided by the product owner.
 
-## Current branch
-
-Work is staged on `hardening-ci-foundation` before merging to `main`.
-
 ## Implemented in this foundation pass
 
 - Root `package.json` is now a workspace entrypoint only. The production Electron runtime remains under `electron-broadcaster/`.
+- Removed the old root Lovable/TanStack/Supabase app stack so the repository has one production application surface: the WIVA Agent.
 - Added `npm run ci` for smoke tests, Web UI typecheck/build, and production dependency audit.
 - Added `npm run test:load` as a local API load-test baseline.
 - Added `.github/workflows/ci.yml` with:

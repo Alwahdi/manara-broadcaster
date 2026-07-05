@@ -7,10 +7,11 @@ const path = require('path');
 const crypto = require('crypto');
 const https = require('https');
 const { getHardwareId } = require('./machine-id.cjs');
+let runtimeConfig = {};
+try { runtimeConfig = require('../library/cloud-runtime.cjs'); } catch {}
 
-const CLOUD_BASE = process.env.MANARA_CLOUD_URL ||
-  'https://project--67c27b7a-ed28-4f60-b80e-05a2f89dcda5.lovable.app';
-const VERIFY_URL = CLOUD_BASE + '/api/public/license/verify';
+const CLOUD_BASE = String(process.env.WIVA_CLOUD_URL || process.env.MANARA_CLOUD_URL || runtimeConfig.cloudUrl || '').trim().replace(/\/+$/g, '');
+const VERIFY_URL = CLOUD_BASE ? CLOUD_BASE + '/api/public/license/verify' : '';
 const TRIAL_DAYS = 7;
 // Local cache integrity HMAC key (not a secret — just tamper detection).
 const SIG_KEY = 'manara-local-cache-v1';
@@ -99,19 +100,21 @@ async function verifyLicense({ key, cachePath, firstRunPath, appVersion }) {
   }
 
   // Try online verification
-  try {
-    const res = await postJson(VERIFY_URL, { key, hardwareId, appVersion });
-    if (res.status === 200 && res.body?.ok) {
-      const license = { ...res.body, key, hardwareId, verifiedAt: new Date().toISOString() };
-      writeCache(cachePath, license);
-      return { state: 'licensed', license, hardwareId };
+  if (VERIFY_URL) {
+    try {
+      const res = await postJson(VERIFY_URL, { key, hardwareId, appVersion });
+      if (res.status === 200 && res.body?.ok) {
+        const license = { ...res.body, key, hardwareId, verifiedAt: new Date().toISOString() };
+        writeCache(cachePath, license);
+        return { state: 'licensed', license, hardwareId };
+      }
+      if (res.status === 409) return { state: 'mismatch', hardwareId };
+      if (res.status === 403 || res.status === 404) {
+        return { state: 'invalid', hardwareId, reason: res.body?.error };
+      }
+    } catch {
+      // Fall through to offline cache
     }
-    if (res.status === 409) return { state: 'mismatch', hardwareId };
-    if (res.status === 403 || res.status === 404) {
-      return { state: 'invalid', hardwareId, reason: res.body?.error };
-    }
-  } catch {
-    // Fall through to offline cache
   }
 
   // Offline grace

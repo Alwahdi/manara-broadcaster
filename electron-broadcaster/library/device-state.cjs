@@ -2,10 +2,11 @@
 // The app remains fully local-first; this only prevents data loss across
 // restarts/reinstalls by backing up settings + local channels by license/device.
 const https = require('https');
+let runtimeConfig = {};
+try { runtimeConfig = require('./cloud-runtime.cjs'); } catch {}
 
-const CLOUD_BASE = process.env.MANARA_CLOUD_URL ||
-  'https://project--67c27b7a-ed28-4f60-b80e-05a2f89dcda5.lovable.app';
-const DEVICE_STATE_URL = CLOUD_BASE + '/api/public/device-state';
+const CLOUD_BASE = String(process.env.WIVA_CLOUD_URL || process.env.MANARA_CLOUD_URL || runtimeConfig.cloudUrl || '').trim().replace(/\/+$/g, '');
+const DEVICE_STATE_URL = CLOUD_BASE ? CLOUD_BASE + '/api/public/device-state' : '';
 
 function postJson(body) {
   return new Promise((resolve, reject) => {
@@ -40,14 +41,14 @@ function postJson(body) {
 }
 
 async function pull({ key, hardwareId, appVersion }) {
-  if (!key || !hardwareId) return null;
+  if (!key || !hardwareId || !DEVICE_STATE_URL) return null;
   const res = await postJson({ key, hardwareId, appVersion, mode: 'pull' });
   if (res.status >= 200 && res.status < 300 && res.body?.ok) return res.body.state || null;
   throw new Error(res.body?.error || `device-state pull HTTP ${res.status}`);
 }
 
 async function merge({ key, hardwareId, appVersion, state }) {
-  if (!key || !hardwareId) return null;
+  if (!key || !hardwareId || !DEVICE_STATE_URL) return null;
   const res = await postJson({ key, hardwareId, appVersion, mode: 'merge', state });
   if (res.status >= 200 && res.status < 300 && res.body?.ok) return res.body.state || null;
   throw new Error(res.body?.error || `device-state merge HTTP ${res.status}`);

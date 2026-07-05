@@ -50,8 +50,7 @@ function runtimeConfigFromEnv() {
   return {
     neonDatabaseUrl: process.env.MANARA_NEON_DATABASE_URL || process.env.DATABASE_URL || '',
     sentryDsn: process.env.SENTRY_DSN || '',
-    supabaseUrl: process.env.MANARA_SUPABASE_URL || process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
-    supabaseAnonKey: process.env.MANARA_SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY || '',
+    cloudUrl: process.env.WIVA_CLOUD_URL || process.env.MANARA_CLOUD_URL || '',
   };
 }
 

@@ -16,7 +16,8 @@ Date: 2026-06-25
 - Platform activation/licensing: `electron-broadcaster/library/platform.cjs`.
 - Cloud IPTV: Neon first, public/cloud fallbacks second.
 - Error tracking: Sentry Electron if `SENTRY_DSN` is configured.
-- Separate web app: TanStack/Vite source exists under `src/` (cloud). The WIVA Agent's official local UI is a separate Vite + React + TanStack Router SPA under `electron-broadcaster/webui/`, served from `webui/dist` by the Agent; server files handle only APIs and streams.
+- Official local UI: Vite + React + TanStack Router SPA under `electron-broadcaster/webui/`, served from `webui/dist` by the Agent; server files handle APIs, media/IPTV streams, and compatibility fallback pages.
+- Removed legacy root cloud app: the old Lovable/TanStack/Supabase root stack (`.lovable/`, root `src/`, and root `supabase/`) was removed after the Electron WIVA Agent became the source of truth.
 
 ## Implemented
 
@@ -51,7 +52,6 @@ Date: 2026-06-25
 - IPTV multi-viewer optimization exists for HLS segments and TS fan-out, but 1000-viewer production hardening still needs load testing and backpressure tuning.
 - Media library supports folders and scanning, but thumbnail generation from video frames and full TV-grade detail pages are not complete.
 - Admin UI is functional and WIVA-branded, but full role-based product IA is not complete.
-- The `src/` web app has many routes but is not the primary packaged desktop runtime.
 
 ## Not Implemented Yet
 
@@ -86,6 +86,7 @@ These are not customer-facing product names.
 - Plain Node smoke tests may use JSON fallback if `better-sqlite3` was built for Electron ABI. The packaged Electron app rebuilds the native module during packaging.
 - Electron dependency audit currently reports transitive vulnerabilities. They should be reviewed before broad production rollout; do not blindly force major upgrades without packaging tests.
 - LAN admin is appropriate for trusted local networks, but not for public internet exposure.
+- Cloud/platform fallbacks now require explicit Neon or WIVA platform configuration; no old hosted app endpoint is baked into the runtime.
 
 ## Recommended Next Phases
 
