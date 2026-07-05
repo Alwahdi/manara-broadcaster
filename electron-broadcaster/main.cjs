@@ -631,13 +631,6 @@ function mediaServerOptions() {
     verifyAdminSession: (token) => verifyAdminSession(token),
     clearAdminSession: (token) => clearAdminSession(token),
     getAdminPath: () => settings.adminPath || 'admin',
-    // Legacy server-rendered UI is an emergency developer fallback only. It is
-    // hidden in normal use and re-enabled solely via the WIVA_ALLOW_LEGACY_UI
-    // environment flag.
-    allowLegacyUi: () => {
-      const flag = String(process.env.WIVA_ALLOW_LEGACY_UI || '').trim().toLowerCase();
-      return flag === '1' || flag === 'true' || flag === 'yes' || flag === 'on';
-    },
     getSetupState: () => agentState(),
     checkPort: (port) => checkPortAvailability(port),
     listCaptureSources: () => listCaptureSourcesForAdmin(),
