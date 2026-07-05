@@ -48,6 +48,8 @@ const BACKEND_NAMES: Record<string, string> = {
   unknown: "غير معروف",
 };
 
+const STORAGE_HEADING = "تخزين البيانات المحلية";
+
 export function AdminDiagnostics() {
   const diag = useQuery({ queryKey: ["admin-diagnostics"], queryFn: api.diagnostics, refetchInterval: 10_000 });
   const { status } = useLiveStatus();
@@ -82,37 +84,32 @@ export function AdminDiagnostics() {
                   </div>
                 ))}
               </div>
-              {storage && !storage.ok ? (
+              {storage && (!storage.ok || storage.migratedFromFallback) ? (
                 <div className="card card-pad" style={{ marginTop: 20 }}>
                   <div className="row-between">
-                    <h3>تخزين البيانات المحلية</h3>
-                    <span className="badge badge-dot badge-off">
+                    <h3>{STORAGE_HEADING}</h3>
+                    <span className={`badge badge-dot ${storage.ok ? "badge-on" : "badge-off"}`}>
                       {BACKEND_NAMES[String(storage.backend)] || storage.backend}
                     </span>
                   </div>
-                  <p className="muted">
-                    يعمل التطبيق حاليًا على التخزين الاحتياطي بدلًا من قاعدة البيانات المدمجة. قد لا تكون هذه وضعية إنتاج موصى بها.
-                  </p>
-                  {storage.loadError ? (
-                    <p className="dim mono">سبب التحميل: {storage.loadError}</p>
-                  ) : null}
-                  {storage.initError ? (
-                    <p className="dim mono">سبب التهيئة: {storage.initError}</p>
-                  ) : null}
-                  {storage.recoveryAction ? (
-                    <p><strong>إجراء الاستعادة:</strong> {storage.recoveryAction}</p>
-                  ) : null}
-                </div>
-              ) : null}
-              {storage && storage.migratedFromFallback ? (
-                <div className="card card-pad" style={{ marginTop: 20 }}>
-                  <div className="row-between">
-                    <h3>تخزين البيانات المحلية</h3>
-                    <span className="badge badge-dot badge-on">
-                      {BACKEND_NAMES[String(storage.backend)] || storage.backend}
-                    </span>
-                  </div>
-                  <p className="muted">تمت استعادة بيانات المكتبة من التخزين الاحتياطي إلى قاعدة بيانات SQLite بنجاح.</p>
+                  {storage.ok ? (
+                    <p className="muted">تمت استعادة بيانات المكتبة من التخزين الاحتياطي إلى قاعدة بيانات SQLite بنجاح.</p>
+                  ) : (
+                    <>
+                      <p className="muted">
+                        يعمل التطبيق حاليًا على التخزين الاحتياطي بدلًا من قاعدة البيانات المدمجة. قد لا تكون هذه وضعية إنتاج موصى بها.
+                      </p>
+                      {storage.loadError ? (
+                        <p className="dim mono">سبب التحميل: {storage.loadError}</p>
+                      ) : null}
+                      {storage.initError ? (
+                        <p className="dim mono">سبب التهيئة: {storage.initError}</p>
+                      ) : null}
+                      {storage.recoveryAction ? (
+                        <p><strong>إجراء الاستعادة:</strong> {storage.recoveryAction}</p>
+                      ) : null}
+                    </>
+                  )}
                 </div>
               ) : null}
               <div className="card card-pad" style={{ marginTop: 20 }}>

@@ -25,7 +25,7 @@ function freshDb({ forceFallback = false } = {}) {
     // Remove it and poison the cache so require() throws inside db.cjs.
     require.cache[sqlitePath] = { id: sqlitePath, exports: null, loaded: true };
     Object.defineProperty(require.cache[sqlitePath], 'exports', {
-      get() { throw new Error('forced-fallback-for-test'); },
+      get() { throw new Error('TEST: simulated better-sqlite3 native load failure'); },
     });
     try {
       return { db: require('../library/db.cjs'), restore: () => { require.cache[sqlitePath] = saved; } };

@@ -300,7 +300,10 @@ function migrateFallbackIntoSqlite(dbPath) {
   try {
     const existing = _db.prepare('SELECT COUNT(*) AS n FROM media_items').get();
     if (existing && Number(existing.n) > 0) return;
-  } catch { return; }
+  } catch (e) {
+    console.warn('[WIVA] fallback migration skipped (media_items count check failed):', e.message);
+    return;
+  }
   const progress = (data && data.watch_progress && typeof data.watch_progress === 'object') ? data.watch_progress : {};
   const subtitles = Array.isArray(data && data.subtitles) ? data.subtitles : [];
   try {
@@ -1387,7 +1390,7 @@ function exportChannels() {
 function storageRecoveryAction() {
   if (_storageBackend === 'sqlite' || _storageBackend === 'recovery') return '';
   if (_sqliteLoadError) {
-    return 'تعذّر تحميل مكتبة قاعدة البيانات المدمجة (better-sqlite3). أعد تثبيت WIVA أو شغّل "dev:repair-native" لإعادة بناء الوحدة الأصلية، وتأكد من عدم حجب برنامج الحماية للملف.';
+    return 'تعذّر تحميل مكتبة قاعدة البيانات المدمجة (better-sqlite3). أعد تثبيت WIVA (أو أعد تشغيل المُثبّت للإصلاح)، وتأكد من أن برنامج الحماية لا يحجب ملفات التطبيق.';
   }
   if (_sqliteInitError) {
     return 'فشل فتح قاعدة البيانات المحلية. تحقّق من صلاحيات مجلد بيانات المستخدم وأن الملف غير تالف، ثم أعد تشغيل التطبيق.';
