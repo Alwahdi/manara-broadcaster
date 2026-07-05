@@ -14,15 +14,25 @@ export function AdminSettings() {
     if (query.data) {
       setForm({
         networkName: String(query.data.networkName || ""),
-        country: String(query.data.country || ""),
-        city: String(query.data.city || ""),
-        timezone: String(query.data.timezone || ""),
+        country: String(query.data.settings?.networkCountry || query.data.country || ""),
+        city: String(query.data.settings?.networkCity || query.data.city || ""),
+        timezone: String(query.data.settings?.networkTimezone || query.data.timezone || ""),
+        port: String(query.data.ports?.live || query.data.settings?.port || ""),
+        libraryPort: String(query.data.ports?.library || query.data.settings?.libraryPort || ""),
+        adminPath: String(query.data.settings?.adminPath || "admin"),
       });
     }
   }, [query.data]);
 
   const save = useMutation({
-    mutationFn: () => api.saveSettings(form),
+    mutationFn: () => api.saveSettings({
+      ...form,
+      networkCountry: form.country,
+      networkCity: form.city,
+      networkTimezone: form.timezone,
+      port: Number(form.port) || undefined,
+      libraryPort: Number(form.libraryPort) || undefined,
+    }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["agent-state"] }),
   });
 
@@ -30,8 +40,8 @@ export function AdminSettings() {
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
   return (
-    <div style={{ maxWidth: 640 }}>
-      <PageHeader title="الإعدادات" subtitle="إعدادات الشبكة العامة" />
+    <div style={{ maxWidth: 760 }}>
+      <PageHeader title="الإعدادات" subtitle="إعدادات الشبكة والمنافذ العامة" />
       <QueryBoundary query={query}>
         {() => (
           <div className="card card-pad">
@@ -53,11 +63,27 @@ export function AdminSettings() {
               <label>المنطقة الزمنية</label>
               <input className="input mono" dir="ltr" value={form.timezone || ""} onChange={set("timezone")} placeholder="Asia/Riyadh" />
             </div>
+            <div className="grid grid-2">
+              <div className="field">
+                <label>منفذ البث المباشر</label>
+                <input className="input mono" dir="ltr" inputMode="numeric" value={form.port || ""} onChange={set("port")} placeholder="8787" />
+              </div>
+              <div className="field">
+                <label>منفذ الإدارة والمكتبة</label>
+                <input className="input mono" dir="ltr" inputMode="numeric" value={form.libraryPort || ""} onChange={set("libraryPort")} placeholder="8788" />
+              </div>
+            </div>
+            <div className="field">
+              <label>مسار لوحة الإدارة</label>
+              <input className="input mono" dir="ltr" value={form.adminPath || ""} onChange={set("adminPath")} placeholder="admin" />
+              <span className="hint">عند تغيير منفذ الإدارة أو المسار، افتح الرابط الجديد من أي جهاز على نفس الشبكة.</span>
+            </div>
             <div className="row">
               <button className="btn btn-primary" onClick={() => save.mutate()} disabled={save.isPending}>
                 {save.isPending ? "جارٍ الحفظ…" : "حفظ الإعدادات"}
               </button>
               {save.isSuccess ? <span className="badge badge-on badge-dot">تم الحفظ</span> : null}
+              {save.isError ? <span className="badge badge-warn">{(save.error as Error).message}</span> : null}
             </div>
           </div>
         )}

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { AppLink } from "@/components/AppLink";
-import { api } from "@/lib/api";
+import { api, type Channel } from "@/lib/api";
 import { QueryBoundary, EmptyState } from "@/components/States";
 import { PageHeader, ChannelTile } from "@/components/common";
 
@@ -17,7 +17,9 @@ export function Live() {
       <QueryBoundary
         query={state}
         isEmpty={(d) => {
-          const list = (d.channels as unknown[]) || (d.iptv as unknown[]) || [];
+          const list = ((d.channels as unknown[]) || []).length
+            ? (d.channels as unknown[])
+            : [...((d.broadcast as unknown[]) || []), ...((d.iptv as unknown[]) || [])];
           return list.length === 0;
         }}
         empty={
@@ -29,11 +31,9 @@ export function Live() {
         }
       >
         {(d) => {
-          const channels = ((d.channels as never[]) || (d.iptv as never[]) || []) as {
-            id: number | string;
-            name: string;
-            enabled?: boolean;
-          }[];
+          const channels = (((d.channels as Channel[]) || []).length
+            ? (d.channels as Channel[])
+            : [...(((d.broadcast as Channel[]) || [])), ...(((d.iptv as Channel[]) || []))]);
           return (
             <div className="grid grid-3">
               {channels.map((ch) => (

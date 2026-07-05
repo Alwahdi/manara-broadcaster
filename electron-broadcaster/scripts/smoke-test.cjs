@@ -46,6 +46,15 @@ async function main() {
     verifyAdminSession: (token) => sessions.has(token),
     clearAdminSession: (token) => sessions.delete(token),
     getPlatformStatus: () => platformState,
+    getBroadcastChannels: () => db.listBroadcastChannels(),
+    getIptvChannels: () => db.listIptv().map((ch) => ({
+      ...ch,
+      id: String(ch.id),
+      type: 'iptv',
+      group: ch.category || 'IPTV',
+      playUrl: `/iptv/${ch.id}/index.m3u8`,
+    })),
+    getLibraryConfig: () => ({ tmdbKey: '', tmdbLang: 'ar' }),
     requestPlatformActivation: async (body) => {
       platformState = {
         state: 'pending',
@@ -186,6 +195,16 @@ async function main() {
     res = await request(base, '/api/admin/storage/roots');
     assert.equal(res.status, 401);
 
+    res = await request(base, '/api/admin/library/sources', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...auth },
+      body: JSON.stringify({ path: dir, kind: 'movies' }),
+    });
+    assert.equal(res.status, 200);
+    const addedSource = await res.json();
+    assert.equal(addedSource.ok, true);
+    assert.ok(addedSource.sources.some((s) => s.path === dir), 'library source add endpoint returns the new source');
+
     // Adding a single capture channel through the wizard endpoint.
     res = await request(base, '/api/admin/broadcast', {
       method: 'POST',
@@ -211,6 +230,19 @@ async function main() {
     assert.equal(res.status, 200);
     const state2 = await res.json();
     assert.ok(state2.broadcast.some((c) => c.name === 'كاميرا القاعة'), 'created channel appears in state');
+
+    res = await request(base, '/api/admin/iptv', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...auth },
+      body: JSON.stringify({ name: 'Smoke IPTV HD', url: 'https://example.com/live.m3u8', category: 'اختبار' }),
+    });
+    assert.equal(res.status, 200);
+
+    res = await request(base, '/api/viewer/state');
+    assert.equal(res.status, 200);
+    const viewerState = await res.json();
+    assert.ok(viewerState.iptv.some((c) => c.name === 'Smoke IPTV HD'), 'viewer state exposes enabled IPTV');
+    assert.ok(viewerState.channels.some((c) => c.name === 'Smoke IPTV HD'), 'viewer live channels include IPTV');
 
     res = await request(base, '/api/admin/channels', {
       method: 'POST',

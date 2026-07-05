@@ -66,6 +66,8 @@ export interface AgentState {
   brandName?: string;
   networkName?: string;
   urls?: Record<string, string>;
+  ports?: { live?: number; library?: number; [k: string]: unknown };
+  settings?: Record<string, unknown>;
   subscription?: PlatformStatus;
   [k: string]: unknown;
 }
@@ -113,10 +115,14 @@ export interface Channel {
   id: number | string;
   name: string;
   url?: string;
+  playUrl?: string;
   enabled?: boolean;
   kind?: string;
+  type?: string;
   logo?: string;
   group?: string;
+  category?: string;
+  qualities?: { id: string | number; label?: string; name?: string }[];
   [k: string]: unknown;
 }
 
@@ -241,6 +247,11 @@ export const api = {
 
   // Library sources
   librarySources: () => http.get<{ sources: LibrarySource[] }>("/api/admin/library/sources"),
+  addLibrarySource: (body: { path: string; kind?: string }) =>
+    http.post<{ ok: boolean; sources: LibrarySource[]; inserted?: number; updated?: number }>(
+      "/api/admin/library/sources",
+      body,
+    ),
   librarySourceRescan: (id: number | string) =>
     http.post<{ ok: boolean }>(`/api/admin/library/sources/${id}/rescan`),
   librarySourceRelink: (id: number | string, path: string) =>
