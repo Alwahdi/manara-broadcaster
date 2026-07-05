@@ -155,6 +155,8 @@ async function main() {
         experienceLayout: 'separate',
         autoStartOnBoot: false,
         autoStartBeforeLogin: true,
+        adminUsername: 'admin',
+        adminPassword: 'Correct-password-123',
       }),
     });
     assert.equal(res.status, 200);

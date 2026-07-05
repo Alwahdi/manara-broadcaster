@@ -178,9 +178,6 @@ function verifyAdminCredentials(options, username, password) {
 }
 
 function requireAdmin(req, res, options = {}, basePath = '/admin') {
-  const getAdminAuth = options.getAdminAuth;
-  const auth = typeof getAdminAuth === 'function' ? getAdminAuth() : {};
-  const username = auth.username || 'admin';
   const header = req.headers.authorization || '';
   const token = header.startsWith('Basic ') ? header.slice(6) : '';
   const cookieToken = parseCookies(req).manara_admin || '';
@@ -189,8 +186,7 @@ function requireAdmin(req, res, options = {}, basePath = '/admin') {
   const sep = provided.indexOf(':');
   const basicOk = sep > -1 && verifyAdminCredentials(options, provided.slice(0, sep), provided.slice(sep + 1));
   const sessionOk = cookieToken && typeof options.verifyAdminSession === 'function' && options.verifyAdminSession(cookieToken);
-  const legacyCookieOk = cookieToken === Buffer.from(`${username}:${auth.password || 'admin'}`).toString('base64') && verifyAdminCredentials(options, username, auth.password || 'admin');
-  if (basicOk || sessionOk || legacyCookieOk) return true;
+  if (basicOk || sessionOk) return true;
   if (String(req.headers.accept || '').includes('text/html')) {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end(adminLoginPage('', basePath));
@@ -762,6 +758,8 @@ function liveChannelsPayload(options = {}) {
       type: 'iptv',
       group: ch.group || ch.category || 'IPTV',
       enabled: true,
+      url: undefined,
+      headers: undefined,
       playUrl: `/iptv/${encodeURIComponent(String(ch.id))}/index.m3u8`,
     }));
   return { broadcast: safeBroadcast, iptv: safeIptv, channels: [...safeBroadcast, ...safeIptv] };

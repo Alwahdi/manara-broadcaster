@@ -4,6 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const crypto = require('crypto');
 const { writeJsonAtomic } = require('./atomic-write.cjs');
 try { require('./env.cjs').loadLocalEnv(__dirname); } catch {}
 
@@ -42,14 +43,84 @@ let lastFetch = 0;
 let lastStatus = { state: 'idle', at: null, error: '', count: 0, source: '' };
 let timer = null;
 let refreshMs = DEFAULT_REFRESH_MS;
+let cacheSecret = null;
+
+function secretPath() {
+  return cachePath ? path.join(path.dirname(cachePath), 'cloud-iptv-cache.key') : '';
+}
+
+function getCacheSecret() {
+  if (cacheSecret) return cacheSecret;
+  const p = secretPath();
+  if (!p) return null;
+  try {
+    if (fs.existsSync(p)) {
+      cacheSecret = Buffer.from(fs.readFileSync(p, 'utf8'), 'base64');
+      if (cacheSecret.length === 32) return cacheSecret;
+    }
+  } catch {}
+  cacheSecret = crypto.randomBytes(32);
+  try {
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, cacheSecret.toString('base64'), { mode: 0o600 });
+  } catch (e) {
+    console.error('[cloud-iptv] cache key write', e.message);
+  }
+  return cacheSecret;
+}
+
+function encryptText(value) {
+  const secret = getCacheSecret();
+  if (!secret) return '';
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', secret, iv);
+  const encrypted = Buffer.concat([cipher.update(String(value || ''), 'utf8'), cipher.final()]);
+  return Buffer.concat([iv, cipher.getAuthTag(), encrypted]).toString('base64');
+}
+
+function decryptText(value) {
+  const secret = getCacheSecret();
+  if (!secret || !value) return '';
+  const raw = Buffer.from(String(value), 'base64');
+  const iv = raw.subarray(0, 12);
+  const tag = raw.subarray(12, 28);
+  const encrypted = raw.subarray(28);
+  const decipher = crypto.createDecipheriv('aes-256-gcm', secret, iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8');
+}
+
+function rowsFromCache(rows = []) {
+  return rows.map((row) => {
+    const url = row.url || (row.urlCipher ? decryptText(row.urlCipher) : '');
+    let headers = row.headers || {};
+    if (!row.headers && row.headersCipher) {
+      try { headers = JSON.parse(decryptText(row.headersCipher) || '{}'); } catch { headers = {}; }
+    }
+    return { ...row, url, headers };
+  }).filter((row) => row.id && row.name && row.url);
+}
+
+function rowsForCache(rows = []) {
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    logo: row.logo || '',
+    category: row.category || '',
+    transferLimitBytes: Math.max(0, Number(row.transferLimitBytes) || 0),
+    urlCipher: encryptText(row.url || ''),
+    headersCipher: encryptText(JSON.stringify(row.headers || {})),
+  }));
+}
 
 function setCachePath(p) {
   cachePath = p;
   try {
     if (fs.existsSync(p)) {
       const j = JSON.parse(fs.readFileSync(p, 'utf8'));
-      if (Array.isArray(j.channels)) cached = j.channels;
+      if (Array.isArray(j.channels)) cached = rowsFromCache(j.channels);
       if (j.lastFetch) lastFetch = j.lastFetch;
+      if (cached.length && j.cacheVersion !== 2) persist();
     }
   } catch (e) { console.error('[cloud-iptv] cache read', e.message); }
 }
@@ -57,7 +128,7 @@ function setCachePath(p) {
 function persist() {
   if (!cachePath) return;
   try {
-    writeJsonAtomic(cachePath, { channels: cached, lastFetch });
+    writeJsonAtomic(cachePath, { cacheVersion: 2, channels: rowsForCache(cached), lastFetch });
   }
   catch (e) { console.error('[cloud-iptv] cache write', e.message); }
 }
@@ -120,7 +191,6 @@ async function refresh(licenseKey) {
   try {
     const rows = await fetchFromNeon();
     if (Array.isArray(rows)) {
-      if (rows.length === 0) throw new Error('Neon returned zero active IPTV channels');
       cached = rows;
       lastFetch = Date.now();
       lastStatus = { state: 'ok', at: new Date().toISOString(), error: '', count: cached.length, source: 'neon-postgres' };
@@ -140,7 +210,6 @@ async function refresh(licenseKey) {
       const rows = Array.isArray(payload) ? payload : payload.channels;
       if (Array.isArray(rows)) {
         const normalized = normalizeRows(rows);
-        if (normalized.length === 0) throw new Error('public endpoint returned zero IPTV channels');
         cached = normalized;
         lastFetch = Date.now();
         lastStatus = { state: 'ok', at: new Date().toISOString(), error: '', count: cached.length, source: CLOUD_REST };
@@ -173,12 +242,13 @@ function startAutoRefresh(getLicenseKey, intervalMs) {
   timer = setInterval(() => refresh(getLicenseKey()), refreshMs);
 }
 
-function list() {
+function list(options = {}) {
+  const includeUrl = !!options.includeUrl;
   // Return channels with cloud- prefix so they don't collide with local sqlite ids
   return cached.map((c) => ({
     id: `cloud-${c.id}`,
     name: c.name,
-    url: c.url,
+    ...(includeUrl ? { url: c.url, headers: c.headers || {} } : {}),
     logo: c.logo || '',
     category: c.category || '',
     transferLimitBytes: Math.max(0, Number(c.transferLimitBytes) || 0),

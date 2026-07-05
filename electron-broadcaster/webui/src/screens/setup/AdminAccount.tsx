@@ -3,7 +3,8 @@ import { useSetup, setSetup } from "@/hooks/useSetup";
 
 export function SetupAdminAccount() {
   const data = useSetup();
-  const valid = !!data.adminUsername && (data.adminPassword || "").length >= 6;
+  const password = data.adminPassword || "";
+  const valid = !!data.adminUsername && password.length >= 10 && /[a-z]/i.test(password) && /\d/.test(password) && /[^a-z0-9]/i.test(password);
   return (
     <SetupStep
       title="حساب المشرف"
@@ -20,7 +21,7 @@ export function SetupAdminAccount() {
         <div className="field">
           <label>كلمة المرور *</label>
           <input className="input" type="password" autoComplete="new-password" value={data.adminPassword || ""} onChange={(e) => setSetup({ adminPassword: e.target.value })} />
-          <span className="hint">6 أحرف على الأقل. تُخزّن بشكل مُجزّأ على الخادم.</span>
+          <span className="hint">10 أحرف على الأقل، مع حرف ورقم ورمز. تُخزّن بشكل مُجزّأ على الخادم.</span>
         </div>
       </div>
     </SetupStep>

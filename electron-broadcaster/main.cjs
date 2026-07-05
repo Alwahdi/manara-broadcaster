@@ -177,6 +177,18 @@ function verifyAdminPassword(password, storedHash) {
   }
 }
 
+function isStrongAdminPassword(password) {
+  const value = String(password || '');
+  return value.length >= 10
+    && /[a-z]/i.test(value)
+    && /\d/.test(value)
+    && /[^a-z0-9]/i.test(value);
+}
+
+function isDefaultAdminPassword() {
+  return String(settings.adminUsername || 'admin') === 'admin' && verifyAdminPassword('admin', settings.adminPasswordHash);
+}
+
 function issueAdminSession(username) {
   const token = crypto.randomBytes(32).toString('base64url');
   adminSessions.set(token, {
@@ -236,7 +248,7 @@ function defaultSettings() {
     libraryPort: DEFAULT_LIBRARY_PORT,
     adminUsername: 'admin',
     adminPassword: '',
-    adminPasswordHash: hashAdminPassword('admin'),
+    adminPasswordHash: '',
     neonDatabaseUrl: '',
     platformTenantName: '',
     platformContactEmail: '',
@@ -881,9 +893,30 @@ function mediaServerOptions() {
     applySetup: async (patch = {}) => {
       const currentLivePort = Number(settings.port) || DEFAULT_AGENT_PORT;
       const currentLibraryPort = Number(settings.libraryPort) || DEFAULT_LIBRARY_PORT;
+      const currentLayout = settings.experienceLayout === 'separate' ? 'separate' : 'unified';
       const clean = patch && typeof patch === 'object' ? patch : {};
       const requestedLivePort = clean.port ?? clean.livePort;
       const requestedLibraryPort = clean.libraryPort ?? clean.adminPort;
+      const requestedLayout = clean.experienceLayout ? (clean.experienceLayout === 'separate' ? 'separate' : 'unified') : currentLayout;
+      const nextLivePort = Math.max(1, Math.min(65535, Number(requestedLivePort || settings.port || DEFAULT_AGENT_PORT)));
+      const nextLibraryPort = Math.max(1, Math.min(65535, Number(requestedLibraryPort || settings.libraryPort || DEFAULT_LIBRARY_PORT)));
+      if (!Number.isInteger(Number(nextLivePort)) || nextLivePort < 1 || nextLivePort > 65535) {
+        throw new Error('Live port must be a number between 1 and 65535.');
+      }
+      if (!Number.isInteger(Number(nextLibraryPort)) || nextLibraryPort < 1 || nextLibraryPort > 65535) {
+        throw new Error('Library/admin port must be a number between 1 and 65535.');
+      }
+      if (nextLivePort !== currentLivePort) {
+        const liveCheck = checkPortAvailability(nextLivePort);
+        if (liveCheck && liveCheck.available === false) throw new Error(liveCheck.message || `Live port ${nextLivePort} is already in use.`);
+      }
+      if (requestedLayout === 'separate' && (nextLibraryPort !== currentLibraryPort || currentLayout !== 'separate')) {
+        const libraryCheck = checkPortAvailability(nextLibraryPort);
+        if (libraryCheck && libraryCheck.available === false) throw new Error(libraryCheck.message || `Library/admin port ${nextLibraryPort} is already in use.`);
+      }
+      if (requestedLayout === 'separate' && nextLivePort === nextLibraryPort) {
+        throw new Error('Live and library/admin ports must be different in separate mode.');
+      }
       const next = {
         setupCompleted: clean.setupCompleted !== false,
         setupCompletedAt: new Date().toISOString(),
@@ -899,7 +932,7 @@ function mediaServerOptions() {
         networkLogoDataUrl: Object.prototype.hasOwnProperty.call(clean, 'networkLogoDataUrl')
           ? (/^data:image\/png;base64,/i.test(String(clean.networkLogoDataUrl || '')) ? clean.networkLogoDataUrl : '')
           : settings.networkLogoDataUrl,
-        experienceLayout: clean.experienceLayout ? (clean.experienceLayout === 'separate' ? 'separate' : 'unified') : settings.experienceLayout,
+        experienceLayout: requestedLayout,
         autoStartOnBoot: Object.prototype.hasOwnProperty.call(clean, 'autoStartOnBoot')
           ? coerceBoolean(clean.autoStartOnBoot, settings.autoStartOnBoot !== false)
           : settings.autoStartOnBoot !== false,
@@ -910,10 +943,14 @@ function mediaServerOptions() {
         libraryTheme: String(clean.libraryTheme || settings.libraryTheme || 'cinema').trim(),
         adminPath: String(clean.adminPath || settings.adminPath || 'admin').replace(/^\/+|\/+$/g, '').replace(/[^\w\-./]/g, '') || 'admin',
         adminUsername: String(clean.adminUsername || settings.adminUsername || 'admin').trim() || 'admin',
-        port: Math.max(1, Math.min(65535, Number(requestedLivePort || settings.port || DEFAULT_AGENT_PORT))),
-        libraryPort: Math.max(1, Math.min(65535, Number(requestedLibraryPort || settings.libraryPort || DEFAULT_LIBRARY_PORT))),
+        port: nextLivePort,
+        libraryPort: nextLibraryPort,
       };
       const nextPassword = String(clean.adminPassword || '').trim();
+      const needsInitialPassword = !settings.setupCompleted || isDefaultAdminPassword();
+      if ((needsInitialPassword || nextPassword) && !isStrongAdminPassword(nextPassword)) {
+        throw new Error('Admin password must be at least 10 characters and include a letter, a number, and a symbol.');
+      }
       if (nextPassword) next.adminPasswordHash = hashAdminPassword(nextPassword);
       next.adminPassword = '';
       settings = { ...settings, ...next };
@@ -942,7 +979,7 @@ function mediaServerOptions() {
         });
       }
       const shouldRestartLive = Number(settings.port) !== currentLivePort;
-      const shouldRestartLibrary = Number(settings.libraryPort) !== currentLibraryPort;
+      const shouldRestartLibrary = Number(settings.libraryPort) !== currentLibraryPort || settings.experienceLayout !== currentLayout;
       if (shouldRestartLive) {
         try {
           await restartLiveServer(settings.port);
@@ -953,7 +990,7 @@ function mediaServerOptions() {
       if (shouldRestartLibrary) {
         setTimeout(async () => {
           try {
-            await restartLibraryServer(settings.libraryPort);
+            await reconcileLibraryServer();
           } catch (e) {
             console.error('[WIVA] setup library port restart failed:', e.message);
           }
@@ -1072,6 +1109,19 @@ async function restartLibraryServer(port) {
   if (libraryServerInfo && libraryServerInfo.close) await libraryServerInfo.close();
   libraryServerInfo = libraryServer.start(port || settings.libraryPort || DEFAULT_LIBRARY_PORT, mediaServerOptions());
   return { port: libraryServerInfo.port };
+}
+
+async function reconcileLibraryServer() {
+  if (settings.experienceLayout !== 'separate') {
+    if (libraryServerInfo && libraryServerInfo.close) await libraryServerInfo.close();
+    libraryServerInfo = null;
+    return { port: Number(settings.port) || DEFAULT_AGENT_PORT, mode: 'unified' };
+  }
+  const port = Number(settings.libraryPort) || DEFAULT_LIBRARY_PORT;
+  if (!libraryServerInfo || Number(libraryServerInfo.port) !== port) {
+    return restartLibraryServer(port);
+  }
+  return { port: libraryServerInfo.port, mode: 'separate' };
 }
 
 function publicIptvChannels() {
@@ -1335,10 +1385,14 @@ ipcMain.handle('save-settings', async (_e, next) => {
   try {
     const previousLivePort = Number(settings.port) || DEFAULT_AGENT_PORT;
     const previousLibraryPort = Number(settings.libraryPort) || DEFAULT_LIBRARY_PORT;
+    const previousLayout = settings.experienceLayout === 'separate' ? 'separate' : 'unified';
     const patch = (next && typeof next === 'object') ? { ...next } : {};
     const hasAdminPasswordPatch = Object.prototype.hasOwnProperty.call(patch, 'adminPassword');
     if (Object.prototype.hasOwnProperty.call(patch, 'adminPassword')) {
       const password = String(patch.adminPassword || '').trim();
+      if (password && !isStrongAdminPassword(password)) {
+        throw new Error('Admin password must be at least 10 characters and include a letter, a number, and a symbol.');
+      }
       if (password) patch.adminPasswordHash = hashAdminPassword(password);
       delete patch.adminPassword;
     }
@@ -1371,6 +1425,22 @@ ipcMain.handle('save-settings', async (_e, next) => {
     }
     if (Object.prototype.hasOwnProperty.call(rest, 'libraryPort')) {
       rest.libraryPort = Math.max(1, Math.min(65535, Number(rest.libraryPort || settings.libraryPort || DEFAULT_LIBRARY_PORT)));
+    }
+    const desiredLayout = Object.prototype.hasOwnProperty.call(rest, 'experienceLayout')
+      ? rest.experienceLayout
+      : (settings.experienceLayout === 'separate' ? 'separate' : 'unified');
+    const desiredLivePort = Object.prototype.hasOwnProperty.call(rest, 'port') ? rest.port : previousLivePort;
+    const desiredLibraryPort = Object.prototype.hasOwnProperty.call(rest, 'libraryPort') ? rest.libraryPort : previousLibraryPort;
+    if (desiredLivePort !== previousLivePort) {
+      const liveCheck = checkPortAvailability(desiredLivePort);
+      if (liveCheck && liveCheck.available === false) throw new Error(liveCheck.message || `Live port ${desiredLivePort} is already in use.`);
+    }
+    if (desiredLayout === 'separate' && (desiredLibraryPort !== previousLibraryPort || previousLayout !== 'separate')) {
+      const libraryCheck = checkPortAvailability(desiredLibraryPort);
+      if (libraryCheck && libraryCheck.available === false) throw new Error(libraryCheck.message || `Library/admin port ${desiredLibraryPort} is already in use.`);
+    }
+    if (desiredLayout === 'separate' && desiredLivePort === desiredLibraryPort) {
+      throw new Error('Live and library/admin ports must be different in separate mode.');
     }
     if (Object.prototype.hasOwnProperty.call(rest, 'adminPath')) {
       rest.adminPath = String(rest.adminPath || 'admin').replace(/^\/+|\/+$/g, '').replace(/[^\w\-./]/g, '') || 'admin';
@@ -1409,8 +1479,8 @@ ipcMain.handle('save-settings', async (_e, next) => {
     if (nextLivePort !== previousLivePort) {
       await restartLiveServer(nextLivePort);
     }
-    if (nextLibraryPort !== previousLibraryPort) {
-      await restartLibraryServer(nextLibraryPort);
+    if (nextLibraryPort !== previousLibraryPort || previousLayout !== desiredLayout) {
+      await reconcileLibraryServer();
     }
     reconcileChannelBroadcasters('settings-save');
     return publicSettings();
@@ -1614,7 +1684,7 @@ ipcMain.handle('cloud-iptv-refresh', async () => {
 });
 ipcMain.handle('cloud-iptv-status', () => cloudIptv.status());
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   try {
     session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
       callback(['media', 'display-capture'].includes(permission));
@@ -1664,8 +1734,10 @@ app.whenReady().then(() => {
       const existing = libraryDb.listIptv();
       console.log('[WIVA] persisted local IPTV channels on startup:', existing.length);
     } catch {}
-    libraryServerInfo = libraryServer.start(settings.libraryPort || DEFAULT_LIBRARY_PORT, mediaServerOptions());
-    console.log('[WIVA] library server on 127.0.0.1:' + libraryServerInfo.port);
+    const libraryState = await reconcileLibraryServer();
+    console.log(settings.experienceLayout === 'separate'
+      ? '[WIVA] library server on 127.0.0.1:' + libraryState.port
+      : '[WIVA] unified mode: library/admin served by live server on :' + libraryState.port);
   } catch (e) {
     console.error('[WIVA] library init failed:', e.message);
   }

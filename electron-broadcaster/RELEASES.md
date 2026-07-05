@@ -42,6 +42,16 @@ locked (antivirus, Search indexing, backup agents). This eliminates the
 intermittent "cannot save on Windows" failures that the old
 `writeFile` + `rename` pattern caused.
 
+## v2.6.26
+
+- Hardened admin setup: new installs no longer ship with a default admin password hash, first setup requires a strong admin password, and password changes reject weak values at the backend, not only in the UI.
+- Removed the legacy base64 admin cookie fallback so admin access uses current sessions or valid Basic credentials only.
+- Added port conflict validation before saving live/library/admin port changes, including the transition from unified to separate mode.
+- Made unified mode actually avoid starting the separate library/admin server; separate mode starts it only when needed.
+- Encrypted cloud IPTV cache URLs and headers at rest and stopped exposing cloud source URLs through public/admin channel lists.
+- Allowed a valid zero-channel cloud IPTV response to clear the local cloud list instead of treating it as a failed refresh.
+- Added regression coverage for custom ports and encrypted cloud IPTV cache behavior.
+
 ## v2.6.25
 
 - Fixed port persistence after restart: valid custom ports like `8080` for live streaming and `8420` for library/admin are no longer treated as legacy defaults and reset back to WIVA defaults.
