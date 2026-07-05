@@ -12,9 +12,23 @@ const crypto = require('crypto');
 const { writeJsonAtomic } = require('./atomic-write.cjs');
 
 let Database;
-try { Database = require('better-sqlite3'); } catch (e) { Database = null; }
+let _sqliteLoadError = '';
+try {
+  Database = require('better-sqlite3');
+} catch (e) {
+  Database = null;
+  _sqliteLoadError = (e && e.message) ? e.message : String(e);
+}
 
 let _db = null;
+// Active storage backend for the media library so operators can tell at a glance
+// whether WIVA is running on the reliable native database or a degraded fallback.
+//   'sqlite'        -> better-sqlite3 opened successfully (intended production mode)
+//   'json-fallback' -> better-sqlite3 unavailable/failed; using JSON fallback
+//   'recovery'      -> sqlite is now available and JSON fallback data was migrated in
+let _storageBackend = 'unknown';
+let _sqliteInitError = '';
+let _migratedFromFallback = false;
 
 // ---------- Channel JSON store (independent of sqlite) ----------
 let _channelsPath = null;
@@ -161,7 +175,10 @@ function init(dbPath, seed = {}) {
 
   if (!Database) {
     loadMediaFallback(dbPath);
-    console.warn('[WIVA] better-sqlite3 not available; media library uses JSON fallback');
+    _db = null;
+    _storageBackend = 'json-fallback';
+    console.warn('[WIVA] better-sqlite3 not available; media library uses JSON fallback' +
+      (_sqliteLoadError ? ' — cause: ' + _sqliteLoadError : ''));
     return null;
   }
   try {
@@ -240,13 +257,96 @@ function init(dbPath, seed = {}) {
     ]) {
       try { _db.exec(ddl); } catch {}
     }
-    console.log('[WIVA] sqlite media library ready at', dbPath);
+    _sqliteInitError = '';
+    _storageBackend = 'sqlite';
+    // Repair path: if a previous run fell back to JSON (native module was
+    // missing) and sqlite is now available, migrate the media data back into
+    // the reliable database so nothing is silently stranded in the fallback.
+    migrateFallbackIntoSqlite(dbPath);
+    console.log('[WIVA] sqlite media library ready at', dbPath +
+      (_migratedFromFallback ? ' (migrated from JSON fallback)' : ''));
     return _db;
   } catch (e) {
-    console.error('[WIVA] sqlite init failed, using JSON fallback for media:', e.message);
+    _sqliteInitError = (e && e.message) ? e.message : String(e);
+    console.error('[WIVA] sqlite init failed, using JSON fallback for media:', _sqliteInitError);
     _db = null;
+    _storageBackend = 'json-fallback';
     loadMediaFallback(dbPath);
     return null;
+  }
+}
+
+// Move media data that was written while running in JSON fallback back into
+// sqlite once the native database is usable again. The scanner can always
+// rebuild media from disk, but migrating avoids a jarring empty library and
+// preserves watch progress until the next scan. The fallback file is renamed
+// (not deleted) so a copy is retained for manual inspection.
+function migrateFallbackIntoSqlite(dbPath) {
+  _migratedFromFallback = false;
+  if (!_db) return;
+  const fallbackPath = dbPath + '.media.json';
+  let data;
+  try {
+    if (!fs.existsSync(fallbackPath)) return;
+    data = JSON.parse(fs.readFileSync(fallbackPath, 'utf8'));
+  } catch (e) {
+    console.warn('[WIVA] fallback migration skipped (unreadable file):', e.message);
+    return;
+  }
+  const items = Array.isArray(data && data.media_items) ? data.media_items : [];
+  const paths = Array.isArray(data && data.library_paths) ? data.library_paths : [];
+  if (!items.length && !paths.length) return;
+  // Only migrate into an empty database so we never clobber real sqlite data.
+  try {
+    const existing = _db.prepare('SELECT COUNT(*) AS n FROM media_items').get();
+    if (existing && Number(existing.n) > 0) return;
+  } catch { return; }
+  const progress = (data && data.watch_progress && typeof data.watch_progress === 'object') ? data.watch_progress : {};
+  const subtitles = Array.isArray(data && data.subtitles) ? data.subtitles : [];
+  try {
+    const run = _db.transaction(() => {
+      for (const p of paths) {
+        if (!p || !p.path) continue;
+        _db.prepare('INSERT OR IGNORE INTO library_paths (path, kind, locked, added_at, label, status) VALUES (?,?,?,?,?,?)')
+          .run(p.path, p.kind || 'movies', p.locked ? 1 : 0, Number(p.added_at) || Date.now(),
+            p.label || null, p.status || 'connected');
+      }
+      const idMap = new Map();
+      for (const item of items) {
+        if (!item || !item.path) continue;
+        const now = Number(item.added_at) || Date.now();
+        const r = _db.prepare(`INSERT OR IGNORE INTO media_items
+          (path, kind, title, year, season, episode, tmdb_id, poster_url, backdrop_url, overview, rating, duration, size, section, folder, remote_url, source_id, source_path, source_label, relative_path, added_at, scanned_at)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+          item.path, item.kind || 'movie', item.title || item.path, item.year ?? null, item.season ?? null, item.episode ?? null,
+          item.tmdb_id ?? null, item.poster_url ?? null, item.backdrop_url ?? null,
+          item.overview ?? null, item.rating ?? null, item.duration ?? null, item.size ?? null,
+          item.section ?? null, item.folder ?? null, item.remote_url ?? null,
+          item.source_id ?? null, item.source_path ?? null, item.source_label ?? null, item.relative_path ?? null,
+          now, Number(item.scanned_at) || now);
+        const newId = r.lastInsertRowid || (_db.prepare('SELECT id FROM media_items WHERE path = ?').get(item.path) || {}).id;
+        if (item.id != null && newId != null) idMap.set(String(item.id), newId);
+      }
+      for (const [oldId, prog] of Object.entries(progress)) {
+        const newId = idMap.get(String(oldId));
+        if (!newId) continue;
+        _db.prepare('INSERT OR REPLACE INTO watch_progress (media_id, position, duration, updated_at) VALUES (?,?,?,?)')
+          .run(newId, Number(prog.position) || 0, Number(prog.duration) || 0, Number(prog.updated_at) || Date.now());
+      }
+      for (const sub of subtitles) {
+        const newId = idMap.get(String(sub.media_id));
+        if (!newId || !sub.path) continue;
+        _db.prepare('INSERT INTO subtitles (media_id, lang, path, label) VALUES (?,?,?,?)')
+          .run(newId, sub.lang || 'und', sub.path, sub.label || null);
+      }
+    });
+    run();
+    _migratedFromFallback = true;
+    _storageBackend = 'recovery';
+    try { fs.renameSync(fallbackPath, fallbackPath + '.migrated'); } catch {}
+    console.warn('[WIVA] migrated JSON media fallback into sqlite:', items.length, 'items');
+  } catch (e) {
+    console.error('[WIVA] fallback migration failed:', e.message);
   }
 }
 
@@ -1282,7 +1382,21 @@ function exportChannels() {
   };
 }
 
+// Human-facing recovery guidance for the admin diagnostics screen. Returns an
+// empty string when sqlite is healthy so the UI can hide the warning.
+function storageRecoveryAction() {
+  if (_storageBackend === 'sqlite' || _storageBackend === 'recovery') return '';
+  if (_sqliteLoadError) {
+    return 'تعذّر تحميل مكتبة قاعدة البيانات المدمجة (better-sqlite3). أعد تثبيت WIVA أو شغّل "dev:repair-native" لإعادة بناء الوحدة الأصلية، وتأكد من عدم حجب برنامج الحماية للملف.';
+  }
+  if (_sqliteInitError) {
+    return 'فشل فتح قاعدة البيانات المحلية. تحقّق من صلاحيات مجلد بيانات المستخدم وأن الملف غير تالف، ثم أعد تشغيل التطبيق.';
+  }
+  return 'يعمل التطبيق حالياً على التخزين الاحتياطي JSON. أعد تشغيل التطبيق للتحقق من توفّر قاعدة البيانات.';
+}
+
 function diagnostics() {
+  const usingFallback = _storageBackend === 'json-fallback';
   return {
     channelsPath: _channelsPath,
     channelsExists: _channelsPath ? fs.existsSync(_channelsPath) : false,
@@ -1290,6 +1404,13 @@ function diagnostics() {
     iptvCount: _channels.iptv.length,
     lastChannelSaveError: _lastChannelSaveError,
     sqliteAvailable: !!_db,
+    storageBackend: _storageBackend,
+    driver: usingFallback ? 'JSON' : 'SQLite',
+    sqliteLoadError: _sqliteLoadError,
+    sqliteInitError: _sqliteInitError,
+    mediaFallbackActive: usingFallback,
+    migratedFromFallback: _migratedFromFallback,
+    recoveryAction: storageRecoveryAction(),
     mediaFallbackPath: _mediaFallbackPath,
     adminStatePath: _adminStatePath,
   };

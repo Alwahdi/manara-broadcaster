@@ -26,6 +26,7 @@ const cloudIptv = require('./library/cloud-iptv.cjs');
 const deviceState = require('./library/device-state.cjs');
 const platform = require('./library/platform.cjs');
 const { normalizePortSetting } = require('./library/settings-utils.cjs');
+const { writeJsonAtomic } = require('./library/atomic-write.cjs');
 let runtimeConfig = {};
 try { runtimeConfig = require('./library/cloud-runtime.cjs'); } catch {}
 if (!process.env.MANARA_NEON_DATABASE_URL && !runtimeConfig.neonDatabaseUrl && !app.isPackaged) {
@@ -306,14 +307,14 @@ function loadSettings() {
 function saveSettings(s) {
   try {
     fs.mkdirSync(path.dirname(SETTINGS_FILE), { recursive: true });
-    // Atomic write: write to temp then rename — prevents corruption / empty file
-    // if the app is killed or the machine loses power mid-write.
     if (fs.existsSync(SETTINGS_FILE)) {
       try { fs.copyFileSync(SETTINGS_FILE, SETTINGS_FILE + '.bak'); } catch {}
     }
-    const tmp = SETTINGS_FILE + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(s, null, 2));
-    fs.renameSync(tmp, SETTINGS_FILE);
+    // Windows-safe atomic write: fsync + rename with retry on antivirus/indexer
+    // file locks, falling back to an in-place write so a save is never silently
+    // lost. This is the persistent product state (setup, admin credentials,
+    // ports, branding, channels, IPTV policy) that must survive restart.
+    writeJsonAtomic(SETTINGS_FILE, s);
     lastSettingsSaveError = '';
     return true;
   } catch (e) {
@@ -1658,6 +1659,15 @@ app.whenReady().then(() => {
     try {
       const d = libraryDb.diagnostics();
       console.log('[WIVA] storage diagnostics:', JSON.stringify(d));
+      const backend = d.storageBackend || (d.sqliteAvailable ? 'sqlite' : 'json-fallback');
+      if (backend === 'sqlite') {
+        console.log('[WIVA] storage backend: SQLite (better-sqlite3) — reliable local database active');
+      } else if (backend === 'recovery') {
+        console.warn('[WIVA] storage backend: SQLite recovered — migrated data back in from JSON fallback');
+      } else {
+        console.error('[WIVA] storage backend: JSON FALLBACK — native database unavailable.',
+          d.sqliteLoadError || d.sqliteInitError || '', '| recovery:', d.recoveryAction || '');
+      }
     } catch {}
     console.log('[WIVA] persisted broadcast channels on startup:', (settings.channels || []).length);
     try {
