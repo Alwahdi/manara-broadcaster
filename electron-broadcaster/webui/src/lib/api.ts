@@ -116,7 +116,7 @@ export interface Channel {
   name: string;
   url?: string;
   playUrl?: string;
-  enabled?: boolean;
+  enabled?: boolean | number;
   kind?: string;
   type?: string;
   logo?: string;
@@ -224,7 +224,7 @@ export const api = {
 
   // Library / media
   library: (params?: Record<string, string>) =>
-    http.get<{ items: MediaItem[]; folders?: string[] }>(
+    http.get<{ items: MediaItem[]; media?: MediaItem[]; folders?: string[] }>(
       "/api/library" + (params ? "?" + new URLSearchParams(params).toString() : ""),
     ),
   media: (id: number | string) => http.get<MediaItem>(`/api/media/${id}`),
@@ -267,6 +267,7 @@ export const api = {
   iptvImportCommit: (body: unknown) =>
     http.post<{ ok: boolean; added: number }>("/api/admin/iptv/import/commit", body),
   addIptv: (body: unknown) => http.post<Channel>("/api/admin/iptv", body),
+  toggleIptv: (id: number | string) => http.post<Channel>(`/api/admin/iptv/${id}/toggle`),
 
   // Channels (broadcast / capture)
   addChannel: (body: unknown) => http.post<Channel>("/api/admin/broadcast", body),

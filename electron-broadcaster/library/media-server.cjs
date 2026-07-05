@@ -262,12 +262,33 @@ function mediaBackdropUrl(item) {
   return findArtworkFile(item) ? `/media-art/${item.id}/poster` : '';
 }
 
+function mediaOnline(item) {
+  const source = String(item?.remote_url || item?.path || '');
+  if (!source || /^https?:\/\//i.test(source)) return true;
+  try { return fs.existsSync(source); } catch { return false; }
+}
+
+function mediaPayload(item) {
+  if (!item) return item;
+  const poster = mediaPosterUrl(item);
+  const backdrop = mediaBackdropUrl(item);
+  return {
+    ...item,
+    poster,
+    posterUrl: poster,
+    backdrop,
+    backdropUrl: backdrop,
+    durationSec: Number(item.duration || item.durationSec || 0) || 0,
+    online: mediaOnline(item),
+  };
+}
+
 function listLibraryItems(query = {}) {
   return db.listMedia({
     q: query.q || '',
     kind: query.kind || '',
     limit: Math.min(2000, Math.max(1, Number(query.limit) || 800)),
-  });
+  }).map(mediaPayload);
 }
 
 function uniqueByPath(rows) {
@@ -615,8 +636,12 @@ function denyIfBlocked(req, res, meta = {}) {
   return true;
 }
 
-function safeCloudIptvList() {
-  try { return cloudIptv.list(); }
+function safeCloudIptvList(options = {}) {
+  try {
+    if (typeof options.getCloudIptv === 'function') return options.getCloudIptv() || [];
+    if (typeof options.getCloudIptvChannels === 'function') return options.getCloudIptvChannels() || [];
+    return cloudIptv.list();
+  }
   catch { return []; }
 }
 
@@ -637,6 +662,7 @@ function liveChannelsPayload(options = {}) {
       type: ch.type || 'broadcast',
       group: ch.group || ch.category || 'البث المحلي',
       enabled: true,
+      playUrl: `/watch?ch=${encodeURIComponent(String(ch.id))}`,
     }));
   const safeIptv = (Array.isArray(iptv) ? iptv : [])
     .filter((ch) => ch && ch.enabled !== false && ch.enabled !== 0)
@@ -957,6 +983,7 @@ function createHandler(options = {}) {
       const media = listLibraryItems(u.query);
       return sendJson(res, 200, {
         media,
+        items: media,
         sections: librarySections(media),
         theme: db.mediaTheme(),
         viewer: db.viewerState(getViewerId(req, res)),
@@ -1018,7 +1045,7 @@ function createHandler(options = {}) {
       if (!requireAdmin(req, res, options, adminBase)) return;
       let cloud = [];
       try {
-        cloud = typeof options.getCloudIptv === 'function' ? (await options.getCloudIptv()) || [] : [];
+        cloud = safeCloudIptvList(options);
       } catch { cloud = []; }
       const local = db.listIptv().map((ch) => ({ ...ch, sourceKind: 'local' }));
       return sendJson(res, 200, { channels: [...cloud, ...local] });
@@ -1111,7 +1138,7 @@ function createHandler(options = {}) {
       return sendJson(res, 200, {
         broadcast: db.listBroadcastChannels(),
         iptv: db.listIptv(),
-        cloudIptv: safeCloudIptvList(),
+        cloudIptv: safeCloudIptvList(options),
         iptvPolicy: typeof options.getIptvPolicy === 'function' ? options.getIptvPolicy() : {},
         cloudIptvStatus: cloudIptv.status(),
         iptvStatus: iptv.status(),
@@ -1216,6 +1243,20 @@ function createHandler(options = {}) {
       const updated = db.updateIptv(adminMatch[1], { ...ch, enabled: !ch.enabled });
       if (options.onChannelsChanged) options.onChannelsChanged();
       return sendJson(res, 200, updated);
+    }
+    adminMatch = /^\/api\/admin\/iptv\/(cloud-[^/]+)\/toggle$/i.exec(u.pathname);
+    if (adminMatch && req.method === 'POST') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      try {
+        const current = safeCloudIptvList(options).find((ch) => String(ch.id) === String(adminMatch[1]));
+        if (!current) return sendJson(res, 404, { error: 'not found' });
+        if (typeof options.setCloudIptvEnabled !== 'function') {
+          return sendJson(res, 501, { error: 'cloud_iptv_toggle_unavailable' });
+        }
+        const updated = options.setCloudIptvEnabled(adminMatch[1], current.enabled === false || current.enabled === 0);
+        if (options.onChannelsChanged) options.onChannelsChanged();
+        return sendJson(res, 200, updated);
+      } catch (e) { return sendJson(res, 500, { error: e.message }); }
     }
     const broadcastApiPaths = ['/api/admin/broadcast', '/api/admin/channels', '/api/admin/broadcast-channels'];
     if (broadcastApiPaths.includes(u.pathname) && req.method === 'GET') {

@@ -60,6 +60,7 @@ export function MediaTile({ item }: { item: MediaItem }) {
 }
 
 export function ChannelTile({ channel, href }: { channel: Channel; href?: string }) {
+  const enabled = channel.enabled !== false && channel.enabled !== 0;
   const inner = (
     <div className="card card-pad card-hover">
       <div className="row-between">
@@ -74,8 +75,8 @@ export function ChannelTile({ channel, href }: { channel: Channel; href?: string
             {channel.group ? <div className="tile-sub">{channel.group}</div> : null}
           </div>
         </div>
-        <span className={`badge badge-dot ${channel.enabled === false ? "badge-off" : "badge-on"}`}>
-          {channel.enabled === false ? "متوقفة" : "مفعّلة"}
+        <span className={`badge badge-dot ${enabled ? "badge-on" : "badge-off"}`}>
+          {enabled ? "مفعّلة" : "متوقفة"}
         </span>
       </div>
     </div>

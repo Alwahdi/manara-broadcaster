@@ -727,6 +727,8 @@ function mediaServerOptions() {
       const ch = cloudIptv.getById(normalizeCloudId(id));
       return ch ? applyCloudIptvOverride(ch) : null;
     },
+    getCloudIptv: () => cloudIptv.list().map(applyCloudIptvOverride),
+    setCloudIptvEnabled: (id, enabled) => updateCloudIptvOverride(id, { enabled }),
     getIptvChannels: () => publicIptvChannels(),
     getBroadcastChannels: () => syncBroadcastChannelsFromDb({ persist: false }),
     getLibraryConfig: () => ({

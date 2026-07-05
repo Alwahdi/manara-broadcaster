@@ -42,6 +42,14 @@ locked (antivirus, Search indexing, backup agents). This eliminates the
 intermittent "cannot save on Windows" failures that the old
 `writeFile` + `rename` pattern caused.
 
+## v2.6.20
+
+- Fixed the media library API payload so the new web UI receives `items` and `media`, with poster/backdrop URLs and online/offline state for each item.
+- Fixed viewer live-channel state so saved capture/broadcast channels are exposed to `/live` and open through the correct WebRTC player path instead of being treated like IPTV.
+- Fixed cloud IPTV admin/viewer mismatch by applying the same local enable/disable overrides in admin state, IPTV admin lists, and viewer state.
+- Added cloud IPTV enable/disable support from the web admin API and UI.
+- Added smoke coverage for library visibility, broadcast channel visibility, local IPTV visibility, and cloud IPTV activation.
+
 ## v2.6.19
 
 - Fixed viewer live channel data so enabled IPTV channels appear in `/live` and `/api/viewer/state`, alongside local broadcast/capture channels.

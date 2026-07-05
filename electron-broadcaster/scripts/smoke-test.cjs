@@ -27,6 +27,9 @@ async function main() {
     settings: { brandName: 'WIVA', adminUsername: 'admin', port: 8787, libraryPort: 8788, adminPath: 'admin' },
   };
   let platformState = { state: 'unregistered', features: {}, activationId: '' };
+  let cloudIptvRows = [
+    { id: 'cloud-smoke', name: 'Cloud Smoke IPTV HD', url: 'https://example.com/cloud.m3u8', category: 'سحابي', enabled: false, source: 'cloud' },
+  ];
   const sessions = new Set();
   const server = http.createServer(mediaServer.createHandler({
     getAdminAuth: () => ({ username: 'admin' }),
@@ -47,13 +50,29 @@ async function main() {
     clearAdminSession: (token) => sessions.delete(token),
     getPlatformStatus: () => platformState,
     getBroadcastChannels: () => db.listBroadcastChannels(),
-    getIptvChannels: () => db.listIptv().map((ch) => ({
-      ...ch,
-      id: String(ch.id),
-      type: 'iptv',
-      group: ch.category || 'IPTV',
-      playUrl: `/iptv/${ch.id}/index.m3u8`,
-    })),
+    getIptvChannels: () => [
+      ...cloudIptvRows.filter((ch) => ch.enabled !== false && ch.enabled !== 0).map((ch) => ({
+        ...ch,
+        id: String(ch.id),
+        type: 'iptv',
+        group: ch.category || 'IPTV',
+        playUrl: `/iptv/${ch.id}/index.m3u8`,
+      })),
+      ...db.listIptv().map((ch) => ({
+        ...ch,
+        id: String(ch.id),
+        type: 'iptv',
+        group: ch.category || 'IPTV',
+        playUrl: `/iptv/${ch.id}/index.m3u8`,
+      })),
+    ],
+    getCloudIptv: () => cloudIptvRows.slice(),
+    setCloudIptvEnabled: (id, enabled) => {
+      cloudIptvRows = cloudIptvRows.map((row) => String(row.id) === String(id)
+        ? { ...row, enabled: !!enabled }
+        : row);
+      return cloudIptvRows.find((row) => String(row.id) === String(id)) || null;
+    },
     getLibraryConfig: () => ({ tmdbKey: '', tmdbLang: 'ar' }),
     requestPlatformActivation: async (body) => {
       platformState = {
@@ -231,6 +250,23 @@ async function main() {
     const state2 = await res.json();
     assert.ok(state2.broadcast.some((c) => c.name === 'كاميرا القاعة'), 'created channel appears in state');
 
+    res = await request(base, '/api/viewer/state');
+    assert.equal(res.status, 200);
+    let viewerState = await res.json();
+    assert.ok(viewerState.broadcast.some((c) => c.name === 'كاميرا القاعة'), 'viewer state exposes enabled broadcast channels');
+    assert.ok(viewerState.channels.some((c) => c.name === 'كاميرا القاعة'), 'viewer live channels include broadcast channels');
+
+    const mediaPath = path.join(dir, 'smoke-video.mp4');
+    fs.writeFileSync(mediaPath, Buffer.from('fake video'));
+    db.upsertMedia({ path: mediaPath, kind: 'movie', title: 'فيلم smoke', size: 10, section: 'أفلام', folder: 'اختبار' });
+
+    res = await request(base, '/api/library');
+    assert.equal(res.status, 200);
+    const libraryPayload = await res.json();
+    assert.ok(Array.isArray(libraryPayload.items), 'library API exposes items for the web UI');
+    assert.ok(Array.isArray(libraryPayload.media), 'library API keeps media alias for compatibility');
+    assert.ok(libraryPayload.items.some((item) => item.title === 'فيلم smoke'), 'library API returns scanned media items');
+
     res = await request(base, '/api/admin/iptv', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...auth },
@@ -240,9 +276,23 @@ async function main() {
 
     res = await request(base, '/api/viewer/state');
     assert.equal(res.status, 200);
-    const viewerState = await res.json();
+    viewerState = await res.json();
     assert.ok(viewerState.iptv.some((c) => c.name === 'Smoke IPTV HD'), 'viewer state exposes enabled IPTV');
     assert.ok(viewerState.channels.some((c) => c.name === 'Smoke IPTV HD'), 'viewer live channels include IPTV');
+
+    res = await request(base, '/api/admin/state', { headers: auth });
+    assert.equal(res.status, 200);
+    const adminWithCloud = await res.json();
+    assert.equal(adminWithCloud.cloudIptv.find((c) => c.id === 'cloud-smoke').enabled, false, 'admin state reflects local cloud IPTV override state');
+
+    res = await request(base, '/api/admin/iptv/cloud-smoke/toggle', { method: 'POST', headers: auth });
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).enabled, true);
+
+    res = await request(base, '/api/viewer/state');
+    assert.equal(res.status, 200);
+    viewerState = await res.json();
+    assert.ok(viewerState.iptv.some((c) => c.name === 'Cloud Smoke IPTV HD'), 'viewer state exposes enabled cloud IPTV');
 
     res = await request(base, '/api/admin/channels', {
       method: 'POST',
