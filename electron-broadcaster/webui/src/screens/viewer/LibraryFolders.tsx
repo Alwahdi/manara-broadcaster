@@ -1,81 +1,121 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, type MediaItem } from "@/lib/api";
+import { AppLink } from "@/components/AppLink";
+import { api, type LibraryBrowseEntry } from "@/lib/api";
 import { QueryBoundary, EmptyState } from "@/components/States";
-import { PageHeader, MediaTile } from "@/components/common";
+import { PageHeader } from "@/components/common";
 
-/** File-Explorer-style folder view of the library. */
+/** File-explorer style library view based on real source paths and relative paths. */
 export function LibraryFolders() {
-  const library = useQuery({ queryKey: ["library"], queryFn: () => api.library() });
-  const [folder, setFolder] = useState<string | null>(null);
+  const [sourceId, setSourceId] = useState<string>("");
+  const [path, setPath] = useState<string>("");
+  const params = useMemo(() => {
+    const next: Record<string, string> = {};
+    if (sourceId) next.sourceId = sourceId;
+    if (path) next.path = path;
+    return next;
+  }, [sourceId, path]);
+  const browse = useQuery({
+    queryKey: ["library-browse", sourceId, path],
+    queryFn: () => api.libraryBrowse(params),
+  });
+
+  const openRoot = () => {
+    setSourceId("");
+    setPath("");
+  };
+  const openSource = (id: string | number) => {
+    setSourceId(String(id));
+    setPath("");
+  };
+  const openFolder = (entry: LibraryBrowseEntry) => {
+    if (!entry.sourceId) return;
+    setSourceId(String(entry.sourceId));
+    setPath(entry.path || "");
+  };
 
   return (
     <div>
-      <PageHeader title="مجلدات المكتبة" subtitle="تصفّح الوسائط كما في مستكشف الملفات" />
+      <PageHeader
+        title="المكتبة"
+        subtitle="تصفّح المحتوى بنفس ترتيب المجلدات والملفات على جهاز السيرفر"
+      />
       <QueryBoundary
-        query={library}
-        isEmpty={(d) => !d.items || d.items.length === 0}
-        empty={<EmptyState icon="📂" title="لا مجلدات" text="لا توجد وسائط لعرضها في المجلدات." />}
+        query={browse}
+        isEmpty={(d) => !d.entries || d.entries.length === 0}
+        empty={<EmptyState icon="📂" title="لا يوجد محتوى" text="أضف مسارًا من لوحة الإدارة ثم شغّل الفحص." />}
       >
-        {(data) => <FolderExplorer items={data.items} folder={folder} setFolder={setFolder} />}
+        {(data) => (
+          <section className="folder-browser" aria-label="تصفح المكتبة">
+            <nav className="folder-breadcrumbs" aria-label="مسار المكتبة">
+              <button type="button" onClick={openRoot}>المصادر</button>
+              {data.source ? (
+                <>
+                  <span>/</span>
+                  <button type="button" onClick={() => openSource(data.source!.id)}>
+                    {data.source.name || data.source.label || "مصدر"}
+                  </button>
+                </>
+              ) : null}
+              {data.breadcrumbs.map((crumb) => (
+                <span key={crumb.path} className="folder-crumb">
+                  <span>/</span>
+                  <button type="button" onClick={() => setPath(crumb.path)}>{crumb.name}</button>
+                </span>
+              ))}
+            </nav>
+            <div className="folder-grid">
+              {data.entries.map((entry) =>
+                entry.type === "folder" ? (
+                  <FolderCard
+                    key={`${entry.sourceId || "root"}-${entry.path || entry.name}`}
+                    entry={entry}
+                    onOpen={() => (sourceId ? openFolder(entry) : openSource(entry.sourceId || ""))}
+                  />
+                ) : (
+                  <MediaFileCard key={`${entry.media?.id || entry.path}`} entry={entry} />
+                ),
+              )}
+            </div>
+          </section>
+        )}
       </QueryBoundary>
     </div>
   );
 }
 
-function FolderExplorer({
-  items,
-  folder,
-  setFolder,
-}: {
-  items: MediaItem[];
-  folder: string | null;
-  setFolder: (f: string | null) => void;
-}) {
-  const folders = useMemo(() => {
-    const set = new Map<string, number>();
-    for (const it of items) {
-      const key = it.folder || it.category || "غير مصنّف";
-      set.set(key, (set.get(key) || 0) + 1);
-    }
-    return Array.from(set.entries());
-  }, [items]);
-
-  const visible = folder
-    ? items.filter((it) => (it.folder || it.category || "غير مصنّف") === folder)
-    : [];
-
+function FolderCard({ entry, onOpen }: { entry: LibraryBrowseEntry; onOpen: () => void }) {
   return (
-    <div className="explorer">
-      <div className="card card-pad">
-        <div className="side-group-label" style={{ paddingTop: 0 }}>المجلدات</div>
-        <div className="explorer-list">
-          {folders.map(([name, count]) => (
-            <div
-              key={name}
-              className={`explorer-item ${folder === name ? "active" : ""}`}
-              onClick={() => setFolder(name)}
-            >
-              <span aria-hidden>📁</span>
-              <span className="grow truncate">{name}</span>
-              <span className="badge">{count}</span>
-            </div>
-          ))}
-        </div>
+    <button type="button" className="folder-card" onClick={onOpen}>
+      <div className="folder-card-art">
+        {entry.cover ? <img src={entry.cover} alt="" loading="lazy" /> : <span aria-hidden>📁</span>}
+        {!entry.online ? <span className="offline-ribbon">غير متصل</span> : null}
       </div>
-      <div>
-        {!folder ? (
-          <EmptyState icon="🗂️" title="اختر مجلدًا" text="حدد مجلدًا من القائمة لعرض محتوياته." />
-        ) : visible.length === 0 ? (
-          <EmptyState icon="📂" title="المجلد فارغ" />
-        ) : (
-          <div className="grid grid-auto">
-            {visible.map((item) => (
-              <MediaTile key={item.id} item={item} />
-            ))}
-          </div>
-        )}
+      <div className="folder-card-body">
+        <span className="folder-card-title">{entry.name}</span>
+        <span className="folder-card-sub">{entry.count || 0} عنصر</span>
       </div>
-    </div>
+    </button>
+  );
+}
+
+function MediaFileCard({ entry }: { entry: LibraryBrowseEntry }) {
+  const item = entry.media;
+  const title = item?.title || item?.name || entry.name;
+  return (
+    <AppLink
+      href="/watch/media/$id"
+      params={{ id: String(item?.id || "") }}
+      className="folder-card folder-file-card"
+    >
+      <div className="folder-card-art">
+        {entry.cover ? <img src={entry.cover} alt="" loading="lazy" /> : <span aria-hidden>🎬</span>}
+        {!entry.online ? <span className="offline-ribbon">غير متصل</span> : null}
+      </div>
+      <div className="folder-card-body">
+        <span className="folder-card-title">{title}</span>
+        <span className="folder-card-sub">{item?.kind || item?.category || "فيديو"}</span>
+      </div>
+    </AppLink>
   );
 }

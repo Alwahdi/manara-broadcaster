@@ -1,6 +1,8 @@
 // WIVA — filesystem scanner for media library
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+const { spawn } = require('child_process');
 const db = require('./db.cjs');
 const tmdb = require('./tmdb.cjs');
 
@@ -80,7 +82,63 @@ function readUrlFile(file) {
   } catch { return null; }
 }
 
-async function scanAll({ tmdbKey, tmdbLang = 'ar' } = {}, onProgress) {
+function thumbnailName(file) {
+  return crypto.createHash('sha1').update(String(file)).digest('hex') + '.jpg';
+}
+
+async function generateVideoThumbnail(file, thumbnailDir) {
+  if (!thumbnailDir || !file || /^https?:\/\//i.test(String(file))) return '';
+  const outName = thumbnailName(file);
+  const outFile = path.join(thumbnailDir, outName);
+  try {
+    if (fs.existsSync(outFile) && fs.statSync(outFile).size > 512) return `/media-thumb/${outName}`;
+    fs.mkdirSync(thumbnailDir, { recursive: true });
+  } catch {
+    return '';
+  }
+  return new Promise((resolve) => {
+    const ffmpeg = process.env.FFMPEG_PATH || 'ffmpeg';
+    let child;
+    let done = false;
+    const finish = (value) => {
+      if (done) return;
+      done = true;
+      resolve(value);
+    };
+    try {
+      child = spawn(ffmpeg, [
+        '-y',
+        '-ss', '00:00:03',
+        '-i', file,
+        '-frames:v', '1',
+        '-vf', 'scale=640:-1',
+        '-q:v', '5',
+        outFile,
+      ], { stdio: 'ignore', windowsHide: true });
+    } catch {
+      finish('');
+      return;
+    }
+    const timer = setTimeout(() => {
+      try { child.kill('SIGKILL'); } catch {}
+      finish('');
+    }, 12000);
+    child.on('exit', () => {
+      clearTimeout(timer);
+      try {
+        finish(fs.existsSync(outFile) && fs.statSync(outFile).size > 512 ? `/media-thumb/${outName}` : '');
+      } catch {
+        finish('');
+      }
+    });
+    child.on('error', () => {
+      clearTimeout(timer);
+      finish('');
+    });
+  });
+}
+
+async function scanAll({ tmdbKey, tmdbLang = 'ar', thumbnailDir = '' } = {}, onProgress) {
   const paths = db.listPaths();
   const report = {
     total: 0,
@@ -163,6 +221,13 @@ async function scanAll({ tmdbKey, tmdbLang = 'ar' } = {}, onProgress) {
               item.rating = info.rating;
             }
           } catch { /* ignore TMDB errors per-item */ }
+        }
+        if (!item.poster_url && !item.backdrop_url && mediaKind === 'video' && !remoteUrl) {
+          const thumb = await generateVideoThumbnail(file, thumbnailDir);
+          if (thumb) {
+            item.poster_url = thumb;
+            item.backdrop_url = thumb;
+          }
         }
         const id = db.upsertMedia(item);
         const baseNoExt = file.replace(/\.[^.]+$/, '');

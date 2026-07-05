@@ -223,18 +223,39 @@ async function main() {
     const addedSource = await res.json();
     assert.equal(addedSource.ok, true);
     assert.ok(addedSource.sources.some((s) => s.path === dir), 'library source add endpoint returns the new source');
+    const sourceRow = addedSource.sources.find((s) => s.path === dir);
+    assert.ok(sourceRow?.id, 'added library source has an id for folder browsing');
 
     // Adding a single capture channel through the wizard endpoint.
     res = await request(base, '/api/admin/broadcast', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...auth },
-      body: JSON.stringify({ name: 'كاميرا القاعة', captureKind: 'screen', sourceId: 'screen:0', audioId: null }),
+      body: JSON.stringify({
+        name: 'كاميرا القاعة',
+        captureKind: 'screen',
+        sourceId: 'screen:0',
+        sourceName: 'الشاشة الرئيسية',
+        audioId: 'audio:usb',
+        audioName: 'USB Digital Audio Interface',
+      }),
     });
     assert.equal(res.status, 200);
     const created = await res.json();
     assert.equal(created.name, 'كاميرا القاعة');
     assert.equal(created.source.type, 'screen');
     assert.equal(created.source.id, 'screen:0');
+    assert.equal(created.source.name, 'الشاشة الرئيسية');
+    assert.equal(created.audioDeviceName, 'USB Digital Audio Interface', 'broadcast channel preserves selected audio device name');
+
+    res = await request(base, `/api/admin/broadcast/${encodeURIComponent(created.id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...auth },
+      body: JSON.stringify({ name: 'كاميرا القاعة HD', audioDeviceName: 'USB Audio Updated', enabled: true }),
+    });
+    assert.equal(res.status, 200);
+    const updatedBroadcast = await res.json();
+    assert.equal(updatedBroadcast.name, 'كاميرا القاعة HD');
+    assert.equal(updatedBroadcast.audioDeviceName, 'USB Audio Updated');
 
     // A name is required.
     res = await request(base, '/api/admin/broadcast', {
@@ -248,17 +269,30 @@ async function main() {
     res = await request(base, '/api/admin/state', { headers: auth });
     assert.equal(res.status, 200);
     const state2 = await res.json();
-    assert.ok(state2.broadcast.some((c) => c.name === 'كاميرا القاعة'), 'created channel appears in state');
+    assert.ok(state2.broadcast.some((c) => c.name === 'كاميرا القاعة HD'), 'updated channel appears in state');
 
     res = await request(base, '/api/viewer/state');
     assert.equal(res.status, 200);
     let viewerState = await res.json();
-    assert.ok(viewerState.broadcast.some((c) => c.name === 'كاميرا القاعة'), 'viewer state exposes enabled broadcast channels');
-    assert.ok(viewerState.channels.some((c) => c.name === 'كاميرا القاعة'), 'viewer live channels include broadcast channels');
+    assert.ok(viewerState.broadcast.some((c) => c.name === 'كاميرا القاعة HD'), 'viewer state exposes enabled broadcast channels');
+    assert.ok(viewerState.channels.some((c) => c.name === 'كاميرا القاعة HD'), 'viewer live channels include broadcast channels');
 
-    const mediaPath = path.join(dir, 'smoke-video.mp4');
+    const nestedDir = path.join(dir, 'قسم رئيسي', 'أفلام عربية');
+    fs.mkdirSync(nestedDir, { recursive: true });
+    const mediaPath = path.join(nestedDir, 'smoke-video.mp4');
     fs.writeFileSync(mediaPath, Buffer.from('fake video'));
-    db.upsertMedia({ path: mediaPath, kind: 'movie', title: 'فيلم smoke', size: 10, section: 'أفلام', folder: 'اختبار' });
+    db.upsertMedia({
+      path: mediaPath,
+      kind: 'movie',
+      title: 'فيلم smoke',
+      size: 10,
+      section: sourceRow.label || 'أفلام',
+      folder: 'قسم رئيسي/أفلام عربية',
+      source_id: sourceRow.id,
+      source_path: dir,
+      source_label: sourceRow.label || 'Smoke Source',
+      relative_path: 'قسم رئيسي/أفلام عربية/smoke-video.mp4',
+    });
 
     res = await request(base, '/api/library');
     assert.equal(res.status, 200);
@@ -267,18 +301,44 @@ async function main() {
     assert.ok(Array.isArray(libraryPayload.media), 'library API keeps media alias for compatibility');
     assert.ok(libraryPayload.items.some((item) => item.title === 'فيلم smoke'), 'library API returns scanned media items');
 
+    res = await request(base, '/api/library/browse');
+    assert.equal(res.status, 200);
+    const browseRoot = await res.json();
+    assert.ok(browseRoot.entries.some((entry) => String(entry.sourceId) === String(sourceRow.id)), 'folder browser root shows added library source');
+
+    res = await request(base, '/api/library/browse?sourceId=' + encodeURIComponent(sourceRow.id));
+    assert.equal(res.status, 200);
+    const browseSource = await res.json();
+    assert.ok(browseSource.entries.some((entry) => entry.type === 'folder' && entry.name === 'قسم رئيسي'), 'folder browser shows top-level folders');
+
+    res = await request(base, '/api/library/browse?sourceId=' + encodeURIComponent(sourceRow.id) + '&path=' + encodeURIComponent('قسم رئيسي/أفلام عربية'));
+    assert.equal(res.status, 200);
+    const browseNested = await res.json();
+    assert.ok(browseNested.entries.some((entry) => entry.type === 'media' && entry.media?.title === 'فيلم smoke'), 'folder browser shows media files inside nested folders');
+
     res = await request(base, '/api/admin/iptv', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...auth },
       body: JSON.stringify({ name: 'Smoke IPTV HD', url: 'https://example.com/live.m3u8', category: 'اختبار' }),
     });
     assert.equal(res.status, 200);
+    const iptvCreated = await res.json();
+
+    res = await request(base, `/api/admin/iptv/${iptvCreated.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...auth },
+      body: JSON.stringify({ name: 'Smoke IPTV FHD', category: 'اختبار معدل', transferLimitBytes: 4096 }),
+    });
+    assert.equal(res.status, 200);
+    const iptvUpdated = await res.json();
+    assert.equal(iptvUpdated.name, 'Smoke IPTV FHD');
+    assert.equal(iptvUpdated.category, 'اختبار معدل');
 
     res = await request(base, '/api/viewer/state');
     assert.equal(res.status, 200);
     viewerState = await res.json();
-    assert.ok(viewerState.iptv.some((c) => c.name === 'Smoke IPTV HD'), 'viewer state exposes enabled IPTV');
-    assert.ok(viewerState.channels.some((c) => c.name === 'Smoke IPTV HD'), 'viewer live channels include IPTV');
+    assert.ok(viewerState.iptv.some((c) => c.name === 'Smoke IPTV FHD'), 'viewer state exposes enabled IPTV');
+    assert.ok(viewerState.channels.some((c) => c.name === 'Smoke IPTV FHD'), 'viewer live channels include IPTV');
 
     res = await request(base, '/api/admin/state', { headers: auth });
     assert.equal(res.status, 200);

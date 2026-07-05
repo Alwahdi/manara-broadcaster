@@ -42,6 +42,16 @@ locked (antivirus, Search indexing, backup agents). This eliminates the
 intermittent "cannot save on Windows" failures that the old
 `writeFile` + `rename` pattern caused.
 
+## v2.6.22
+
+- Preserved selected broadcast audio device names when creating/editing capture channels, so Windows devices can be matched more reliably during playback.
+- Added full web admin CRUD for broadcast channels: create, read, edit, enable/disable, and delete.
+- Added full web admin CRUD for local IPTV channels, while keeping cloud IPTV protected with enable/disable controls.
+- Added `/api/library/browse` and switched the viewer library to folder-first browsing based on the real library source path and nested `relative_path` values.
+- Improved the library folder UI with source folders, breadcrumbs, folder/file cards, offline state, and mobile-friendly responsive sizing.
+- Added optional cached video thumbnail generation during library scans when `ffmpeg` is available, so folders/files can use real video frame artwork without writing into user media folders.
+- Expanded smoke coverage for broadcast audio metadata, channel edits, IPTV edits, viewer visibility, and nested media-library folder browsing.
+
 ## v2.6.21
 
 - Fixed cloud IPTV visibility for viewers by making active cloud IPTV channels enabled by default unless the local admin explicitly disables them.

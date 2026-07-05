@@ -50,8 +50,9 @@ export function AdminChannelNew() {
         sourceId: source?.id,
         sourceName: source?.name,
         audioId: audio?.id || null,
+        audioName: audio?.name || "",
         enabled: true,
-    }),
+      }),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["admin-state"] });
       navigate("/admin/channels");

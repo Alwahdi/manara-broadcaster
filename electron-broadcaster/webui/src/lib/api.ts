@@ -122,6 +122,14 @@ export interface Channel {
   logo?: string;
   group?: string;
   category?: string;
+  description?: string;
+  source?: Record<string, unknown> | string;
+  audioDeviceId?: string;
+  audioDeviceName?: string;
+  resolution?: string;
+  fps?: number;
+  bitrateKbps?: number;
+  transferLimitBytes?: number;
   qualities?: { id: string | number; label?: string; name?: string }[];
   [k: string]: unknown;
 }
@@ -163,12 +171,34 @@ export interface StorageListing {
 
 export interface LibrarySource {
   id: number;
+  name?: string;
   label?: string;
   path: string;
   online?: boolean;
   mediaCount?: number;
   lastScan?: string | number | null;
   [k: string]: unknown;
+}
+
+export interface LibraryBrowseEntry {
+  type: "folder" | "media";
+  sourceId?: number | string;
+  name: string;
+  path: string;
+  fullPath?: string;
+  count?: number;
+  cover?: string;
+  online?: boolean;
+  media?: MediaItem;
+}
+
+export interface LibraryBrowsePayload {
+  sourceId?: number | string;
+  source?: LibrarySource | null;
+  path: string;
+  breadcrumbs: { name: string; path: string }[];
+  entries: LibraryBrowseEntry[];
+  sources?: LibrarySource[];
 }
 
 export interface ViewerAccount {
@@ -227,6 +257,10 @@ export const api = {
     http.get<{ items: MediaItem[]; media?: MediaItem[]; folders?: string[] }>(
       "/api/library" + (params ? "?" + new URLSearchParams(params).toString() : ""),
     ),
+  libraryBrowse: (params?: Record<string, string>) =>
+    http.get<LibraryBrowsePayload>(
+      "/api/library/browse" + (params ? "?" + new URLSearchParams(params).toString() : ""),
+    ),
   media: (id: number | string) => http.get<MediaItem>(`/api/media/${id}`),
 
   // Capture wizard
@@ -267,10 +301,14 @@ export const api = {
   iptvImportCommit: (body: unknown) =>
     http.post<{ ok: boolean; added: number }>("/api/admin/iptv/import/commit", body),
   addIptv: (body: unknown) => http.post<Channel>("/api/admin/iptv", body),
+  updateIptv: (id: number | string, body: unknown) => http.put<Channel>(`/api/admin/iptv/${id}`, body),
+  deleteIptv: (id: number | string) => http.del<{ ok: boolean }>(`/api/admin/iptv/${id}`),
   toggleIptv: (id: number | string) => http.post<Channel>(`/api/admin/iptv/${id}/toggle`),
 
   // Channels (broadcast / capture)
   addChannel: (body: unknown) => http.post<Channel>("/api/admin/broadcast", body),
+  updateChannel: (id: number | string, body: unknown) => http.put<Channel>(`/api/admin/broadcast/${id}`, body),
+  deleteChannel: (id: number | string) => http.del<{ channels: Channel[] }>(`/api/admin/broadcast/${id}`),
 
   // People & messaging
   viewers: () => http.get<{ viewers: ViewerAccount[] }>("/api/admin/viewers"),

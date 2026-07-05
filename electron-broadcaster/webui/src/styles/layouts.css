@@ -398,6 +398,116 @@
 .crumbs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; color: var(--text-muted); font-size: 0.9rem; }
 .crumbs button { background: none; border: none; color: var(--gold); cursor: pointer; font: inherit; }
 
+.folder-browser {
+  display: grid;
+  gap: 18px;
+}
+.folder-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+.folder-breadcrumbs button {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+.folder-breadcrumbs button:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+.folder-crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.folder-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: clamp(12px, 2vw, 18px);
+}
+.folder-card {
+  display: grid;
+  grid-template-rows: 132px auto;
+  min-width: 0;
+  text-align: start;
+  text-decoration: none;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface);
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+button.folder-card {
+  font: inherit;
+  padding: 0;
+}
+.folder-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+.folder-card-art {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  background: linear-gradient(135deg, rgba(24, 184, 198, 0.22), rgba(214, 178, 92, 0.18)), var(--surface-2);
+  color: var(--gold);
+  font-size: 2.2rem;
+}
+.folder-card-art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 40%, rgba(5, 8, 18, 0.72));
+  pointer-events: none;
+}
+.folder-card-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.folder-card-body {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px 14px;
+}
+.folder-card-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 800;
+}
+.folder-card-sub {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+.folder-file-card .folder-card-art {
+  background: var(--surface-2);
+}
+@media (max-width: 560px) {
+  .folder-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .folder-card {
+    grid-template-rows: 108px auto;
+  }
+  .folder-card-body {
+    padding: 10px;
+  }
+}
+
 /* Wizard steps */
 .wizard-steps { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
 .wizard-pill {

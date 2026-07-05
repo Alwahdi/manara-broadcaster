@@ -287,7 +287,7 @@ function listLibraryItems(query = {}) {
   return db.listMedia({
     q: query.q || '',
     kind: query.kind || '',
-    limit: Math.min(2000, Math.max(1, Number(query.limit) || 800)),
+    limit: Math.min(100000, Math.max(1, Number(query.limit) || 800)),
   }).map(mediaPayload);
 }
 
@@ -494,6 +494,96 @@ function librarySections(items = listLibraryItems({ limit: 5000 })) {
     cover: sec.cover || '',
     folders: Array.from(sec.folders.values()),
   }));
+}
+
+function normalizeRelativePath(value = '') {
+  return String(value || '')
+    .replace(/\\/g, '/')
+    .replace(/^\/+|\/+$/g, '')
+    .replace(/\/{2,}/g, '/');
+}
+
+function libraryBrowsePayload(query = {}) {
+  const sources = db.listPaths().map((source) => ({
+    id: source.id,
+    name: source.label || path.basename(String(source.path || '').replace(/[\\/]+$/g, '')) || source.path,
+    path: source.path,
+    online: source.status !== 'missing',
+  }));
+  const media = listLibraryItems({ limit: 100000 });
+  const sourceId = query.sourceId ? String(query.sourceId) : '';
+  const currentPath = normalizeRelativePath(query.path || '');
+
+  if (!sourceId) {
+    const entries = sources.map((source) => {
+      const children = media.filter((item) => String(item.source_id || '') === String(source.id));
+      const coverItem = children.find((item) => item.poster || item.backdrop) || children[0] || null;
+      return {
+        type: 'folder',
+        sourceId: source.id,
+        name: source.name,
+        path: '',
+        fullPath: source.path,
+        count: children.length,
+        cover: coverItem?.backdrop || coverItem?.poster || '',
+        online: source.online,
+      };
+    }).filter((entry) => entry.count > 0 || entry.online !== false);
+    return { sourceId: '', path: '', breadcrumbs: [], entries, sources };
+  }
+
+  const source = sources.find((row) => String(row.id) === sourceId) || null;
+  const folders = new Map();
+  const files = [];
+  for (const item of media.filter((row) => String(row.source_id || '') === sourceId)) {
+    const rel = normalizeRelativePath(item.relative_path || path.basename(item.path || item.title || ''));
+    if (!rel) continue;
+    if (currentPath && rel !== currentPath && !rel.startsWith(currentPath + '/')) continue;
+    const rest = currentPath ? rel.slice(currentPath.length).replace(/^\/+/, '') : rel;
+    if (!rest) continue;
+    const parts = rest.split('/').filter(Boolean);
+    if (parts.length > 1) {
+      const folderName = parts[0];
+      const folderPath = normalizeRelativePath([currentPath, folderName].filter(Boolean).join('/'));
+      const current = folders.get(folderPath) || {
+        type: 'folder',
+        sourceId,
+        name: folderName,
+        path: folderPath,
+        count: 0,
+        cover: '',
+        online: true,
+      };
+      current.count += 1;
+      if (!current.cover) current.cover = item.backdrop || item.poster || '';
+      if (item.online === false) current.online = false;
+      folders.set(folderPath, current);
+    } else {
+      files.push({
+        type: 'media',
+        sourceId,
+        name: item.title || parts[0] || path.basename(item.path || ''),
+        path: rel,
+        media: item,
+        cover: item.poster || item.backdrop || '',
+        online: item.online !== false,
+      });
+    }
+  }
+
+  const crumbs = [];
+  const crumbParts = currentPath ? currentPath.split('/').filter(Boolean) : [];
+  for (let i = 0; i < crumbParts.length; i += 1) {
+    crumbs.push({ name: crumbParts[i], path: crumbParts.slice(0, i + 1).join('/') });
+  }
+  return {
+    sourceId,
+    source,
+    path: currentPath,
+    breadcrumbs: crumbs,
+    entries: [...Array.from(folders.values()).sort((a, b) => a.name.localeCompare(b.name)), ...files.sort((a, b) => a.name.localeCompare(b.name))],
+    sources,
+  };
 }
 
 function srtToVtt(text) {
@@ -989,6 +1079,10 @@ function createHandler(options = {}) {
         viewer: db.viewerState(getViewerId(req, res)),
       });
     }
+    if (u.pathname === '/api/library/browse') {
+      if (!featureAllowed(options, 'media')) return denyFeature(req, res, options, 'media');
+      return sendJson(res, 200, libraryBrowsePayload(u.query));
+    }
     // --- Modern web UI admin API: library sources ---
     if (u.pathname === '/api/admin/library/sources' && req.method === 'GET') {
       if (!requireAdmin(req, res, options, adminBase)) return;
@@ -1002,7 +1096,7 @@ function createHandler(options = {}) {
         if (!validation.ok) return sendJson(res, 400, { error: 'invalid_path', message: validation.message });
         db.addPath(validation.path, body.kind || 'movies', 0);
         const cfg = typeof options.getLibraryConfig === 'function' ? options.getLibraryConfig() : {};
-        const result = await scanner.scanAll({ tmdbKey: cfg.tmdbKey || '', tmdbLang: cfg.tmdbLang || 'ar' });
+        const result = await scanner.scanAll({ tmdbKey: cfg.tmdbKey || '', tmdbLang: cfg.tmdbLang || 'ar', thumbnailDir: cfg.thumbnailDir || '' });
         webui.broadcast('library', { path: validation.path, scanned: true });
         return sendJson(res, 200, { ok: true, ...result, sources: librarySourcesPayload() });
       } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
@@ -1012,7 +1106,7 @@ function createHandler(options = {}) {
       if (!requireAdmin(req, res, options, adminBase)) return;
       try {
         const cfg = typeof options.getLibraryConfig === 'function' ? options.getLibraryConfig() : {};
-        const result = await scanner.scanAll({ tmdbKey: cfg.tmdbKey || '', tmdbLang: cfg.tmdbLang || 'ar' });
+        const result = await scanner.scanAll({ tmdbKey: cfg.tmdbKey || '', tmdbLang: cfg.tmdbLang || 'ar', thumbnailDir: cfg.thumbnailDir || '' });
         webui.broadcast('library', { sourceId: Number(sourceMatch[1]) });
         return sendJson(res, 200, { ok: true, ...result, sources: librarySourcesPayload() });
       } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
@@ -1124,6 +1218,24 @@ function createHandler(options = {}) {
         'Cache-Control': 'public, max-age=86400',
       });
     }
+    m = /^\/media-thumb\/([a-f0-9]{40}\.jpg)$/.exec(u.pathname);
+    if (m) {
+      if (!featureAllowed(options, 'media')) return denyFeature(req, res, options, 'media');
+      const cfg = typeof options.getLibraryConfig === 'function' ? options.getLibraryConfig() : {};
+      const thumbnailDir = String(cfg.thumbnailDir || '');
+      const thumb = thumbnailDir ? path.join(thumbnailDir, m[1]) : '';
+      try {
+        if (!thumb || !fs.existsSync(thumb) || !fs.statSync(thumb).isFile()) {
+          return send(res, 404, 'Thumbnail not found', { 'Content-Type': 'text/plain; charset=utf-8' });
+        }
+        return send(res, 200, fs.readFileSync(thumb), {
+          'Content-Type': 'image/jpeg',
+          'Cache-Control': 'public, max-age=604800',
+        });
+      } catch (e) {
+        return sendJson(res, 500, { error: e.message });
+      }
+    }
     m = /^\/player\/(\d+)$/.exec(u.pathname);
     if (m) {
       if (!featureAllowed(options, 'media')) return denyFeature(req, res, options, 'media');
@@ -1229,6 +1341,26 @@ function createHandler(options = {}) {
       } catch (e) { return sendJson(res, 500, { error: e.message }); }
     }
     let adminMatch = /^\/api\/admin\/iptv\/(\d+)(?:\/toggle)?$/.exec(u.pathname);
+    if (adminMatch && (req.method === 'PUT' || req.method === 'PATCH')) {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      try {
+        const ch = db.getIptv(adminMatch[1]);
+        if (!ch) return sendJson(res, 404, { error: 'not found' });
+        const body = await parseJsonBody(req);
+        const updated = db.updateIptv(adminMatch[1], {
+          ...ch,
+          ...body,
+          name: String(body.name ?? ch.name ?? '').trim() || ch.name,
+          url: String(body.url ?? ch.url ?? '').trim() || ch.url,
+          category: String(body.category ?? ch.category ?? '').trim(),
+          logo: String(body.logo ?? ch.logo ?? '').trim(),
+          enabled: body.enabled == null ? ch.enabled : body.enabled,
+        });
+        if (options.onChannelsChanged) options.onChannelsChanged();
+        webui.broadcast('iptv', { updated: adminMatch[1] });
+        return sendJson(res, 200, updated);
+      } catch (e) { return sendJson(res, 500, { error: e.message }); }
+    }
     if (adminMatch && req.method === 'DELETE') {
       if (!requireAdmin(req, res, options, adminBase)) return;
       db.removeIptv(adminMatch[1]);
@@ -1277,7 +1409,8 @@ function createHandler(options = {}) {
         if (!source) {
           const type = String(body.captureKind || body.sourceType || 'screen').trim();
           const sourceId = String(body.sourceId || '').trim();
-          source = type === 'url' ? { type: 'url', url: sourceId } : { type, id: sourceId };
+          const sourceName = String(body.sourceName || '').trim();
+          source = type === 'url' ? { type: 'url', url: sourceId, name: sourceName } : { type, id: sourceId, name: sourceName };
         }
         const channel = db.upsertBroadcastChannel({
           id: body.id || ('ch_' + Date.now().toString(36) + '_' + crypto.randomBytes(3).toString('hex')),
@@ -1285,6 +1418,7 @@ function createHandler(options = {}) {
           description: body.description || '',
           source,
           audioDeviceId: String(body.audioId || body.audioDeviceId || 'none').trim() || 'none',
+          audioDeviceName: String(body.audioName || body.audioDeviceName || '').trim(),
           resolution: body.resolution || '1280x720',
           fps: body.fps || 30,
           bitrateKbps: body.bitrateKbps || 2500,
@@ -1312,6 +1446,39 @@ function createHandler(options = {}) {
       } catch (e) { return sendJson(res, 500, { error: e.message }); }
     }
     adminMatch = /^\/api\/admin\/(?:broadcast|channels|broadcast-channels)\/([^/]+)$/.exec(u.pathname);
+    if (adminMatch && (req.method === 'PUT' || req.method === 'PATCH')) {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      try {
+        const id = decodeURIComponent(adminMatch[1]);
+        const current = db.listBroadcastChannels().find((ch) => String(ch.id) === String(id));
+        if (!current) return sendJson(res, 404, { error: 'not found' });
+        const body = await parseJsonBody(req);
+        let source = body.source && typeof body.source === 'object' ? body.source : current.source || {};
+        if (body.sourceId || body.captureKind || body.sourceName) {
+          const type = String(body.captureKind || body.sourceType || source.type || 'screen').trim();
+          source = {
+            ...source,
+            type,
+            id: String(body.sourceId || source.id || '').trim(),
+            name: String(body.sourceName || source.name || '').trim(),
+          };
+        }
+        const channel = db.upsertBroadcastChannel({
+          ...current,
+          ...body,
+          id,
+          name: String(body.name ?? current.name ?? '').trim() || current.name,
+          description: body.description ?? current.description ?? '',
+          source,
+          audioDeviceId: String(body.audioId ?? body.audioDeviceId ?? current.audioDeviceId ?? 'none').trim() || 'none',
+          audioDeviceName: String(body.audioName ?? body.audioDeviceName ?? current.audioDeviceName ?? '').trim(),
+          enabled: body.enabled == null ? current.enabled !== false : body.enabled !== false && body.enabled !== 0,
+        });
+        if (options.onChannelsChanged) options.onChannelsChanged();
+        webui.broadcast('channels', { updated: channel.id });
+        return sendJson(res, 200, channel);
+      } catch (e) { return sendJson(res, 500, { error: e.message }); }
+    }
     if (adminMatch && req.method === 'DELETE') {
       if (!requireAdmin(req, res, options, adminBase)) return;
       const id = decodeURIComponent(adminMatch[1]);
@@ -1418,7 +1585,7 @@ function createHandler(options = {}) {
       if (!requireAdmin(req, res, options, adminBase)) return;
       try {
         const cfg = typeof options.getLibraryConfig === 'function' ? options.getLibraryConfig() : {};
-        const result = await scanner.scanAll({ tmdbKey: cfg.tmdbKey || '', tmdbLang: cfg.tmdbLang || 'ar' });
+        const result = await scanner.scanAll({ tmdbKey: cfg.tmdbKey || '', tmdbLang: cfg.tmdbLang || 'ar', thumbnailDir: cfg.thumbnailDir || '' });
         return sendJson(res, 200, { ok: true, ...result });
       } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
     }

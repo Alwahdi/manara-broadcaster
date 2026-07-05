@@ -848,6 +848,7 @@ function mediaServerOptions() {
     getLibraryConfig: () => ({
       tmdbKey: settings.tmdbKey || '',
       tmdbLang: settings.tmdbLang || 'ar',
+      thumbnailDir: path.join(app.getPath('userData'), 'media-thumbnails'),
     }),
     getPlatformStatus: () => platform.status(),
     requestPlatformActivation,
@@ -1368,7 +1369,7 @@ ipcMain.handle('library-scan', async () => {
   scanInProgress = true;
   try {
     const r = await libraryScanner.scanAll(
-      { tmdbKey: settings.tmdbKey || '', tmdbLang: settings.tmdbLang || 'ar' },
+      { tmdbKey: settings.tmdbKey || '', tmdbLang: settings.tmdbLang || 'ar', thumbnailDir: path.join(app.getPath('userData'), 'media-thumbnails') },
       (p) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('library-scan-progress', p);
