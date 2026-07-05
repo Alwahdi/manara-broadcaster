@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { AppLink } from "@/components/AppLink";
 import { api } from "@/lib/api";
 import { QueryBoundary } from "@/components/States";
 import { PageHeader, MediaTile } from "@/components/common";
@@ -21,8 +21,8 @@ export function ViewerHome() {
             شاهد البث المباشر والقنوات والمكتبة الكاملة عبر الشبكة المحلية — دون الحاجة إلى إنترنت.
           </p>
           <div className="row" style={{ marginTop: 20 }}>
-            <Link to="/live" className="btn btn-primary">مشاهدة البث المباشر</Link>
-            <Link to="/library" className="btn btn-ghost">تصفّح المكتبة</Link>
+            <AppLink href="/live" className="btn btn-primary">مشاهدة البث المباشر</AppLink>
+            <AppLink href="/library" className="btn btn-ghost">تصفّح المكتبة</AppLink>
           </div>
         </div>
       </section>

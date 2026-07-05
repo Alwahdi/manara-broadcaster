@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Link } from "@tanstack/react-router";
+import { AppLink } from "@/components/AppLink";
 
 /** Consistent header + next/back footer for setup steps. */
 export function SetupStep({
@@ -28,14 +28,14 @@ export function SetupStep({
       <div style={{ marginBottom: 28 }}>{children}</div>
       <div className="row-between">
         {prev ? (
-          <Link to={prev} className="btn btn-ghost">السابق</Link>
+          <AppLink href={prev} className="btn btn-ghost">السابق</AppLink>
         ) : (
           <span />
         )}
         {next && !nextDisabled ? (
-          <Link to={next} className="btn btn-primary" onClick={onNext}>
+          <AppLink href={next} className="btn btn-primary" onClick={onNext}>
             {nextLabel}
-          </Link>
+          </AppLink>
         ) : (
           <button className="btn btn-primary" onClick={onNext} disabled={nextDisabled}>
             {nextLabel}

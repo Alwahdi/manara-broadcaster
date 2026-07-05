@@ -629,8 +629,9 @@ function platformStatus(options = {}) {
 }
 
 function featureAllowed(options = {}, feature) {
+  if (typeof options.getPlatformStatus !== 'function') return true;
   const status = platformStatus(options);
-  if (!status || status.state === 'unregistered') return true; // legacy/offline installs keep working until registered.
+  if (!status) return false;
   if (status.state === 'active' && status.features?.[feature]) return true;
   return false;
 }
@@ -797,6 +798,28 @@ function createHandler(options = {}) {
       const state = typeof options.getSetupState === 'function' ? options.getSetupState() : {};
       return sendJson(res, 200, state);
     }
+    if (u.pathname === '/api/platform/activation' && req.method === 'POST') {
+      try {
+        if (typeof options.requestPlatformActivation !== 'function') {
+          return sendJson(res, 503, { ok: false, error: 'platform_activation_unavailable', message: 'Platform activation is not available in this build.' });
+        }
+        const body = await parseJsonBody(req);
+        const status = await options.requestPlatformActivation(body);
+        return sendJson(res, 200, { ok: true, subscription: status });
+      } catch (e) {
+        return sendJson(res, 400, { ok: false, error: e.message || 'activation_failed' });
+      }
+    }
+    if (u.pathname === '/api/platform/refresh' && (req.method === 'POST' || req.method === 'GET')) {
+      try {
+        const status = typeof options.refreshPlatformStatus === 'function'
+          ? await options.refreshPlatformStatus()
+          : platformStatus(options);
+        return sendJson(res, 200, { ok: true, subscription: status || null });
+      } catch (e) {
+        return sendJson(res, 500, { ok: false, error: e.message || 'platform_refresh_failed' });
+      }
+    }
     if (u.pathname === '/api/setup/port-check') {
       const result = typeof options.checkPort === 'function'
         ? options.checkPort(u.query.port)
@@ -813,6 +836,17 @@ function createHandler(options = {}) {
         return sendJson(res, 200, { ok: true, state: next });
       } catch (e) {
         return sendJson(res, 500, { ok: false, error: e.message });
+      }
+    }
+    if (isAdminLogin && typeof options.getPlatformStatus === 'function') {
+      const status = platformStatus(options);
+      if (!status || status.state !== 'active') {
+        if ((req.method === 'GET' || req.method === 'HEAD') && webui.isAvailable() && webui.serveApp(req, res)) return;
+        return sendJson(res, 403, {
+          error: 'registration_required',
+          message: platformGateMessage(status, 'webAdmin'),
+          platform: status ? { state: status.state, activationId: status.activationId || '' } : null,
+        });
       }
     }
     if (isAdminLogin && req.method === 'GET') {

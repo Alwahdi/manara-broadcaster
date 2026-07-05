@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { useAppNavigate } from "@/components/AppLink";
 import { api, type Channel } from "@/lib/api";
 import { PageHeader } from "@/components/common";
 
 /** Two-phase IPTV import: preview then commit selected channels. */
 export function AdminIptvImport() {
-  const navigate = useNavigate();
+  const navigate = useAppNavigate();
   const qc = useQueryClient();
   const [mode, setMode] = useState<"url" | "text">("url");
   const [url, setUrl] = useState("");
@@ -27,7 +27,7 @@ export function AdminIptvImport() {
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["admin-state"] });
-      navigate({ to: "/admin/iptv" });
+      navigate("/admin/iptv");
     },
   });
 

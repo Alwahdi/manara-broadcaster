@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { AppLink } from "@/components/AppLink";
 import { api, type Channel } from "@/lib/api";
 import { QueryBoundary, EmptyState } from "@/components/States";
 import { PageHeader } from "@/components/common";
@@ -11,7 +11,7 @@ export function AdminChannels() {
       <PageHeader
         title="القنوات"
         subtitle="قنوات البث المباشر وأجهزة الالتقاط"
-        actions={<Link to="/admin/channels/new" className="btn btn-primary">+ إضافة قناة</Link>}
+        actions={<AppLink href="/admin/channels/new" className="btn btn-primary">+ إضافة قناة</AppLink>}
       />
       <QueryBoundary
         query={state}
@@ -21,7 +21,7 @@ export function AdminChannels() {
             icon="📺"
             title="لا توجد قنوات بعد"
             text="أضف قناة من جهاز التقاط عبر المعالج خطوة بخطوة."
-            action={<Link to="/admin/channels/new" className="btn btn-primary">بدء المعالج</Link>}
+            action={<AppLink href="/admin/channels/new" className="btn btn-primary">بدء المعالج</AppLink>}
           />
         }
       >

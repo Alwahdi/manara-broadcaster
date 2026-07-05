@@ -66,6 +66,32 @@ export interface AgentState {
   brandName?: string;
   networkName?: string;
   urls?: Record<string, string>;
+  subscription?: PlatformStatus;
+  [k: string]: unknown;
+}
+
+export interface PlatformInstance {
+  id?: string;
+  state?: string;
+  status?: string;
+  tenantName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  plan?: string;
+  features?: Record<string, boolean>;
+  subscriptionExpiresAt?: string | null;
+  supportNote?: string;
+  [k: string]: unknown;
+}
+
+export interface PlatformStatus {
+  state?: "active" | "pending" | "expired" | "suspended" | "unregistered" | "offline" | "cached" | string;
+  online?: boolean;
+  instance?: PlatformInstance | null;
+  features?: Record<string, boolean>;
+  activationId?: string;
+  checkedAt?: string | null;
+  error?: string;
   [k: string]: unknown;
 }
 
@@ -185,6 +211,10 @@ export const api = {
   agentState: () => http.get<AgentState>("/api/agent/state"),
   adminState: () => http.get<AdminState>("/api/admin/state"),
   viewerState: () => http.get<Record<string, unknown>>("/api/viewer/state"),
+  requestActivation: (body: Record<string, unknown>) =>
+    http.post<{ ok: boolean; subscription?: PlatformStatus }>("/api/platform/activation", body),
+  refreshPlatform: () =>
+    http.post<{ ok: boolean; subscription?: PlatformStatus }>("/api/platform/refresh"),
 
   // Library / media
   library: (params?: Record<string, string>) =>

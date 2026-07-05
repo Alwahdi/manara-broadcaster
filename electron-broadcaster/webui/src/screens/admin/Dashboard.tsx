@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { AppLink } from "@/components/AppLink";
 import { api } from "@/lib/api";
 import { QueryBoundary } from "@/components/States";
 import { PageHeader, StatTile } from "@/components/common";
@@ -15,8 +15,8 @@ export function AdminDashboard() {
         subtitle="نظرة سريعة على حالة الشبكة والمحتوى"
         actions={
           <>
-            <Link to="/admin/channels/new" className="btn btn-primary">+ قناة جديدة</Link>
-            <Link to="/admin/library/sources" className="btn btn-ghost">مصادر التخزين</Link>
+            <AppLink href="/admin/channels/new" className="btn btn-primary">+ قناة جديدة</AppLink>
+            <AppLink href="/admin/library/sources" className="btn btn-ghost">مصادر التخزين</AppLink>
           </>
         }
       />
@@ -41,13 +41,13 @@ export function AdminDashboard() {
                   <h3>الجلسات النشطة</h3>
                   <div className="stat-value mono" style={{ marginTop: 10 }}>{formatNumber(sessions)}</div>
                   <p className="muted">عدد الأجهزة المتصلة حاليًا بالشبكة.</p>
-                  <Link to="/admin/viewers" className="btn btn-ghost btn-sm">عرض المشاهدين</Link>
+                  <AppLink href="/admin/viewers" className="btn btn-ghost btn-sm">عرض المشاهدين</AppLink>
                 </div>
                 <div className="card card-pad">
                   <h3>الرسائل الواردة</h3>
                   <div className="stat-value mono" style={{ marginTop: 10 }}>{formatNumber(messages)}</div>
                   <p className="muted">رسائل من المشاهدين بانتظار المراجعة.</p>
-                  <Link to="/admin/messages" className="btn btn-ghost btn-sm">فتح الرسائل</Link>
+                  <AppLink href="/admin/messages" className="btn btn-ghost btn-sm">فتح الرسائل</AppLink>
                 </div>
               </div>
             </>

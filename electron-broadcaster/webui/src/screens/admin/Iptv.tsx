@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { AppLink } from "@/components/AppLink";
 import { api, type Channel } from "@/lib/api";
 import { QueryBoundary, EmptyState } from "@/components/States";
 import { PageHeader } from "@/components/common";
@@ -11,7 +11,7 @@ export function AdminIptv() {
       <PageHeader
         title="قنوات IPTV"
         subtitle="القنوات المحلية والسحابية"
-        actions={<Link to="/admin/iptv/import" className="btn btn-primary">استيراد قائمة</Link>}
+        actions={<AppLink href="/admin/iptv/import" className="btn btn-primary">استيراد قائمة</AppLink>}
       />
       <QueryBoundary
         query={state}
@@ -21,7 +21,7 @@ export function AdminIptv() {
             icon="🛰️"
             title="لا قنوات IPTV"
             text="استورد قائمة M3U أو أضف قناة يدويًا."
-            action={<Link to="/admin/iptv/import" className="btn btn-primary">استيراد M3U</Link>}
+            action={<AppLink href="/admin/iptv/import" className="btn btn-primary">استيراد M3U</AppLink>}
           />
         }
       >

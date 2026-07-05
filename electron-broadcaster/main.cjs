@@ -730,6 +730,8 @@ function mediaServerOptions() {
       tmdbLang: settings.tmdbLang || 'ar',
     }),
     getPlatformStatus: () => platform.status(),
+    requestPlatformActivation,
+    refreshPlatformStatus,
     onChannelsChanged: () => refreshSettingsChannelMirror('lan-admin'),
   };
 }
@@ -751,8 +753,29 @@ async function refreshPlatformStatus() {
 
 function platformFeatureAllowed(feature) {
   const status = platform.status();
-  if (!status || status.state === 'unregistered') return true;
+  if (!status) return false;
   return status.state === 'active' && !!status.features?.[feature];
+}
+
+async function requestPlatformActivation(payload = {}) {
+  const clean = payload && typeof payload === 'object' ? payload : {};
+  settings = {
+    ...settings,
+    platformTenantName: String(clean.tenantName || clean.organizationName || clean.networkName || '').trim(),
+    platformContactEmail: String(clean.contactEmail || clean.email || '').trim().toLowerCase(),
+    platformContactPhone: String(clean.contactPhone || clean.phone || '').trim(),
+    platformChannel: String(clean.channel || settings.platformChannel || 'stable').trim() || 'stable',
+  };
+  saveSettingsAndBackup('platform-activation-request');
+  const status = await platform.requestActivation({
+    tenantName: settings.platformTenantName,
+    contactEmail: settings.platformContactEmail,
+    contactPhone: settings.platformContactPhone,
+  }, appPlatformInfo());
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('platform-status', status);
+  }
+  return status;
 }
 
 function createMediaHandler() {
@@ -1165,26 +1188,7 @@ ipcMain.handle('license-hardware-id', () => getHardwareId());
 ipcMain.handle('platform-status', async () => platform.status());
 ipcMain.handle('platform-refresh', async () => refreshPlatformStatus());
 ipcMain.handle('platform-feature-allowed', (_e, feature) => platformFeatureAllowed(String(feature || '')));
-ipcMain.handle('platform-request-activation', async (_e, payload) => {
-  const clean = payload && typeof payload === 'object' ? payload : {};
-  settings = {
-    ...settings,
-    platformTenantName: String(clean.tenantName || clean.organizationName || '').trim(),
-    platformContactEmail: String(clean.contactEmail || clean.email || '').trim().toLowerCase(),
-    platformContactPhone: String(clean.contactPhone || clean.phone || '').trim(),
-    platformChannel: String(clean.channel || settings.platformChannel || 'stable').trim() || 'stable',
-  };
-  saveSettingsAndBackup('platform-activation-request');
-  const status = await platform.requestActivation({
-    tenantName: settings.platformTenantName,
-    contactEmail: settings.platformContactEmail,
-    contactPhone: settings.platformContactPhone,
-  }, appPlatformInfo());
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('platform-status', status);
-  }
-  return status;
-});
+ipcMain.handle('platform-request-activation', async (_e, payload) => requestPlatformActivation(payload));
 
 // ---------- Auto-update IPC ----------
 let updateState = { state: 'idle' };

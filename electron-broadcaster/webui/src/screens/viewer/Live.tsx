@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { AppLink } from "@/components/AppLink";
 import { api } from "@/lib/api";
 import { QueryBoundary, EmptyState } from "@/components/States";
 import { PageHeader, ChannelTile } from "@/components/common";
@@ -12,7 +12,7 @@ export function Live() {
       <PageHeader
         title="البث المباشر"
         subtitle="القنوات المتاحة للبث المباشر عبر الشبكة"
-        actions={<Link to="/live/guide" className="btn btn-ghost">دليل القنوات</Link>}
+        actions={<AppLink href="/live/guide" className="btn btn-ghost">دليل القنوات</AppLink>}
       />
       <QueryBoundary
         query={state}
@@ -37,7 +37,7 @@ export function Live() {
           return (
             <div className="grid grid-3">
               {channels.map((ch) => (
-                <ChannelTile key={String(ch.id)} channel={ch} to="/watch/channel/$id" />
+                <ChannelTile key={String(ch.id)} channel={ch} href="/watch/channel/$id" />
               ))}
             </div>
           );

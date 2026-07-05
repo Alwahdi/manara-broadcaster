@@ -4,6 +4,12 @@
 
 This is the official WIVA setup, admin, library, viewer, and player UI. Prefer implementing user-facing screens here instead of adding server-rendered HTML or expanding legacy renderer code.
 
+The UI is a Next.js App Router static export. `npm run build` writes Next output
+to `out/` and then copies it to `dist/`, which is what the Electron Agent serves
+on the LAN. Keep routeable screen components under `src/screens/`; Next's
+reserved `src/app/` directory should contain the static shell and client route
+map only.
+
 ## Product Experience
 
 - Arabic/RTL is first-class.

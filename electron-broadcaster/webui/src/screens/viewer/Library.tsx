@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { AppLink } from "@/components/AppLink";
 import { api } from "@/lib/api";
 import { QueryBoundary, EmptyState } from "@/components/States";
 import { PageHeader, MediaTile } from "@/components/common";
@@ -11,7 +11,7 @@ export function Library() {
       <PageHeader
         title="المكتبة"
         subtitle="جميع الأفلام والمقاطع والوسائط المتاحة"
-        actions={<Link to="/library/folders" className="btn btn-ghost">عرض المجلدات</Link>}
+        actions={<AppLink href="/library/folders" className="btn btn-ghost">عرض المجلدات</AppLink>}
       />
       <QueryBoundary
         query={library}
