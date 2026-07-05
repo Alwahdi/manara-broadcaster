@@ -18,6 +18,7 @@ export function SetupLayout() {
   const currentIndex = SETUP_STEPS.findIndex((s) => s.to === pathname);
   return (
     <div className="setup">
+      <a href="#main" className="skip-link">تخطَّ إلى المحتوى</a>
       <aside className="setup-rail">
         <div className="brand" style={{ marginBottom: 24 }}>
           <img src="/wiva-logo.png" alt="" className="brand-logo" />
@@ -26,14 +27,19 @@ export function SetupLayout() {
         {SETUP_STEPS.map((step, i) => {
           const state = i === currentIndex ? "active" : i < currentIndex ? "done" : "";
           return (
-            <Link key={step.to} to={step.to} className={`step ${state}`}>
+            <Link
+              key={step.to}
+              to={step.to}
+              className={`step ${state}`}
+              aria-current={i === currentIndex ? "step" : undefined}
+            >
               <span className="step-num">{i < currentIndex ? "✓" : i + 1}</span>
               <span>{step.label}</span>
             </Link>
           );
         })}
       </aside>
-      <main className="setup-body">
+      <main id="main" className="setup-body">
         <Outlet />
       </main>
     </div>

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, Outlet } from "@tanstack/react-router";
 import { useBrand } from "@/hooks/useBrand";
 import { LiveIndicator } from "@/components/LiveIndicator";
+import { OfflineBanner } from "@/components/OfflineBanner";
 
 const GROUPS: { label: string; items: { to: string; label: string; icon: string }[] }[] = [
   {
@@ -52,6 +53,7 @@ export function AdminLayout() {
   const [open, setOpen] = useState(false);
   return (
     <div className="admin">
+      <a href="#main" className="skip-link">تخطَّ إلى المحتوى</a>
       {open ? <div className="sidebar-backdrop" onClick={() => setOpen(false)} /> : null}
       <aside className={`sidebar ${open ? "open" : ""}`}>
         <Link to="/admin/dashboard" className="sidebar-brand" onClick={() => setOpen(false)}>
@@ -66,7 +68,7 @@ export function AdminLayout() {
                 key={item.to}
                 to={item.to}
                 className="sidelink"
-                activeProps={{ className: "sidelink active" }}
+                activeProps={{ className: "sidelink active", "aria-current": "page" }}
                 onClick={() => setOpen(false)}
               >
                 <span className="sidelink-icon" aria-hidden>
@@ -85,11 +87,13 @@ export function AdminLayout() {
       </aside>
 
       <div className="admin-main">
+        <OfflineBanner />
         <header className="admin-topbar">
           <button
             className="btn btn-ghost btn-sm menu-toggle"
             onClick={() => setOpen((v) => !v)}
             aria-label="القائمة"
+            aria-expanded={open}
           >
             ☰
           </button>
@@ -100,9 +104,9 @@ export function AdminLayout() {
             </div>
           </div>
         </header>
-        <div className="admin-content">
+        <main id="main" className="admin-content">
           <Outlet />
-        </div>
+        </main>
       </div>
     </div>
   );

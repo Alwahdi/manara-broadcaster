@@ -272,3 +272,65 @@
 .table th, .table td { text-align: start; padding: 12px 14px; border-bottom: 1px solid var(--border); }
 .table th { color: var(--text-dim); font-size: 0.82rem; font-weight: 700; }
 .table tbody tr:hover { background: var(--surface); }
+
+/* On small screens wide tables must not overflow the layout. Make them
+   horizontally scrollable within their card, with a soft edge hint, instead of
+   breaking the page (product rule: avoid wide tables as the mobile experience). */
+@media (max-width: 720px) {
+  .card > .table,
+  .card-pad > .table,
+  .table-wrap {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+  .table th, .table td { white-space: nowrap; }
+}
+
+/* ---------- Skip link (accessibility) ---------- */
+.skip-link {
+  position: fixed;
+  inset-inline-start: 12px;
+  top: -60px;
+  z-index: 200;
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--gold);
+  color: #1a1406;
+  font-weight: 800;
+  box-shadow: var(--shadow-lift);
+  transition: top 0.2s ease;
+}
+.skip-link:focus {
+  top: 12px;
+  outline: none;
+}
+
+/* ---------- Device offline banner ---------- */
+.offline-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(255, 207, 92, 0.14);
+  border-bottom: 1px solid rgba(255, 207, 92, 0.4);
+  color: var(--warning);
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* ---------- Reduced motion (accessibility) ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
