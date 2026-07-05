@@ -65,7 +65,12 @@ async function main() {
     },
     verifyAdminSession: (token) => sessions.has(token),
     clearAdminSession: (token) => sessions.delete(token),
-    getPlatformStatus: () => null,
+    getPlatformStatus: () => ({
+      state: 'active',
+      activationId: 'act_load',
+      features: { channels: true, iptv: true, media: true, webAdmin: true, analytics: true, branding: true },
+      instance: { tenantName: 'Load Test', plan: 'test' },
+    }),
   }));
 
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
