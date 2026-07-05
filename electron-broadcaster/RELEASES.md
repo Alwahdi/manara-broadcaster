@@ -42,6 +42,14 @@ locked (antivirus, Search indexing, backup agents). This eliminates the
 intermittent "cannot save on Windows" failures that the old
 `writeFile` + `rename` pattern caused.
 
+## v2.6.17
+
+- Removed the legacy server-rendered UI entirely: `adminPage()`, `setupPage()`, the library page, and the player page are gone, along with the `/admin/legacy` and `/setup/legacy` routes and the `WIVA_ALLOW_LEGACY_UI` flag. The Vite + React web UI (`webui/dist`) is now the single user-facing surface.
+- When `webui/dist` is not built, the server returns a small offline-safe "UI not built" notice (HTTP `503`) instead of any legacy HTML. The admin login gate is the only server-rendered HTML that remains.
+- Made all remaining server-rendered notices (admin login, feature-gate, stream-blocked, UI-not-built) fully offline-safe: removed the Google Fonts CDN import and switched to a Cairo-first local/system font stack so pages render correctly on isolated LANs.
+- The old `/player/:id` watch URL now redirects to the modern SPA route `/watch/media/:id` so lingering bookmarks keep working.
+- CI now builds the web UI before the smoke test, and the smoke test verifies the legacy admin/setup markup is gone (serving the SPA shell when built, or the offline-safe notice when not).
+
 ## v2.6.16
 
 - Merged PR #34 as a release checkpoint for the customization and media library workstream.

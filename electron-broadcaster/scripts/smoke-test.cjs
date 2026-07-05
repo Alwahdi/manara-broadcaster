@@ -86,28 +86,45 @@ async function main() {
     assert.match(cookie, /manara_admin=/);
     assert.doesNotMatch(cookie, /admin:correct-password/);
 
+    // The modern web UI (webui/dist) is the one and only user-facing surface.
+    // When it is built, admin/setup navigation returns the SPA shell (id="root").
+    // When it is not built (quick local `npm test` before a build), the server
+    // returns a small offline-safe "UI not built" notice (HTTP 503) — never the
+    // old giant server-rendered admin/setup/library HTML, which has been removed.
+    const spaBuilt = fs.existsSync(path.join(__dirname, '..', 'webui', 'dist', 'index.html'));
+
     res = await request(base, '/admin/channels/new', { headers: { Cookie: cookie.split(';')[0] } });
-    assert.equal(res.status, 200);
-    assert.match(await res.text(), /لوحة إدارة WIVA|لوحة الشبكة|id="root"/);
-
-    // Legacy UI must never be reachable in normal production mode. The old
-    // server-rendered admin panel and setup wizard stay behind an emergency-only
-    // developer flag (WIVA_ALLOW_LEGACY_UI); without it these routes 404 so the
-    // modern web UI is the single normal surface.
-    res = await request(base, '/admin/legacy', { headers: { Cookie: cookie.split(';')[0] } });
-    assert.equal(res.status, 404, 'legacy admin panel must not be reachable in normal mode');
-    res = await request(base, '/setup/legacy');
-    assert.equal(res.status, 404, 'legacy setup wizard must not be reachable in normal mode');
-
-    // With the emergency developer flag set, the legacy fallback becomes
-    // reachable again so operators retain a break-glass recovery path.
-    process.env.WIVA_ALLOW_LEGACY_UI = '1';
-    try {
-      res = await request(base, '/setup/legacy');
-      assert.equal(res.status, 200, 'legacy setup wizard is reachable when the emergency flag is set');
-    } finally {
-      delete process.env.WIVA_ALLOW_LEGACY_UI;
+    if (spaBuilt) {
+      assert.equal(res.status, 200);
+      assert.match(await res.text(), /id="root"/, 'admin nav serves the modern SPA shell');
+    } else {
+      assert.equal(res.status, 503, 'admin nav returns the UI-not-built notice when unbuilt');
+      assert.match(await res.text(), /غير مبنية/, 'shows the offline-safe UI-not-built notice');
     }
+
+    // The old break-glass /admin/legacy and /setup/legacy paths are now just
+    // ordinary client-routed URLs — never the old server-rendered giant HTML.
+    res = await request(base, '/admin/legacy', { headers: { Cookie: cookie.split(';')[0] } });
+    const legacyBody = await res.text();
+    assert.doesNotMatch(legacyBody, /broadcastJson|openMediaEditor/, 'old server-rendered admin panel is gone');
+    if (spaBuilt) {
+      assert.equal(res.status, 200, 'legacy admin path is now served by the SPA shell');
+      assert.match(legacyBody, /id="root"/, 'admin path serves the modern SPA shell');
+    }
+
+    res = await request(base, '/setup/legacy');
+    const legacySetupBody = await res.text();
+    assert.doesNotMatch(legacySetupBody, /id="setupForm"|checkPort/, 'old server-rendered setup wizard is gone');
+    if (spaBuilt) {
+      assert.equal(res.status, 200, 'legacy setup path is now served by the SPA shell');
+      assert.match(legacySetupBody, /id="root"/, 'setup path serves the modern SPA shell');
+    }
+
+    // The old /player/:id watch URL now redirects into the SPA watch route so
+    // any lingering bookmarks keep working.
+    res = await request(base, '/player/1', { redirect: 'manual' });
+    assert.equal(res.status, 302, 'legacy /player/:id must redirect to the SPA');
+    assert.match(res.headers.get('location') || '', /\/watch\/media\/1/, 'redirect points to modern watch route');
 
     res = await request(base, '/api/admin/state', { headers: { Cookie: cookie.split(';')[0] } });
     assert.equal(res.status, 200);

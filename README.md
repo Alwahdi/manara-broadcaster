@@ -38,13 +38,14 @@ TVs across the LAN.
 - The WIVA Agent (`library/media-server.cjs`) serves the built app from
   `webui/dist` and exposes only REST APIs, media/IPTV streams, and a live
   Server-Sent Events channel at `/api/live`.
-- Server files no longer build large HTML pages. The modern web UI is the only
-  normal surface. The legacy single-page admin (`adminPage()`) and legacy setup
-  wizard are an emergency developer fallback only: the explicit `/admin/legacy`
-  and `/setup/legacy` routes return `404` unless an operator sets the
-  `WIVA_ALLOW_LEGACY_UI` environment flag (`1`/`true`/`yes`/`on`). When
-  `webui/dist` has not been built yet, the server-rendered pages are still used
-  automatically as a build-time fallback for the normal routes.
+- Server files no longer build large HTML pages. The modern web UI (the
+  Vite + React + TanStack SPA in `webui/`) is the single user-facing surface;
+  the old server-rendered admin panel, setup wizard, library, and player pages
+  have been removed entirely. If `webui/dist` has not been built yet, the server
+  returns a small offline-safe "UI not built" notice (HTTP `503`) instead of any
+  legacy HTML. The only server-rendered HTML that remains is the admin login
+  gate (needed for the login form POST). The old `/player/:id` URL now redirects
+  to the SPA watch route (`/watch/media/:id`).
 - Routes are real pages: viewer (`/`, `/live`, `/library`, `/watch/...`,
   `/search`, `/favorites`, `/account`), admin (`/admin/*`), and setup
   (`/setup/*`). Every screen has explicit loading, empty, and error states.
