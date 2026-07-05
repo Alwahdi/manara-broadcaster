@@ -54,7 +54,7 @@ function isActive(path: string, href: string) {
 }
 
 export function AdminLayout({ children }: { children: ReactNode }) {
-  const { brand } = useBrand();
+  const { brand, logo } = useBrand();
   const [open, setOpen] = useState(false);
   const path = useAppPath();
 
@@ -68,7 +68,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
       {open ? <div className="sidebar-backdrop" onClick={() => setOpen(false)} /> : null}
       <aside className={`sidebar ${open ? "open" : ""}`} aria-label="تنقل لوحة الإدارة">
         <AppLink href="/admin/dashboard" className="sidebar-brand" onClick={() => setOpen(false)}>
-          <img src="/wiva-logo.png" alt="" className="brand-logo" />
+          <img src={logo} alt="" className="brand-logo" />
           <span>{brand}</span>
         </AppLink>
         {GROUPS.map((group) => (

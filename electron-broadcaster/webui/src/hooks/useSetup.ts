@@ -8,6 +8,7 @@ export interface SetupData {
   adminUsername?: string;
   adminPassword?: string;
   brandName?: string;
+  networkLogoDataUrl?: string;
   livePort?: string;
   adminPort?: string;
   adminPath?: string;

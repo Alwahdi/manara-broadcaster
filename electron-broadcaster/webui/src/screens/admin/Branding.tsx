@@ -10,18 +10,30 @@ export function AdminBranding() {
   const qc = useQueryClient();
   const [brandName, setBrandName] = useState("");
   const [networkName, setNetworkName] = useState("");
+  const [logo, setLogo] = useState("");
 
   useEffect(() => {
     if (query.data) {
       setBrandName(String(query.data.brandName || ""));
       setNetworkName(String(query.data.networkName || ""));
+      setLogo(String(query.data.networkLogoDataUrl || query.data.settings?.networkLogoDataUrl || ""));
     }
   }, [query.data]);
 
   const save = useMutation({
-    mutationFn: () => api.saveSettings({ brandName, networkName }),
+    mutationFn: () => api.saveSettings({ brandName, networkName, networkLogoDataUrl: logo }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["agent-state"] }),
   });
+  const readLogo = (file?: File) => {
+    if (!file) return;
+    if (file.type !== "image/png") {
+      window.alert("الرجاء اختيار صورة PNG فقط.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setLogo(String(reader.result || ""));
+    reader.readAsDataURL(file);
+  };
 
   return (
     <div style={{ maxWidth: 640 }}>
@@ -37,6 +49,19 @@ export function AdminBranding() {
             <div className="field">
               <label>اسم الشبكة</label>
               <input className="input" value={networkName} onChange={(e) => setNetworkName(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>شعار الشبكة PNG</label>
+              <input className="input" type="file" accept="image/png" onChange={(e) => readLogo(e.target.files?.[0])} />
+              {logo ? (
+                <div className="brand-preview">
+                  <img src={logo} alt="" />
+                  <button className="btn btn-sm btn-ghost" type="button" onClick={() => setLogo("")}>
+                    إزالة الشعار
+                  </button>
+                </div>
+              ) : null}
+              <span className="hint">يظهر الشعار في واجهة المشاهدة ولوحة الإدارة بعد الحفظ.</span>
             </div>
             <div className="row">
               <button className="btn btn-primary" onClick={() => save.mutate()} disabled={save.isPending}>

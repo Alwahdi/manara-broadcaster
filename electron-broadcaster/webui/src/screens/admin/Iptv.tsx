@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent } from "react";
+import { useEffect, useState, type ChangeEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppLink } from "@/components/AppLink";
 import { api, type Channel } from "@/lib/api";
@@ -9,6 +9,15 @@ export function AdminIptv() {
   const qc = useQueryClient();
   const state = useQuery({ queryKey: ["admin-state"], queryFn: api.adminState });
   const [editing, setEditing] = useState<Channel | null>(null);
+  const [policy, setPolicy] = useState({ cloudIptvRefreshMinutes: "3", iptvGlobalLimitBytes: "0" });
+
+  useEffect(() => {
+    if (!state.data?.iptvPolicy) return;
+    setPolicy({
+      cloudIptvRefreshMinutes: String(state.data.iptvPolicy.cloudIptvRefreshMinutes || 3),
+      iptvGlobalLimitBytes: String(state.data.iptvPolicy.iptvGlobalLimitBytes || 0),
+    });
+  }, [state.data?.iptvPolicy?.cloudIptvRefreshMinutes, state.data?.iptvPolicy?.iptvGlobalLimitBytes]);
 
   const toggle = useMutation({
     mutationFn: (id: number | string) => api.toggleIptv(id),
@@ -24,6 +33,13 @@ export function AdminIptv() {
   });
   const remove = useMutation({
     mutationFn: (id: number | string) => api.deleteIptv(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-state"] }),
+  });
+  const savePolicy = useMutation({
+    mutationFn: () => api.updateIptvPolicy({
+      cloudIptvRefreshMinutes: Number(policy.cloudIptvRefreshMinutes) || 3,
+      iptvGlobalLimitBytes: Number(policy.iptvGlobalLimitBytes) || 0,
+    }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-state"] }),
   });
 
@@ -42,6 +58,39 @@ export function AdminIptv() {
           onSave={(patch) => update.mutate({ id: editing.id, patch })}
         />
       ) : null}
+      <div className="card card-pad" style={{ marginBottom: 18 }}>
+        <h3 style={{ marginTop: 0 }}>تحديث القنوات السحابية</h3>
+        <div className="grid grid-2">
+          <div className="field">
+            <label>كل كم دقيقة يتم التحديث من السحابة؟</label>
+            <input
+              className="input mono"
+              dir="ltr"
+              inputMode="numeric"
+              value={policy.cloudIptvRefreshMinutes}
+              onChange={(e) => setPolicy((prev) => ({ ...prev, cloudIptvRefreshMinutes: e.target.value }))}
+            />
+            <span className="hint">الحد الأدنى دقيقة واحدة، والقيمة الافتراضية 3 دقائق.</span>
+          </div>
+          <div className="field">
+            <label>حد النقل العام بالبايت</label>
+            <input
+              className="input mono"
+              dir="ltr"
+              inputMode="numeric"
+              value={policy.iptvGlobalLimitBytes}
+              onChange={(e) => setPolicy((prev) => ({ ...prev, iptvGlobalLimitBytes: e.target.value }))}
+            />
+          </div>
+        </div>
+        <div className="row">
+          <button className="btn btn-primary" onClick={() => savePolicy.mutate()} disabled={savePolicy.isPending}>
+            {savePolicy.isPending ? "جارٍ الحفظ…" : "حفظ سياسة IPTV"}
+          </button>
+          {savePolicy.isSuccess ? <span className="badge badge-on badge-dot">تم الحفظ</span> : null}
+          {savePolicy.isError ? <span className="badge badge-warn">{(savePolicy.error as Error).message}</span> : null}
+        </div>
+      </div>
       <QueryBoundary
         query={state}
         isEmpty={(d) => (d.iptv?.length || 0) + (d.cloudIptv?.length || 0) === 0}

@@ -14,7 +14,7 @@ export const SETUP_STEPS = [
 ];
 
 export function SetupLayout({ children }: { children: ReactNode }) {
-  const { brand } = useBrand();
+  const { brand, logo } = useBrand();
   const pathname = useAppPath();
   const currentIndex = SETUP_STEPS.findIndex((s) => s.to === pathname);
   return (
@@ -22,7 +22,7 @@ export function SetupLayout({ children }: { children: ReactNode }) {
       <a href="#main" className="skip-link">تخطَّ إلى المحتوى</a>
       <aside className="setup-rail">
         <div className="brand" style={{ marginBottom: 24 }}>
-          <img src="/wiva-logo.png" alt="" className="brand-logo" />
+          <img src={logo} alt="" className="brand-logo" />
           <span>{brand}</span>
         </div>
         {SETUP_STEPS.map((step, i) => {

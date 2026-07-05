@@ -8,9 +8,15 @@ export function useBrand() {
     queryFn: api.agentState,
     staleTime: 60_000,
   });
+  const settings = query.data?.settings || {};
   const brand =
     query.data?.brandName ||
     query.data?.networkName ||
+    String(settings.brandName || settings.networkName || "") ||
     "شبكتي";
-  return { brand, state: query.data, query };
+  const logo =
+    query.data?.networkLogoDataUrl ||
+    String(settings.networkLogoDataUrl || "") ||
+    "/wiva-logo.png";
+  return { brand, logo, state: query.data, query };
 }

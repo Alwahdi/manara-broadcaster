@@ -42,6 +42,15 @@ locked (antivirus, Search indexing, backup agents). This eliminates the
 intermittent "cannot save on Windows" failures that the old
 `writeFile` + `rename` pattern caused.
 
+## v2.6.23
+
+- Fixed partial settings saves so changing identity, ports, or other admin settings no longer resets the unified/separate experience layout or existing network metadata.
+- Exposed `brandName`, `networkName`, and uploaded network logo data in Agent state so viewer, admin, and setup surfaces show the configured network identity after restart.
+- Added PNG logo upload/removal in setup and the web admin branding page.
+- Added IPTV cloud refresh controls in the IPTV admin page, backed by the persisted `/api/admin/iptv-policy` endpoint.
+- Hardened IPTV policy updates so changing one policy field preserves the other.
+- Added smoke coverage for persisted cloud IPTV refresh interval and transfer-limit policy.
+
 ## v2.6.22
 
 - Preserved selected broadcast audio device names when creating/editing capture channels, so Windows devices can be matched more reliably during playback.

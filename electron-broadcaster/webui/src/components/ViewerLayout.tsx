@@ -18,7 +18,7 @@ function isActive(path: string, href: string, exact?: boolean) {
 }
 
 export function ViewerLayout({ children }: { children: ReactNode }) {
-  const { brand } = useBrand();
+  const { brand, logo } = useBrand();
   const path = useAppPath();
   return (
     <div className="app-shell">
@@ -26,7 +26,7 @@ export function ViewerLayout({ children }: { children: ReactNode }) {
       <OfflineBanner />
       <header className="topbar">
         <AppLink href="/" className="brand">
-          <img src="/wiva-logo.png" alt="" className="brand-logo" />
+          <img src={logo} alt="" className="brand-logo" />
           <span>{brand}</span>
         </AppLink>
         <nav className="topnav grow" aria-label="التنقل الرئيسي">

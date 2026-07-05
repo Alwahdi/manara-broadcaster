@@ -1332,9 +1332,10 @@ function createHandler(options = {}) {
       if (!requireAdmin(req, res, options, adminBase)) return;
       try {
         const body = await parseJsonBody(req);
+        const current = typeof options.getIptvPolicy === 'function' ? options.getIptvPolicy() : {};
         const fallback = {
-          iptvGlobalLimitBytes: Math.max(0, Number(body.iptvGlobalLimitBytes || 0) || 0),
-          cloudIptvRefreshMinutes: Math.max(1, Math.min(1440, Number(body.cloudIptvRefreshMinutes || 3) || 3)),
+          iptvGlobalLimitBytes: Math.max(0, Number(body.iptvGlobalLimitBytes ?? current.iptvGlobalLimitBytes ?? 0) || 0),
+          cloudIptvRefreshMinutes: Math.max(1, Math.min(1440, Number(body.cloudIptvRefreshMinutes ?? current.cloudIptvRefreshMinutes ?? 3) || 3)),
         };
         const policy = typeof options.updateIptvPolicy === 'function' ? options.updateIptvPolicy(fallback) : fallback;
         return sendJson(res, 200, { ok: true, policy, cloudIptvStatus: cloudIptv.status() });

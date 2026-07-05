@@ -27,6 +27,7 @@ async function main() {
     settings: { brandName: 'WIVA', adminUsername: 'admin', port: 8787, libraryPort: 8788, adminPath: 'admin' },
   };
   let platformState = { state: 'unregistered', features: {}, activationId: '' };
+  let iptvPolicy = { iptvGlobalLimitBytes: 0, cloudIptvRefreshMinutes: 3 };
   let cloudIptvRows = [
     { id: 'cloud-smoke', name: 'Cloud Smoke IPTV HD', url: 'https://example.com/cloud.m3u8', category: 'سحابي', enabled: false, source: 'cloud' },
   ];
@@ -72,6 +73,14 @@ async function main() {
         ? { ...row, enabled: !!enabled }
         : row);
       return cloudIptvRows.find((row) => String(row.id) === String(id)) || null;
+    },
+    getIptvPolicy: () => iptvPolicy,
+    updateIptvPolicy: (patch) => {
+      iptvPolicy = {
+        iptvGlobalLimitBytes: Number(patch.iptvGlobalLimitBytes) || 0,
+        cloudIptvRefreshMinutes: Number(patch.cloudIptvRefreshMinutes) || 3,
+      };
+      return iptvPolicy;
     },
     getLibraryConfig: () => ({ tmdbKey: '', tmdbLang: 'ar' }),
     requestPlatformActivation: async (body) => {
@@ -344,6 +353,21 @@ async function main() {
     assert.equal(res.status, 200);
     const adminWithCloud = await res.json();
     assert.equal(adminWithCloud.cloudIptv.find((c) => c.id === 'cloud-smoke').enabled, false, 'admin state reflects local cloud IPTV override state');
+    assert.equal(adminWithCloud.iptvPolicy.cloudIptvRefreshMinutes, 3, 'admin state exposes cloud IPTV refresh policy');
+
+    res = await request(base, '/api/admin/iptv-policy', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...auth },
+      body: JSON.stringify({ cloudIptvRefreshMinutes: 7, iptvGlobalLimitBytes: 123456 }),
+    });
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).policy.cloudIptvRefreshMinutes, 7);
+
+    res = await request(base, '/api/admin/state', { headers: auth });
+    assert.equal(res.status, 200);
+    const adminWithPolicy = await res.json();
+    assert.equal(adminWithPolicy.iptvPolicy.cloudIptvRefreshMinutes, 7, 'updated cloud IPTV refresh policy persists in admin state');
+    assert.equal(adminWithPolicy.iptvPolicy.iptvGlobalLimitBytes, 123456, 'updated global IPTV limit persists in admin state');
 
     res = await request(base, '/api/admin/iptv/cloud-smoke/toggle', { method: 'POST', headers: auth });
     assert.equal(res.status, 200);

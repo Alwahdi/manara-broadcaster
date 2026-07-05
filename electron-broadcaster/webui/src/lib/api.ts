@@ -64,7 +64,9 @@ export const http = {
 export interface AgentState {
   setupCompleted?: boolean;
   brandName?: string;
+  brandTagline?: string;
   networkName?: string;
+  networkLogoDataUrl?: string;
   urls?: Record<string, string>;
   ports?: { live?: number; library?: number; [k: string]: unknown };
   settings?: Record<string, unknown>;
@@ -230,6 +232,7 @@ export interface AdminState {
   broadcast?: Channel[];
   iptv?: Channel[];
   cloudIptv?: Channel[];
+  iptvPolicy?: { iptvGlobalLimitBytes?: number; cloudIptvRefreshMinutes?: number };
   media?: MediaItem[];
   mediaStats?: Record<string, number>;
   sessions?: unknown[];
@@ -304,6 +307,7 @@ export const api = {
   updateIptv: (id: number | string, body: unknown) => http.put<Channel>(`/api/admin/iptv/${id}`, body),
   deleteIptv: (id: number | string) => http.del<{ ok: boolean }>(`/api/admin/iptv/${id}`),
   toggleIptv: (id: number | string) => http.post<Channel>(`/api/admin/iptv/${id}/toggle`),
+  updateIptvPolicy: (body: unknown) => http.put<{ ok: boolean; policy: AdminState["iptvPolicy"] }>("/api/admin/iptv-policy", body),
 
   // Channels (broadcast / capture)
   addChannel: (body: unknown) => http.post<Channel>("/api/admin/broadcast", body),
