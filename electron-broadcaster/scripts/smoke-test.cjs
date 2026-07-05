@@ -90,6 +90,25 @@ async function main() {
     assert.equal(res.status, 200);
     assert.match(await res.text(), /لوحة إدارة WIVA|لوحة الشبكة|id="root"/);
 
+    // Legacy UI must never be reachable in normal production mode. The old
+    // server-rendered admin panel and setup wizard stay behind an emergency-only
+    // developer flag (WIVA_ALLOW_LEGACY_UI); without it these routes 404 so the
+    // modern web UI is the single normal surface.
+    res = await request(base, '/admin/legacy', { headers: { Cookie: cookie.split(';')[0] } });
+    assert.equal(res.status, 404, 'legacy admin panel must not be reachable in normal mode');
+    res = await request(base, '/setup/legacy');
+    assert.equal(res.status, 404, 'legacy setup wizard must not be reachable in normal mode');
+
+    // With the emergency developer flag set, the legacy fallback becomes
+    // reachable again so operators retain a break-glass recovery path.
+    process.env.WIVA_ALLOW_LEGACY_UI = '1';
+    try {
+      res = await request(base, '/setup/legacy');
+      assert.equal(res.status, 200, 'legacy setup wizard is reachable when the emergency flag is set');
+    } finally {
+      delete process.env.WIVA_ALLOW_LEGACY_UI;
+    }
+
     res = await request(base, '/api/admin/state', { headers: { Cookie: cookie.split(';')[0] } });
     assert.equal(res.status, 200);
     const state = await res.json();

@@ -97,7 +97,6 @@ export function AdminLayout() {
             <strong className="hide-sm">لوحة الإدارة</strong>
             <div className="row">
               <LiveIndicator />
-              <a className="btn btn-ghost btn-sm" href="/admin/legacy">الواجهة القديمة</a>
             </div>
           </div>
         </header>
