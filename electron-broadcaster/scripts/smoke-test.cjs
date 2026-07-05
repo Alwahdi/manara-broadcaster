@@ -24,7 +24,17 @@ async function main() {
     setupCompleted: false,
     ports: { live: 8787, library: 8788 },
     urls: { setupLocal: 'http://127.0.0.1:8788/setup', adminLocal: 'http://127.0.0.1:8788/admin' },
-    settings: { brandName: 'WIVA', adminUsername: 'admin', port: 8787, libraryPort: 8788, adminPath: 'admin' },
+    autoStart: { afterLogin: true, beforeLogin: false, beforeLoginSupported: true, beforeLoginInstalled: false },
+    settings: {
+      brandName: 'WIVA',
+      adminUsername: 'admin',
+      port: 8787,
+      libraryPort: 8788,
+      adminPath: 'admin',
+      experienceLayout: 'unified',
+      autoStartOnBoot: true,
+      autoStartBeforeLogin: false,
+    },
   };
   let platformState = { state: 'unregistered', features: {}, activationId: '' };
   let iptvPolicy = { iptvGlobalLimitBytes: 0, cloudIptvRefreshMinutes: 3 };
@@ -38,7 +48,36 @@ async function main() {
     getSetupState: () => setupState,
     checkPort: (port) => ({ ok: true, available: true, port: Number(port), message: 'available' }),
     applySetup: async (patch) => {
-      setupState = { ...setupState, setupCompleted: true, settings: { ...setupState.settings, ...patch } };
+      const livePort = Number(patch.port || patch.livePort || setupState.settings.port || 8787);
+      const libraryPort = Number(patch.libraryPort || patch.adminPort || setupState.settings.libraryPort || 8788);
+      const experienceLayout = patch.experienceLayout === 'separate' ? 'separate' : 'unified';
+      setupState = {
+        ...setupState,
+        setupCompleted: true,
+        networkName: patch.networkName || setupState.networkName,
+        brandName: patch.brandName || setupState.brandName,
+        ports: {
+          live: livePort,
+          library: experienceLayout === 'unified' ? livePort : libraryPort,
+          libraryConfigured: libraryPort,
+          mode: experienceLayout,
+        },
+        autoStart: {
+          afterLogin: patch.autoStartOnBoot !== false,
+          beforeLogin: !!patch.autoStartBeforeLogin,
+          beforeLoginSupported: true,
+          beforeLoginInstalled: !!patch.autoStartBeforeLogin,
+        },
+        settings: {
+          ...setupState.settings,
+          ...patch,
+          port: livePort,
+          libraryPort,
+          experienceLayout,
+          autoStartOnBoot: patch.autoStartOnBoot !== false,
+          autoStartBeforeLogin: !!patch.autoStartBeforeLogin,
+        },
+      };
       return setupState;
     },
     verifyAdminCredentials: ({ username, password }) => username === 'admin' && password === 'correct-password',
@@ -108,10 +147,24 @@ async function main() {
     res = await request(base, '/api/setup/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ networkName: 'Smoke Net', brandName: 'WIVA', port: 8787, libraryPort: 8788 }),
+      body: JSON.stringify({
+        networkName: 'Smoke Net',
+        brandName: 'WIVA',
+        port: 8791,
+        libraryPort: 8792,
+        experienceLayout: 'separate',
+        autoStartOnBoot: false,
+        autoStartBeforeLogin: true,
+      }),
     });
     assert.equal(res.status, 200);
-    assert.equal((await res.json()).ok, true);
+    const savedSetup = await res.json();
+    assert.equal(savedSetup.ok, true);
+    assert.equal(savedSetup.state.ports.live, 8791, 'setup save returns the new live port immediately');
+    assert.equal(savedSetup.state.ports.library, 8792, 'setup save returns the configured library port in separate mode');
+    assert.equal(savedSetup.state.settings.experienceLayout, 'separate', 'setup save persists separate layout');
+    assert.equal(savedSetup.state.settings.autoStartOnBoot, false, 'setup save persists after-login autostart toggle');
+    assert.equal(savedSetup.state.settings.autoStartBeforeLogin, true, 'setup save persists before-login autostart toggle');
 
     res = await request(base, '/setup');
     assert.equal(res.status, 302);

@@ -33,6 +33,7 @@ export function SetupFinish() {
         <Row label="اسم الشبكة" value={data.networkName} />
         <Row label="المشرف" value={data.adminUsername} />
         <Row label="العلامة" value={data.brandName || data.networkName} />
+        <Row label="طريقة العرض" value={(data.experienceLayout || "unified") === "separate" ? "منفصلة" : "موحدة"} />
         <Row label="منفذ البث" value={data.livePort || "8787"} />
         <Row label="منفذ الإدارة" value={data.adminPort || "8788"} />
         <Row label="مجلد المكتبة" value={data.libraryPath || "—"} />

@@ -11,6 +11,7 @@ export interface SetupData {
   networkLogoDataUrl?: string;
   livePort?: string;
   adminPort?: string;
+  experienceLayout?: string;
   adminPath?: string;
   libraryPath?: string;
   iptvUrl?: string;

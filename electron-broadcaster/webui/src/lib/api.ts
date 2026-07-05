@@ -69,6 +69,15 @@ export interface AgentState {
   networkLogoDataUrl?: string;
   urls?: Record<string, string>;
   ports?: { live?: number; library?: number; [k: string]: unknown };
+  autoStart?: {
+    afterLogin?: boolean;
+    beforeLogin?: boolean;
+    beforeLoginSupported?: boolean;
+    beforeLoginInstalled?: boolean;
+    beforeLoginTaskName?: string;
+    beforeLoginTaskState?: string;
+    error?: string;
+  };
   settings?: Record<string, unknown>;
   subscription?: PlatformStatus;
   [k: string]: unknown;

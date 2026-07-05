@@ -11,6 +11,18 @@ export function SetupPorts() {
       next="/setup/library"
     >
       <div className="card card-pad">
+        <div className="field">
+          <label>طريقة العرض</label>
+          <select
+            className="input"
+            value={data.experienceLayout || "unified"}
+            onChange={(e) => setSetup({ experienceLayout: e.target.value })}
+          >
+            <option value="unified">موحدة: رابط واحد للبث والمكتبة والإدارة</option>
+            <option value="separate">منفصلة: البث على منفذ والمكتبة والإدارة على منفذ آخر</option>
+          </select>
+          <span className="hint">يمكن تغيير هذا لاحقاً من لوحة الإدارة.</span>
+        </div>
         <div className="grid grid-2">
           <div className="field">
             <label>منفذ البث المباشر</label>

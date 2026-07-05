@@ -42,6 +42,14 @@ locked (antivirus, Search indexing, backup agents). This eliminates the
 intermittent "cannot save on Windows" failures that the old
 `writeFile` + `rename` pattern caused.
 
+## v2.6.24
+
+- Added a Windows before-login startup option controlled from the web admin settings. It creates a startup Scheduled Task for the WIVA Agent and keeps using the same WIVA data directory.
+- Fixed live/library/admin port reporting after settings saves so the admin panel immediately returns the intended ports instead of stale running ports.
+- Fixed port restarts: live server changes restart immediately, while library/admin port changes restart after the save response so the browser request is not cut off.
+- Added unified/separate service layout controls in setup and web admin settings. Unified mode serves library/admin from the live port; separate mode uses the configured library/admin port.
+- Added smoke coverage for port persistence, layout persistence, and before-login startup settings.
+
 ## v2.6.23
 
 - Fixed partial settings saves so changing identity, ports, or other admin settings no longer resets the unified/separate experience layout or existing network metadata.

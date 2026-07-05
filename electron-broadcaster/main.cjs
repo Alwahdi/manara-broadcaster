@@ -39,7 +39,14 @@ const DEFAULT_AGENT_PORT = 8787;
 const DEFAULT_LIBRARY_PORT = 8788;
 const ADMIN_HASH_PREFIX = 'scrypt';
 const ADMIN_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const WINDOWS_STARTUP_TASK_NAME = 'WIVA Agent';
 const adminSessions = new Map();
+
+function getExplicitUserDataDir() {
+  const arg = process.argv.find((part) => String(part || '').startsWith('--wiva-user-data-dir='));
+  const raw = arg ? String(arg).slice('--wiva-user-data-dir='.length) : process.env.WIVA_USER_DATA_DIR;
+  return raw ? path.resolve(String(raw)) : '';
+}
 
 function initSentry() {
   const dsn = process.env.SENTRY_DSN || runtimeConfig.sentryDsn || '';
@@ -72,7 +79,7 @@ initSentry();
 // launches. This is the real source of truth for all local data.
 try {
   app.setName(APP_NAME);
-  app.setPath('userData', path.join(app.getPath('appData'), APP_DATA_DIR));
+  app.setPath('userData', getExplicitUserDataDir() || path.join(app.getPath('appData'), APP_DATA_DIR));
 } catch (e) {
   console.warn('[WIVA] could not force userData path:', e?.message || e);
 }
@@ -218,6 +225,7 @@ function defaultSettings() {
     accent2: '#14b8a6',
     port: DEFAULT_AGENT_PORT,
     autoStartOnBoot: true,
+    autoStartBeforeLogin: false,
     startMinimized: true,
     autoStartChannels: true,
     autoCheckUpdates: true,
@@ -260,6 +268,17 @@ function normalizeSettings(parsed) {
     merged.accent2 = '#14b8a6';
   }
   return merged;
+}
+
+function coerceBoolean(value, fallback = false) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+    if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+  }
+  return fallback;
 }
 
 function loadSettings() {
@@ -305,7 +324,7 @@ function saveSettings(s) {
 
 function publicServerInfo() {
   return {
-    port: serverInfo?.port || settings.port || DEFAULT_AGENT_PORT,
+    port: Number(settings.port) || serverInfo?.port || DEFAULT_AGENT_PORT,
     ips: getLocalIPs(),
   };
 }
@@ -335,6 +354,21 @@ function runShell(command) {
     return childProcess.execSync(command, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 1800 });
   } catch {
     return '';
+  }
+}
+
+function runPowerShell(script, timeout = 7000) {
+  if (process.platform !== 'win32') return '';
+  try {
+    return childProcess.execFileSync('powershell.exe', [
+      '-NoProfile',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-Command',
+      script,
+    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout });
+  } catch (e) {
+    return String(e?.stderr || e?.stdout || e?.message || '');
   }
 }
 
@@ -428,8 +462,9 @@ async function listCaptureSourcesForAdmin() {
 }
 
 function agentUrls() {
-  const livePort = serverInfo?.port || settings.port || DEFAULT_AGENT_PORT;
-  const libraryPort = libraryServerInfo?.port || settings.libraryPort || DEFAULT_LIBRARY_PORT;
+  const livePort = Number(settings.port) || serverInfo?.port || DEFAULT_AGENT_PORT;
+  const configuredLibraryPort = Number(settings.libraryPort) || libraryServerInfo?.port || DEFAULT_LIBRARY_PORT;
+  const libraryPort = settings.experienceLayout === 'unified' ? livePort : configuredLibraryPort;
   const ips = getLocalIPs();
   const adminPath = String(settings.adminPath || 'admin').replace(/^\/+|\/+$/g, '') || 'admin';
   return {
@@ -446,6 +481,7 @@ function agentUrls() {
 
 function agentState() {
   const status = serverInfo?.getStats ? serverInfo.getStats() : { channels: [] };
+  const autoStart = autoStartStatus();
   return {
     appName: APP_NAME,
     version: app.getVersion(),
@@ -458,9 +494,14 @@ function agentState() {
     uptimeSeconds: Math.round(process.uptime()),
     platform: process.platform,
     ports: {
-      live: serverInfo?.port || settings.port || DEFAULT_AGENT_PORT,
-      library: libraryServerInfo?.port || settings.libraryPort || DEFAULT_LIBRARY_PORT,
+      live: Number(settings.port) || serverInfo?.port || DEFAULT_AGENT_PORT,
+      library: settings.experienceLayout === 'unified'
+        ? (Number(settings.port) || serverInfo?.port || DEFAULT_AGENT_PORT)
+        : (Number(settings.libraryPort) || libraryServerInfo?.port || DEFAULT_LIBRARY_PORT),
+      libraryConfigured: Number(settings.libraryPort) || libraryServerInfo?.port || DEFAULT_LIBRARY_PORT,
+      mode: settings.experienceLayout === 'separate' ? 'separate' : 'unified',
     },
+    autoStart,
     urls: agentUrls(),
     settings: publicSettings(),
     status,
@@ -482,6 +523,7 @@ let tray = null;
 let libraryReady = false;
 const channelBroadcasters = new Map();
 let lastDeviceSync = { state: 'idle', at: null, error: '' };
+let lastAutoStartTaskStatus = null;
 const launchedAtBoot = process.argv.includes('--autostart') || process.argv.includes('--hidden');
 
 function cloudSafeSettings() {
@@ -717,6 +759,66 @@ function notifyStorageReady() {
   }
 }
 
+function psQuote(value) {
+  return `'${String(value || '').replace(/'/g, "''")}'`;
+}
+
+function windowsStartupTaskStatus() {
+  if (process.platform !== 'win32') {
+    return { supported: false, installed: false };
+  }
+  const query = runPowerShell(
+    `$task = Get-ScheduledTask -TaskName ${psQuote(WINDOWS_STARTUP_TASK_NAME)} -ErrorAction SilentlyContinue; `
+    + `if ($task) { $task.State }`,
+    5000,
+  ).trim();
+  return { supported: true, installed: !!query, state: query || 'missing' };
+}
+
+function applyWindowsStartupTask() {
+  if (process.platform !== 'win32') {
+    return { supported: false, installed: false };
+  }
+  const userDataDir = app.getPath('userData');
+  if (!settings.autoStartBeforeLogin) {
+    const result = runPowerShell(
+      `Unregister-ScheduledTask -TaskName ${psQuote(WINDOWS_STARTUP_TASK_NAME)} -Confirm:$false -ErrorAction SilentlyContinue`,
+      7000,
+    );
+    const status = windowsStartupTaskStatus();
+    return { ...status, error: result && status.installed ? result.trim() : '' };
+  }
+
+  const exePath = process.execPath;
+  const args = [
+    `--wiva-user-data-dir=${userDataDir}`,
+    '--autostart',
+    '--hidden',
+  ].map((arg) => `"${String(arg).replace(/"/g, '\\"')}"`).join(' ');
+  const script = [
+    `$action = New-ScheduledTaskAction -Execute ${psQuote(exePath)} -Argument ${psQuote(args)}`,
+    '$trigger = New-ScheduledTaskTrigger -AtStartup',
+    "$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest",
+    `Register-ScheduledTask -TaskName ${psQuote(WINDOWS_STARTUP_TASK_NAME)} -Action $action -Trigger $trigger -Principal $principal -Force | Out-Null`,
+  ].join('; ');
+  const result = runPowerShell(script, 12000).trim();
+  const status = windowsStartupTaskStatus();
+  return { ...status, error: status.installed ? '' : result };
+}
+
+function autoStartStatus() {
+  const taskStatus = lastAutoStartTaskStatus || windowsStartupTaskStatus();
+  return {
+    afterLogin: !!settings.autoStartOnBoot,
+    beforeLogin: !!settings.autoStartBeforeLogin,
+    beforeLoginSupported: process.platform === 'win32',
+    beforeLoginTaskName: WINDOWS_STARTUP_TASK_NAME,
+    beforeLoginInstalled: !!taskStatus.installed,
+    beforeLoginTaskState: taskStatus.state || '',
+    error: taskStatus.error || '',
+  };
+}
+
 function applyLoginItem() {
   try {
     if (process.platform === 'darwin' && !app.isPackaged) {
@@ -731,6 +833,7 @@ function applyLoginItem() {
         args: ['--autostart', ...(settings.startMinimized ? ['--hidden'] : [])],
       });
     }
+    lastAutoStartTaskStatus = applyWindowsStartupTask();
   } catch (e) { console.error('login item failed', e); }
 }
 
@@ -774,6 +877,12 @@ function mediaServerOptions() {
           ? (/^data:image\/png;base64,/i.test(String(clean.networkLogoDataUrl || '')) ? clean.networkLogoDataUrl : '')
           : settings.networkLogoDataUrl,
         experienceLayout: clean.experienceLayout ? (clean.experienceLayout === 'separate' ? 'separate' : 'unified') : settings.experienceLayout,
+        autoStartOnBoot: Object.prototype.hasOwnProperty.call(clean, 'autoStartOnBoot')
+          ? coerceBoolean(clean.autoStartOnBoot, settings.autoStartOnBoot !== false)
+          : settings.autoStartOnBoot !== false,
+        autoStartBeforeLogin: Object.prototype.hasOwnProperty.call(clean, 'autoStartBeforeLogin')
+          ? coerceBoolean(clean.autoStartBeforeLogin, !!settings.autoStartBeforeLogin)
+          : !!settings.autoStartBeforeLogin,
         liveTheme: String(clean.liveTheme || settings.liveTheme || 'cinema').trim(),
         libraryTheme: String(clean.libraryTheme || settings.libraryTheme || 'cinema').trim(),
         adminPath: String(clean.adminPath || settings.adminPath || 'admin').replace(/^\/+|\/+$/g, '').replace(/[^\w\-./]/g, '') || 'admin',
@@ -811,16 +920,19 @@ function mediaServerOptions() {
       }
       const shouldRestartLive = Number(settings.port) !== currentLivePort;
       const shouldRestartLibrary = Number(settings.libraryPort) !== currentLibraryPort;
-      if (shouldRestartLive || shouldRestartLibrary) {
+      if (shouldRestartLive) {
+        try {
+          await restartLiveServer(settings.port);
+        } catch (e) {
+          console.error('[WIVA] setup live port restart failed:', e.message);
+        }
+      }
+      if (shouldRestartLibrary) {
         setTimeout(async () => {
           try {
-            if (shouldRestartLive) await restartLiveServer(settings.port);
-            if (shouldRestartLibrary && libraryServerInfo?.close) {
-              await libraryServerInfo.close();
-              libraryServerInfo = libraryServer.start(settings.libraryPort || DEFAULT_LIBRARY_PORT, mediaServerOptions());
-            }
+            await restartLibraryServer(settings.libraryPort);
           } catch (e) {
-            console.error('[WIVA] setup port restart failed:', e.message);
+            console.error('[WIVA] setup library port restart failed:', e.message);
           }
         }, 700);
       }
@@ -931,6 +1043,12 @@ async function restartLiveServer(port) {
   });
   reconcileChannelBroadcasters('live-server-restart');
   return { port: serverInfo.port };
+}
+
+async function restartLibraryServer(port) {
+  if (libraryServerInfo && libraryServerInfo.close) await libraryServerInfo.close();
+  libraryServerInfo = libraryServer.start(port || settings.libraryPort || DEFAULT_LIBRARY_PORT, mediaServerOptions());
+  return { port: libraryServerInfo.port };
 }
 
 function publicIptvChannels() {
@@ -1216,6 +1334,24 @@ ipcMain.handle('save-settings', async (_e, next) => {
     if (libraryReady) syncBroadcastChannelsFromDb({ persist: false });
 
     const { channels: channelPatch, ...rest } = patch;
+    if (Object.prototype.hasOwnProperty.call(rest, 'experienceLayout')) {
+      rest.experienceLayout = rest.experienceLayout === 'separate' ? 'separate' : 'unified';
+    }
+    if (Object.prototype.hasOwnProperty.call(rest, 'autoStartOnBoot')) {
+      rest.autoStartOnBoot = coerceBoolean(rest.autoStartOnBoot, settings.autoStartOnBoot !== false);
+    }
+    if (Object.prototype.hasOwnProperty.call(rest, 'autoStartBeforeLogin')) {
+      rest.autoStartBeforeLogin = coerceBoolean(rest.autoStartBeforeLogin, !!settings.autoStartBeforeLogin);
+    }
+    if (Object.prototype.hasOwnProperty.call(rest, 'port')) {
+      rest.port = Math.max(1, Math.min(65535, Number(rest.port || settings.port || DEFAULT_AGENT_PORT)));
+    }
+    if (Object.prototype.hasOwnProperty.call(rest, 'libraryPort')) {
+      rest.libraryPort = Math.max(1, Math.min(65535, Number(rest.libraryPort || settings.libraryPort || DEFAULT_LIBRARY_PORT)));
+    }
+    if (Object.prototype.hasOwnProperty.call(rest, 'adminPath')) {
+      rest.adminPath = String(rest.adminPath || 'admin').replace(/^\/+|\/+$/g, '').replace(/[^\w\-./]/g, '') || 'admin';
+    }
     settings = { ...settings, ...rest };
 
     if (hasChannels && Array.isArray(channelPatch) && libraryReady) {
@@ -1250,9 +1386,8 @@ ipcMain.handle('save-settings', async (_e, next) => {
     if (nextLivePort !== previousLivePort) {
       await restartLiveServer(nextLivePort);
     }
-    if (nextLibraryPort !== previousLibraryPort && libraryServerInfo?.close) {
-      await libraryServerInfo.close();
-      libraryServerInfo = libraryServer.start(nextLibraryPort, mediaServerOptions());
+    if (nextLibraryPort !== previousLibraryPort) {
+      await restartLibraryServer(nextLibraryPort);
     }
     reconcileChannelBroadcasters('settings-save');
     return publicSettings();
