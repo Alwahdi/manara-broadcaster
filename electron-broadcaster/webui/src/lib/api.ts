@@ -71,6 +71,8 @@ export interface AgentState {
   ports?: { live?: number; library?: number; [k: string]: unknown };
   autoStart?: {
     afterLogin?: boolean;
+    afterLoginRegistered?: boolean;
+    afterLoginStatus?: string;
     beforeLogin?: boolean;
     beforeLoginSupported?: boolean;
     beforeLoginInstalled?: boolean;

@@ -25,6 +25,7 @@ const iptv = require('./library/iptv.cjs');
 const cloudIptv = require('./library/cloud-iptv.cjs');
 const deviceState = require('./library/device-state.cjs');
 const platform = require('./library/platform.cjs');
+const { normalizePortSetting } = require('./library/settings-utils.cjs');
 let runtimeConfig = {};
 try { runtimeConfig = require('./library/cloud-runtime.cjs'); } catch {}
 if (!process.env.MANARA_NEON_DATABASE_URL && !runtimeConfig.neonDatabaseUrl && !app.isPackaged) {
@@ -256,8 +257,8 @@ function normalizeSettings(parsed) {
   }
   merged.adminPassword = '';
   if (!merged.brandName || merged.brandName === 'Manara') merged.brandName = 'WIVA';
-  if (!merged.port || Number(merged.port) === 8080) merged.port = DEFAULT_AGENT_PORT;
-  if (!merged.libraryPort || Number(merged.libraryPort) === 8420) merged.libraryPort = DEFAULT_LIBRARY_PORT;
+  merged.port = normalizePortSetting(merged.port, DEFAULT_AGENT_PORT);
+  merged.libraryPort = normalizePortSetting(merged.libraryPort, DEFAULT_LIBRARY_PORT);
   merged.adminPath = String(merged.adminPath || 'admin').replace(/^\/+|\/+$/g, '').replace(/[^\w\-./]/g, '') || 'admin';
   merged.experienceLayout = merged.experienceLayout === 'separate' ? 'separate' : 'unified';
   if (LEGACY_DEFAULT_BRAND_TAGLINES.has(String(merged.brandTagline || '').trim())) {
@@ -524,6 +525,7 @@ let libraryReady = false;
 const channelBroadcasters = new Map();
 let lastDeviceSync = { state: 'idle', at: null, error: '' };
 let lastAutoStartTaskStatus = null;
+let lastLoginItemStatus = null;
 const launchedAtBoot = process.argv.includes('--autostart') || process.argv.includes('--hidden');
 
 function cloudSafeSettings() {
@@ -808,8 +810,11 @@ function applyWindowsStartupTask() {
 
 function autoStartStatus() {
   const taskStatus = lastAutoStartTaskStatus || windowsStartupTaskStatus();
+  const loginStatus = lastLoginItemStatus || readLoginItemStatus();
   return {
     afterLogin: !!settings.autoStartOnBoot,
+    afterLoginRegistered: !!loginStatus.openAtLogin,
+    afterLoginStatus: loginStatus.error ? 'unknown' : (loginStatus.openAtLogin ? 'registered' : 'not_registered'),
     beforeLogin: !!settings.autoStartBeforeLogin,
     beforeLoginSupported: process.platform === 'win32',
     beforeLoginTaskName: WINDOWS_STARTUP_TASK_NAME,
@@ -817,6 +822,23 @@ function autoStartStatus() {
     beforeLoginTaskState: taskStatus.state || '',
     error: taskStatus.error || '',
   };
+}
+
+function readLoginItemStatus() {
+  if (process.platform !== 'win32' && process.platform !== 'darwin') {
+    return { supported: false, openAtLogin: false };
+  }
+  try {
+    return {
+      supported: true,
+      ...app.getLoginItemSettings({
+        path: process.execPath,
+        args: ['--autostart', ...(settings.startMinimized ? ['--hidden'] : [])],
+      }),
+    };
+  } catch (e) {
+    return { supported: true, openAtLogin: false, error: e?.message || String(e) };
+  }
 }
 
 function applyLoginItem() {
@@ -832,6 +854,7 @@ function applyLoginItem() {
         path: process.execPath,
         args: ['--autostart', ...(settings.startMinimized ? ['--hidden'] : [])],
       });
+      lastLoginItemStatus = readLoginItemStatus();
     }
     lastAutoStartTaskStatus = applyWindowsStartupTask();
   } catch (e) { console.error('login item failed', e); }

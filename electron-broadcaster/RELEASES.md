@@ -42,6 +42,12 @@ locked (antivirus, Search indexing, backup agents). This eliminates the
 intermittent "cannot save on Windows" failures that the old
 `writeFile` + `rename` pattern caused.
 
+## v2.6.25
+
+- Fixed port persistence after restart: valid custom ports like `8080` for live streaming and `8420` for library/admin are no longer treated as legacy defaults and reset back to WIVA defaults.
+- Added a dedicated settings regression test so valid custom ports keep surviving settings normalization.
+- Added after-login startup status reporting so the admin settings page shows whether the OS actually registered WIVA for login startup.
+
 ## v2.6.24
 
 - Added a Windows before-login startup option controlled from the web admin settings. It creates a startup Scheduled Task for the WIVA Agent and keeps using the same WIVA data directory.

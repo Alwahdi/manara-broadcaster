@@ -116,7 +116,9 @@ export function AdminSettings() {
             </div>
             {query.data?.autoStart ? (
               <div className="notice">
-                حالة التشغيل قبل الدخول: {query.data.autoStart.beforeLoginInstalled ? "مفعلة" : "غير مفعلة"}
+                التشغيل بعد الدخول: {query.data.autoStart.afterLoginRegistered ? "مسجل في النظام" : "غير مسجل"}
+                {" · "}
+                التشغيل قبل الدخول: {query.data.autoStart.beforeLoginInstalled ? "مفعلة" : "غير مفعلة"}
                 {query.data.autoStart.error ? ` - ${query.data.autoStart.error}` : ""}
               </div>
             ) : null}
