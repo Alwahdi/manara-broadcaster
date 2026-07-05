@@ -42,6 +42,14 @@ locked (antivirus, Search indexing, backup agents). This eliminates the
 intermittent "cannot save on Windows" failures that the old
 `writeFile` + `rename` pattern caused.
 
+## v2.6.15
+
+- Hid the legacy admin and setup UI behind the emergency-only `WIVA_ALLOW_LEGACY_UI` flag so the modern web UI is the only normal product surface.
+- Removed visible legacy UI links from the modern admin panel.
+- Added smoke coverage that proves `/admin/legacy` and `/setup/legacy` are blocked by default and only reopen when the emergency flag is set.
+- Cleaned the repo by removing the unused Lovable/root web stack and public demo IPTV seed files.
+- Added WIVA agent guidance and Codex skills for future UI, streaming, media library, release, and ops work.
+
 ## v2.6.14
 
 - Fixed ambiguous admin byte-size rendering so actual usage and media sizes show as real data amounts such as `0 B`, while transfer limits still show `بدون حد` when unlimited.
