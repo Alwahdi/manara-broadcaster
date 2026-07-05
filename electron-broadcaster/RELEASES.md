@@ -42,6 +42,11 @@ locked (antivirus, Search indexing, backup agents). This eliminates the
 intermittent "cannot save on Windows" failures that the old
 `writeFile` + `rename` pattern caused.
 
+## v2.6.16
+
+- Merged PR #34 as a release checkpoint for the customization and media library workstream.
+- No runtime files changed in PR #34; this release keeps the v2.6.15 app behavior and refreshes the stable update channel metadata.
+
 ## v2.6.15
 
 - Hid the legacy admin and setup UI behind the emergency-only `WIVA_ALLOW_LEGACY_UI` flag so the modern web UI is the only normal product surface.
