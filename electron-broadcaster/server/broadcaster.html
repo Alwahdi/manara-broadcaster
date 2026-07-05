@@ -1,0 +1,208 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>WIVA Channel Broadcaster</title>
+</head>
+<body>
+<video id="preview" autoplay muted playsinline style="width:1px;height:1px;opacity:0"></video>
+<script>
+const log = (...args) => console.log('[WIVA broadcaster]', ...args);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function readConfig() {
+  const encoded = new URLSearchParams(location.search).get('config') || '';
+  try {
+    return JSON.parse(atob(encoded.replace(/-/g, '+').replace(/_/g, '/')));
+  } catch (error) {
+    throw new Error('Invalid broadcaster config: ' + error.message);
+  }
+}
+
+const config = readConfig();
+const peers = new Map();
+let ws = null;
+let stream = null;
+let reconnectTimer = null;
+
+function norm(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9\u0600-\u06ff]+/g, ' ').trim();
+}
+
+function findDevice(devices, kind, wantedId, wantedName) {
+  const rows = devices.filter((device) => device.kind === kind);
+  const id = norm(wantedId);
+  const name = norm(wantedName);
+  return rows.find((device) => device.deviceId === wantedId)
+    || rows.find((device) => id && norm(device.label).includes(id))
+    || rows.find((device) => name && norm(device.label).includes(name))
+    || rows.find((device) => name && name.includes(norm(device.label)))
+    || rows[0]
+    || null;
+}
+
+async function captureStream() {
+  const source = config.source || {};
+  const sourceType = String(source.type || 'screen');
+  const audioId = String(config.audioDeviceId || '').trim();
+  let devices = [];
+  try { devices = await navigator.mediaDevices.enumerateDevices(); } catch {}
+
+  let audio = false;
+  if (audioId && audioId !== 'none') {
+    const audioDevice = findDevice(devices, 'audioinput', audioId, config.audioDeviceName || audioId);
+    audio = audioDevice ? { deviceId: { exact: audioDevice.deviceId } } : true;
+  }
+
+  if (sourceType === 'device') {
+    const videoDevice = findDevice(devices, 'videoinput', source.id, source.name || config.name);
+    return navigator.mediaDevices.getUserMedia({
+      video: videoDevice ? { deviceId: { exact: videoDevice.deviceId } } : true,
+      audio,
+    });
+  }
+
+  const sourceId = String(source.id || '').trim();
+  const desktopVideo = {
+    mandatory: {
+      chromeMediaSource: 'desktop',
+      chromeMediaSourceId: sourceId,
+      maxWidth: Number(config.width) || 1920,
+      maxHeight: Number(config.height) || 1080,
+      maxFrameRate: Number(config.fps) || 30,
+    },
+  };
+  try {
+    return await navigator.mediaDevices.getUserMedia({ video: desktopVideo, audio });
+  } catch (error) {
+    log('desktop getUserMedia failed, trying getDisplayMedia:', error.message);
+    if (navigator.mediaDevices.getDisplayMedia) {
+      return navigator.mediaDevices.getDisplayMedia({ video: true, audio: !!audio });
+    }
+    throw error;
+  }
+}
+
+async function ensureStream() {
+  if (stream && stream.getTracks().some((track) => track.readyState === 'live')) return stream;
+  stream = await captureStream();
+  const preview = document.getElementById('preview');
+  preview.srcObject = stream;
+  try { await preview.play(); } catch {}
+  for (const track of stream.getTracks()) {
+    track.onended = () => {
+      log('track ended, restarting capture');
+      try { ws && ws.close(); } catch {}
+      restartSoon();
+    };
+  }
+  log('capture ready for', config.channelId, stream.getTracks().map((track) => track.kind + ':' + track.label).join(', '));
+  return stream;
+}
+
+function closePeer(id) {
+  const pc = peers.get(String(id));
+  if (pc) {
+    try { pc.close(); } catch {}
+    peers.delete(String(id));
+  }
+}
+
+async function offerToViewer(viewerId) {
+  const id = String(viewerId || '');
+  if (!id || !ws || ws.readyState !== WebSocket.OPEN) return;
+  closePeer(id);
+  const localStream = await ensureStream();
+  const pc = new RTCPeerConnection({ iceServers: [] });
+  peers.set(id, pc);
+  for (const track of localStream.getTracks()) pc.addTrack(track, localStream);
+  pc.onicecandidate = (event) => {
+    if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'ice', to: id, candidate: event.candidate }));
+    }
+  };
+  pc.onconnectionstatechange = () => {
+    if (['failed', 'closed', 'disconnected'].includes(pc.connectionState)) closePeer(id);
+  };
+  const offer = await pc.createOffer({ offerToReceiveAudio: false, offerToReceiveVideo: false });
+  await pc.setLocalDescription(offer);
+  ws.send(JSON.stringify({ type: 'offer', to: id, sdp: offer.sdp }));
+}
+
+function restartSoon() {
+  if (reconnectTimer) return;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connect().catch((error) => {
+      log('reconnect failed:', error.message);
+      restartSoon();
+    });
+  }, 2500);
+}
+
+async function connect() {
+  await ensureStream();
+  if (ws && ws.readyState === WebSocket.OPEN) return;
+  ws = new WebSocket(config.wsUrl);
+  ws.onopen = () => {
+    log('registering', config.channelId, 'to', config.wsUrl);
+    ws.send(JSON.stringify({
+      type: 'register-broadcaster',
+      channelId: String(config.channelId),
+      name: config.name || String(config.channelId),
+      description: config.description || '',
+    }));
+  };
+  ws.onmessage = async (event) => {
+    let msg = null;
+    try { msg = JSON.parse(String(event.data)); } catch { return; }
+    if (msg.type === 'broadcaster-ready') {
+      for (const viewerId of msg.viewers || []) offerToViewer(viewerId).catch((error) => log('offer failed:', error.message));
+      return;
+    }
+    if (msg.type === 'viewer-joined') {
+      offerToViewer(msg.id).catch((error) => log('offer failed:', error.message));
+      return;
+    }
+    if (msg.type === 'viewer-left') {
+      closePeer(msg.id);
+      return;
+    }
+    if (msg.type === 'answer' && msg.from) {
+      const pc = peers.get(String(msg.from));
+      if (pc) {
+        try { await pc.setRemoteDescription({ type: 'answer', sdp: msg.sdp }); } catch (error) { log('answer failed:', error.message); }
+      }
+      return;
+    }
+    if (msg.type === 'ice' && msg.from) {
+      const pc = peers.get(String(msg.from));
+      if (pc && msg.candidate) {
+        try { await pc.addIceCandidate(msg.candidate); } catch {}
+      }
+    }
+  };
+  ws.onclose = () => {
+    log('socket closed');
+    for (const id of Array.from(peers.keys())) closePeer(id);
+    restartSoon();
+  };
+  ws.onerror = () => {
+    try { ws.close(); } catch {}
+  };
+}
+
+(async () => {
+  for (;;) {
+    try {
+      await connect();
+      break;
+    } catch (error) {
+      log('startup failed:', error.message);
+      await sleep(3000);
+    }
+  }
+})();
+</script>
+</body>
+</html>

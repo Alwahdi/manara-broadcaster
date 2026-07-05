@@ -476,6 +476,7 @@ let serverInfo = null;
 let mainWindow = null;
 let tray = null;
 let libraryReady = false;
+const channelBroadcasters = new Map();
 let lastDeviceSync = { state: 'idle', at: null, error: '' };
 const launchedAtBoot = process.argv.includes('--autostart') || process.argv.includes('--hidden');
 
@@ -591,6 +592,119 @@ function syncBroadcastChannelsFromDb({ persist = true } = {}) {
     console.error('[WIVA] broadcast channel DB sync failed:', e.message);
   }
   return settings.channels || [];
+}
+
+function liveWsUrl() {
+  const port = serverInfo?.port || settings.port || DEFAULT_AGENT_PORT;
+  return `ws://127.0.0.1:${port}/ws`;
+}
+
+function channelSource(channel = {}) {
+  const source = channel.source && typeof channel.source === 'object' ? channel.source : {};
+  const type = String(source.type || channel.captureKind || channel.sourceType || '').trim();
+  const id = String(source.id || channel.sourceId || '').trim();
+  return { ...source, type, id, name: source.name || channel.sourceName || '' };
+}
+
+function canAutoBroadcastChannel(channel = {}) {
+  if (!channel || channel.enabled === false || channel.enabled === 0) return false;
+  const source = channelSource(channel);
+  if (!source.type || source.type === 'url') return false;
+  return ['screen', 'window', 'device'].includes(source.type);
+}
+
+function channelBroadcasterSignature(channel = {}) {
+  const source = channelSource(channel);
+  return JSON.stringify({
+    id: String(channel.id || ''),
+    name: channel.name || '',
+    description: channel.description || '',
+    source,
+    audioDeviceId: channel.audioDeviceId || 'none',
+    resolution: channel.resolution || '1280x720',
+    fps: Number(channel.fps) || 30,
+    port: serverInfo?.port || settings.port || DEFAULT_AGENT_PORT,
+  });
+}
+
+function stopChannelBroadcaster(id) {
+  const key = String(id || '');
+  const entry = channelBroadcasters.get(key);
+  if (!entry) return;
+  channelBroadcasters.delete(key);
+  try { entry.window.close(); } catch {}
+}
+
+function stopAllChannelBroadcasters() {
+  for (const id of Array.from(channelBroadcasters.keys())) stopChannelBroadcaster(id);
+}
+
+function startChannelBroadcaster(channel = {}) {
+  const id = String(channel.id || '').trim();
+  if (!id || !canAutoBroadcastChannel(channel)) return;
+  const signature = channelBroadcasterSignature(channel);
+  const existing = channelBroadcasters.get(id);
+  if (existing && existing.signature === signature && !existing.window.isDestroyed()) return;
+  stopChannelBroadcaster(id);
+
+  const [width, height] = String(channel.resolution || '1280x720').split('x').map((n) => Number(n) || 0);
+  const source = channelSource(channel);
+  const config = {
+    channelId: id,
+    name: channel.name || id,
+    description: channel.description || '',
+    source,
+    audioDeviceId: channel.audioDeviceId || 'none',
+    audioDeviceName: channel.audioDeviceName || '',
+    width: width || 1280,
+    height: height || 720,
+    fps: Number(channel.fps) || 30,
+    wsUrl: liveWsUrl(),
+  };
+  const encoded = Buffer.from(JSON.stringify(config)).toString('base64url');
+  const win = new BrowserWindow({
+    show: false,
+    width: 320,
+    height: 180,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      backgroundThrottling: false,
+    },
+  });
+  win.webContents.on('console-message', (_event, level, message) => {
+    const prefix = `[WIVA channel ${id}]`;
+    if (level >= 2) console.warn(prefix, message);
+    else console.log(prefix, message);
+  });
+  win.on('closed', () => {
+    const current = channelBroadcasters.get(id);
+    if (current?.window === win) channelBroadcasters.delete(id);
+  });
+  channelBroadcasters.set(id, { window: win, signature, startedAt: Date.now() });
+  win.loadFile(path.join(__dirname, 'server', 'broadcaster.html'), { query: { config: encoded } })
+    .catch((e) => {
+      console.error('[WIVA] channel broadcaster load failed:', id, e.message);
+      stopChannelBroadcaster(id);
+    });
+}
+
+function reconcileChannelBroadcasters(reason = 'sync') {
+  if (!serverInfo || settings.autoStartChannels === false || !platformFeatureAllowed('channels')) {
+    stopAllChannelBroadcasters();
+    return;
+  }
+  const rows = libraryReady ? syncBroadcastChannelsFromDb({ persist: false }) : (settings.channels || []);
+  const wanted = new Set();
+  for (const channel of rows || []) {
+    if (!canAutoBroadcastChannel(channel)) continue;
+    wanted.add(String(channel.id));
+    startChannelBroadcaster(channel);
+  }
+  for (const id of Array.from(channelBroadcasters.keys())) {
+    if (!wanted.has(id)) stopChannelBroadcaster(id);
+  }
+  console.log('[WIVA] channel broadcasters reconciled:', channelBroadcasters.size, 'reason=' + reason);
 }
 
 function notifyStorageReady() {
@@ -738,7 +852,10 @@ function mediaServerOptions() {
     getPlatformStatus: () => platform.status(),
     requestPlatformActivation,
     refreshPlatformStatus,
-    onChannelsChanged: () => refreshSettingsChannelMirror('lan-admin'),
+    onChannelsChanged: () => {
+      refreshSettingsChannelMirror('lan-admin');
+      reconcileChannelBroadcasters('lan-admin');
+    },
   };
 }
 
@@ -754,6 +871,7 @@ async function refreshPlatformStatus() {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('platform-status', s);
   }
+  reconcileChannelBroadcasters('platform-refresh');
   return s;
 }
 
@@ -789,6 +907,7 @@ function createMediaHandler() {
 }
 
 async function restartLiveServer(port) {
+  stopAllChannelBroadcasters();
   if (serverInfo && serverInfo.close) await serverInfo.close();
   serverInfo = startSignalingServer({
     port: port || settings.port || DEFAULT_AGENT_PORT,
@@ -803,6 +922,7 @@ async function restartLiveServer(port) {
     accent: settings.accent,
     accent2: settings.accent2,
   });
+  reconcileChannelBroadcasters('live-server-restart');
   return { port: serverInfo.port };
 }
 
@@ -898,11 +1018,13 @@ function getCloudIptvOverride(id) {
 function applyCloudIptvOverride(channel) {
   const rawId = normalizeCloudId(channel.id);
   const override = getCloudIptvOverride(rawId);
+  const explicitlyOverridden = !!override?.explicit;
+  const enabled = explicitlyOverridden ? !!override.enabled : true;
   return {
     ...channel,
     id: String(channel.id).startsWith('cloud-') ? channel.id : `cloud-${rawId}`,
-    enabled: override ? !!override.enabled : false,
-    ownerEnabled: override ? !!override.enabled : false,
+    enabled,
+    ownerEnabled: enabled,
     transferLimitBytes: Math.max(0, Number(override?.transferLimitBytes ?? channel.transferLimitBytes) || 0),
   };
 }
@@ -913,6 +1035,7 @@ function updateCloudIptvOverride(id, patch = {}) {
   const current = getCloudIptvOverride(rawId) || {};
   const next = {
     ...current,
+    explicit: true,
     enabled: patch.enabled == null ? !!current.enabled : !!patch.enabled,
   };
   if (patch.transferLimitBytes != null) {
@@ -938,6 +1061,7 @@ function setAllCloudIptvEnabled(enabled = true) {
     if (!rawId) continue;
     overrides[rawId] = {
       ...(overrides[rawId] || {}),
+      explicit: true,
       enabled: !!enabled,
       transferLimitBytes: Math.max(0, Number(overrides[rawId]?.transferLimitBytes ?? ch.transferLimitBytes) || 0),
     };
@@ -1041,6 +1165,7 @@ ipcMain.handle('broadcast-save-all', (_e, channels) => {
   try { settings.localIptvChannels = libraryDb.listIptv(); } catch {}
   saveSettingsAndBackup('broadcast-save-all');
   scheduleDeviceStatePush('broadcast-save-all');
+  reconcileChannelBroadcasters('broadcast-save-all');
   return settings.channels;
 });
 ipcMain.handle('broadcast-remove', (_e, id) => {
@@ -1055,6 +1180,7 @@ ipcMain.handle('broadcast-remove', (_e, id) => {
   try { settings.localIptvChannels = libraryDb.listIptv(); } catch {}
   saveSettingsAndBackup('broadcast-remove');
   scheduleDeviceStatePush('broadcast-remove');
+  reconcileChannelBroadcasters('broadcast-remove');
   return settings.channels;
 });
 ipcMain.handle('save-settings', async (_e, next) => {
@@ -1121,6 +1247,7 @@ ipcMain.handle('save-settings', async (_e, next) => {
       await libraryServerInfo.close();
       libraryServerInfo = libraryServer.start(nextLibraryPort, mediaServerOptions());
     }
+    reconcileChannelBroadcasters('settings-save');
     return publicSettings();
   } catch (e) {
     console.error('[WIVA] save-settings handler crashed:', e.message);
@@ -1323,6 +1450,12 @@ ipcMain.handle('cloud-iptv-refresh', async () => {
 ipcMain.handle('cloud-iptv-status', () => cloudIptv.status());
 
 app.whenReady().then(() => {
+  try {
+    session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+      callback(['media', 'display-capture'].includes(permission));
+    });
+  } catch (e) { console.error('setPermissionRequestHandler failed', e); }
+
   // Enable Electron's screen sharing: provide the entire-screen source automatically.
   try {
     session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {

@@ -42,6 +42,13 @@ locked (antivirus, Search indexing, backup agents). This eliminates the
 intermittent "cannot save on Windows" failures that the old
 `writeFile` + `rename` pattern caused.
 
+## v2.6.21
+
+- Fixed cloud IPTV visibility for viewers by making active cloud IPTV channels enabled by default unless the local admin explicitly disables them.
+- Added an internal hidden WebRTC broadcaster for enabled capture/screen/window channels so viewer-side live channels have an actual sender and no longer stay stuck reconnecting.
+- Restarted/reconciled live channel broadcasters automatically after channel changes, settings saves, live-port restarts, and subscription refreshes.
+- Allowed the Agent's internal broadcaster windows to access media/display capture permissions needed for local live channels.
+
 ## v2.6.20
 
 - Fixed the media library API payload so the new web UI receives `items` and `media`, with poster/backdrop URLs and online/offline state for each item.
