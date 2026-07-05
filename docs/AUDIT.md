@@ -16,7 +16,7 @@ Date: 2026-06-25
 - Platform activation/licensing: `electron-broadcaster/library/platform.cjs`.
 - Cloud IPTV: Neon first, public/cloud fallbacks second.
 - Error tracking: Sentry Electron if `SENTRY_DSN` is configured.
-- Official local UI: Vite + React + TanStack Router SPA under `electron-broadcaster/webui/`, served from `webui/dist` by the Agent; server files handle APIs, media/IPTV streams, and compatibility fallback pages.
+- Official local UI: Next.js App Router static shell under `electron-broadcaster/webui/`, served from `webui/dist` by the Agent; server files handle APIs, media/IPTV streams, and compatibility fallback pages.
 - Removed legacy root cloud app: the old Lovable/TanStack/Supabase root stack (`.lovable/`, root `src/`, and root `supabase/`) was removed after the Electron WIVA Agent became the source of truth.
 
 ## Implemented
@@ -32,11 +32,11 @@ Date: 2026-06-25
 - Theme selection fields.
 - Custom admin path support with `/admin` compatibility.
 - Web admin panel for IPTV, library paths, scans, uploads, users/messages, blocklist, logs, analytics, reports, and broadcast JSON.
-- Modern web UI (`electron-broadcaster/webui/`, Vite + React + TanStack Router/Query + TypeScript): Arabic/RTL, local fonts, cinematic responsive design (mobile/desktop/TV), real viewer/admin/setup pages, per-screen loading/empty/error states, capture-channel add wizard, in-app file browser for storage selection, library file-explorer view, and offline-source indication that never deletes media on drive disconnect.
+- Modern web UI (`electron-broadcaster/webui/`, Next.js App Router static export + React + TanStack Query + TypeScript): Arabic/RTL, local fonts, cinematic responsive design (mobile/desktop/TV), real viewer/admin/setup screens, per-screen loading/empty/error states, capture-channel add wizard, in-app file browser for storage selection, library file-explorer view, and offline-source indication that never deletes media on drive disconnect.
 - Localized data presentation: admin reports and diagnostics render Arabic metric labels (not raw API keys), friendly platform names (e.g. `win32` → Windows), and formatted numbers/bytes/durations/dates via `webui/src/lib/format.ts`.
 - Windows-safe report export: `/api/admin/reports/views.csv` is emitted with a UTF-8 BOM and CRLF line endings so Arabic viewing reports open correctly in Excel and other spreadsheet apps on Windows without mojibake.
 - Agent APIs for the web UI: `/api/admin/library/sources` (+ `/rescan`, `/relink`), `/api/admin/storage/roots` (Agent disks), `/api/admin/storage/browse` and `/api/admin/storage/validate` (in-app file browser), `/api/admin/broadcast` (`POST` to add a single capture channel, `PUT` to replace all), `/api/admin/iptv` and IPTV import `preview`/`commit`, `/api/admin/viewers`, `/api/admin/messages`, `/api/admin/reports`, `/api/admin/diagnostics`, `/api/admin/capture/probe`, and a live `/api/live` Server-Sent Events stream.
-- The server-rendered UI has been fully removed. `adminPage()`, `setupPage()`, the library page, and the player page no longer exist; the Vite + React SPA in `webui/` is the single user-facing surface. When `webui/dist` is not built, the server returns a small offline-safe "UI not built" notice (HTTP `503`) rather than any legacy HTML. The only server-rendered HTML that remains is the admin login gate. The old `/player/:id` URL redirects to the SPA watch route, and the smoke test asserts the legacy admin/setup markup is gone.
+- The server-rendered UI has been fully removed. `adminPage()`, `setupPage()`, the library page, and the player page no longer exist; the Next.js static shell in `webui/` is the single user-facing surface. When `webui/dist` is not built, the server returns a small offline-safe "UI not built" notice (HTTP `503`) rather than any legacy HTML. The only server-rendered HTML that remains is the admin login gate. The old `/player/:id` URL redirects to the SPA watch route, and the smoke test asserts the legacy admin/setup markup is gone.
 - Public media library with viewer accounts, favorites, watch later, history, and messages.
 - IPTV on-demand proxy and grouped quality options.
 - Service health endpoint: `/health`, `/ready`, `/api/agent/health`.

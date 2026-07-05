@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { Link, Outlet } from "@tanstack/react-router";
+import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
+import { AppLink, useAppPath } from "@/components/AppLink";
 import { useBrand } from "@/hooks/useBrand";
 import { LiveIndicator } from "@/components/LiveIndicator";
 import { OfflineBanner } from "@/components/OfflineBanner";
@@ -48,42 +49,52 @@ const GROUPS: { label: string; items: { to: string; label: string; icon: string 
   },
 ];
 
-export function AdminLayout() {
+function isActive(path: string, href: string) {
+  return path === href || path.startsWith(`${href}/`);
+}
+
+export function AdminLayout({ children }: { children: ReactNode }) {
   const { brand } = useBrand();
   const [open, setOpen] = useState(false);
+  const path = useAppPath();
+
+  useEffect(() => {
+    setOpen(false);
+  }, [path]);
+
   return (
     <div className="admin">
       <a href="#main" className="skip-link">تخطَّ إلى المحتوى</a>
       {open ? <div className="sidebar-backdrop" onClick={() => setOpen(false)} /> : null}
-      <aside className={`sidebar ${open ? "open" : ""}`}>
-        <Link to="/admin/dashboard" className="sidebar-brand" onClick={() => setOpen(false)}>
+      <aside className={`sidebar ${open ? "open" : ""}`} aria-label="تنقل لوحة الإدارة">
+        <AppLink href="/admin/dashboard" className="sidebar-brand" onClick={() => setOpen(false)}>
           <img src="/wiva-logo.png" alt="" className="brand-logo" />
           <span>{brand}</span>
-        </Link>
+        </AppLink>
         {GROUPS.map((group) => (
           <div key={group.label}>
             <div className="side-group-label">{group.label}</div>
             {group.items.map((item) => (
-              <Link
+              <AppLink
                 key={item.to}
-                to={item.to}
-                className="sidelink"
-                activeProps={{ className: "sidelink active", "aria-current": "page" }}
+                href={item.to}
+                className={`sidelink ${isActive(path, item.to) ? "active" : ""}`}
+                aria-current={isActive(path, item.to) ? "page" : undefined}
                 onClick={() => setOpen(false)}
               >
                 <span className="sidelink-icon" aria-hidden>
                   {item.icon}
                 </span>
                 <span>{item.label}</span>
-              </Link>
+              </AppLink>
             ))}
           </div>
         ))}
         <div className="side-group-label">أخرى</div>
-        <a className="sidelink" href="/">
+        <AppLink className="sidelink" href="/">
           <span className="sidelink-icon" aria-hidden>↩️</span>
           <span>واجهة المشاهدة</span>
-        </a>
+        </AppLink>
       </aside>
 
       <div className="admin-main">
@@ -104,9 +115,7 @@ export function AdminLayout() {
             </div>
           </div>
         </header>
-        <main id="main" className="admin-content">
-          <Outlet />
-        </main>
+        <main id="main" className="admin-content">{children}</main>
       </div>
     </div>
   );

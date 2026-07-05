@@ -1,18 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
+import { AppLink, useAppPath } from "@/components/AppLink";
 import { api } from "@/lib/api";
 import { QueryBoundary } from "@/components/States";
 import { formatDuration } from "@/lib/format";
 
 export function WatchMedia() {
-  const { id } = useParams({ from: "/viewer/watch/media/$id" });
+  const id = useAppPath().split("/").filter(Boolean).at(-1) || "";
   const media = useQuery({ queryKey: ["media", id], queryFn: () => api.media(id) });
 
   return (
     <div>
-      <Link to="/library" className="btn btn-ghost btn-sm" style={{ marginBottom: 16 }}>
+      <AppLink href="/library" className="btn btn-ghost btn-sm" style={{ marginBottom: 16 }}>
         ← المكتبة
-      </Link>
+      </AppLink>
       <QueryBoundary query={media}>
         {(item) => (
           <div>

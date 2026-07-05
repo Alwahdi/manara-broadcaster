@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { useAppNavigate } from "@/components/AppLink";
 import { api, type CaptureSource } from "@/lib/api";
 import { LoadingState, ErrorState, EmptyState } from "@/components/States";
 import { PageHeader } from "@/components/common";
@@ -22,7 +22,7 @@ const STEPS = ["نوع المصدر", "اختيار المصدر", "الصوت",
  * never types a manual device id (acceptance criterion #1).
  */
 export function AdminChannelNew() {
-  const navigate = useNavigate();
+  const navigate = useAppNavigate();
   const qc = useQueryClient();
   const [step, setStep] = useState(0);
   const [kind, setKind] = useState<SourceKind | null>(null);
@@ -51,10 +51,10 @@ export function AdminChannelNew() {
         sourceName: source?.name,
         audioId: audio?.id || null,
         enabled: true,
-      }),
+    }),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["admin-state"] });
-      navigate({ to: "/admin/channels" });
+      navigate("/admin/channels");
     },
   });
 

@@ -1,4 +1,5 @@
-import { Link, Outlet, useRouterState } from "@tanstack/react-router";
+import type { ReactNode } from "react";
+import { AppLink, useAppPath } from "@/components/AppLink";
 import { useBrand } from "@/hooks/useBrand";
 
 export const SETUP_STEPS = [
@@ -12,9 +13,9 @@ export const SETUP_STEPS = [
   { to: "/setup/finish", label: "إنهاء" },
 ];
 
-export function SetupLayout() {
+export function SetupLayout({ children }: { children: ReactNode }) {
   const { brand } = useBrand();
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const pathname = useAppPath();
   const currentIndex = SETUP_STEPS.findIndex((s) => s.to === pathname);
   return (
     <div className="setup">
@@ -27,20 +28,20 @@ export function SetupLayout() {
         {SETUP_STEPS.map((step, i) => {
           const state = i === currentIndex ? "active" : i < currentIndex ? "done" : "";
           return (
-            <Link
+            <AppLink
               key={step.to}
-              to={step.to}
+              href={step.to}
               className={`step ${state}`}
               aria-current={i === currentIndex ? "step" : undefined}
             >
               <span className="step-num">{i < currentIndex ? "✓" : i + 1}</span>
               <span>{step.label}</span>
-            </Link>
+            </AppLink>
           );
         })}
       </aside>
       <main id="main" className="setup-body">
-        <Outlet />
+        {children}
       </main>
     </div>
   );

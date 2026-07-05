@@ -30,16 +30,16 @@ The setup wizard can change the ports and custom admin path.
 ## Modern Web UI
 
 The official viewer, admin, and setup experience is a modern single-page app in
-`electron-broadcaster/webui/` (Vite + React + TanStack Router + TanStack Query +
-TypeScript). It is fully Arabic and right-to-left, ships local Tajawal/Cairo
-fonts (no internet dependency), and is designed to work on phones, desktops, and
-TVs across the LAN.
+`electron-broadcaster/webui/` (Next.js App Router static export + React +
+TanStack Query + TypeScript). It is fully Arabic and right-to-left, ships local
+Tajawal/Cairo fonts (no internet dependency), and is designed to work on phones,
+desktops, and TVs across the LAN.
 
 - The WIVA Agent (`library/media-server.cjs`) serves the built app from
   `webui/dist` and exposes only REST APIs, media/IPTV streams, and a live
   Server-Sent Events channel at `/api/live`.
 - Server files no longer build large HTML pages. The modern web UI (the
-  Vite + React + TanStack SPA in `webui/`) is the single user-facing surface;
+  Next.js static shell in `webui/`) is the single user-facing surface;
   the old server-rendered admin panel, setup wizard, library, and player pages
   have been removed entirely. If `webui/dist` has not been built yet, the server
   returns a small offline-safe "UI not built" notice (HTTP `503`) instead of any
@@ -55,7 +55,7 @@ Develop the web UI:
 ```bash
 cd electron-broadcaster/webui
 npm install
-npm run dev      # Vite dev server, proxies /api to the Agent on :8788
+npm run dev      # Next.js dev server for UI work
 npm run build    # type-check + emit webui/dist
 ```
 

@@ -1,15 +1,15 @@
-import { Link, useParams } from "@tanstack/react-router";
+import { AppLink, useAppPath } from "@/components/AppLink";
 
 export function WatchChannel() {
-  const { id } = useParams({ from: "/viewer/watch/channel/$id" });
+  const id = useAppPath().split("/").filter(Boolean).at(-1) || "";
   // IPTV/broadcast channels are proxied by the Agent as HLS playlists.
   const src = `/iptv/${id}/index.m3u8`;
 
   return (
     <div>
-      <Link to="/live" className="btn btn-ghost btn-sm" style={{ marginBottom: 16 }}>
+      <AppLink href="/live" className="btn btn-ghost btn-sm" style={{ marginBottom: 16 }}>
         ← البث المباشر
-      </Link>
+      </AppLink>
       <div className="card" style={{ overflow: "hidden", marginBottom: 20 }}>
         <video
           controls

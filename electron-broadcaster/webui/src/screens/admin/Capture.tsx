@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { AppLink } from "@/components/AppLink";
 import { api } from "@/lib/api";
 import { QueryBoundary, EmptyState } from "@/components/States";
 import { PageHeader } from "@/components/common";
@@ -11,7 +11,7 @@ export function AdminCapture() {
       <PageHeader
         title="أجهزة الالتقاط"
         subtitle="الشاشات والنوافذ وأجهزة الفيديو والصوت المتاحة للبث"
-        actions={<Link to="/admin/channels/new" className="btn btn-primary">+ قناة من جهاز التقاط</Link>}
+        actions={<AppLink href="/admin/channels/new" className="btn btn-primary">+ قناة من جهاز التقاط</AppLink>}
       />
       <QueryBoundary
         query={devices}

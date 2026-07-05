@@ -26,6 +26,7 @@ async function main() {
     urls: { setupLocal: 'http://127.0.0.1:8788/setup', adminLocal: 'http://127.0.0.1:8788/admin' },
     settings: { brandName: 'WIVA', adminUsername: 'admin', port: 8787, libraryPort: 8788, adminPath: 'admin' },
   };
+  let platformState = { state: 'unregistered', features: {}, activationId: '' };
   const sessions = new Set();
   const server = http.createServer(mediaServer.createHandler({
     getAdminAuth: () => ({ username: 'admin' }),
@@ -44,7 +45,17 @@ async function main() {
     },
     verifyAdminSession: (token) => sessions.has(token),
     clearAdminSession: (token) => sessions.delete(token),
-    getPlatformStatus: () => null,
+    getPlatformStatus: () => platformState,
+    requestPlatformActivation: async (body) => {
+      platformState = {
+        state: 'pending',
+        activationId: 'act_smoke',
+        instance: { tenantName: body.tenantName || body.networkName || '', contactEmail: body.contactEmail || '' },
+        features: {},
+      };
+      return platformState;
+    },
+    refreshPlatformStatus: async () => platformState,
   }));
 
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -68,6 +79,28 @@ async function main() {
     res = await request(base, '/setup');
     assert.equal(res.status, 302);
     assert.equal(res.headers.get('location'), '/admin');
+
+    res = await request(base, '/admin/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ username: 'admin', password: 'correct-password' }),
+    });
+    assert.equal(res.status, 403, 'unregistered installs must show registration before admin login');
+
+    res = await request(base, '/api/platform/activation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tenantName: 'Smoke Net', contactEmail: 'owner@example.com' }),
+    });
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).subscription.state, 'pending');
+
+    platformState = {
+      state: 'active',
+      activationId: 'act_smoke',
+      features: { channels: true, iptv: true, media: true, webAdmin: true, analytics: true, branding: true },
+      instance: { tenantName: 'Smoke Net', plan: 'test' },
+    };
 
     res = await request(base, '/admin/login', {
       method: 'POST',
@@ -96,7 +129,7 @@ async function main() {
     res = await request(base, '/admin/channels/new', { headers: { Cookie: cookie.split(';')[0] } });
     if (spaBuilt) {
       assert.equal(res.status, 200);
-      assert.match(await res.text(), /id="root"/, 'admin nav serves the modern SPA shell');
+      assert.match(await res.text(), /data-wiva-app="next"|\/_next\/static\//, 'admin nav serves the modern Next SPA shell');
     } else {
       assert.equal(res.status, 503, 'admin nav returns the UI-not-built notice when unbuilt');
       assert.match(await res.text(), /غير مبنية/, 'shows the offline-safe UI-not-built notice');
@@ -109,7 +142,7 @@ async function main() {
     assert.doesNotMatch(legacyBody, /broadcastJson|openMediaEditor/, 'old server-rendered admin panel is gone');
     if (spaBuilt) {
       assert.equal(res.status, 200, 'legacy admin path is now served by the SPA shell');
-      assert.match(legacyBody, /id="root"/, 'admin path serves the modern SPA shell');
+      assert.match(legacyBody, /data-wiva-app="next"|\/_next\/static\//, 'admin path serves the modern Next SPA shell');
     }
 
     res = await request(base, '/setup/legacy');
@@ -117,7 +150,7 @@ async function main() {
     assert.doesNotMatch(legacySetupBody, /id="setupForm"|checkPort/, 'old server-rendered setup wizard is gone');
     if (spaBuilt) {
       assert.equal(res.status, 200, 'legacy setup path is now served by the SPA shell');
-      assert.match(legacySetupBody, /id="root"/, 'setup path serves the modern SPA shell');
+      assert.match(legacySetupBody, /data-wiva-app="next"|\/_next\/static\//, 'setup path serves the modern Next SPA shell');
     }
 
     // The old /player/:id watch URL now redirects into the SPA watch route so

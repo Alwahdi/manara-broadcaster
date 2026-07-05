@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { AppLink } from "@/components/AppLink";
 import { api } from "@/lib/api";
 import { QueryBoundary, EmptyState } from "@/components/States";
 import { PageHeader, MediaTile } from "@/components/common";
@@ -13,8 +13,8 @@ export function AdminLibrary() {
         subtitle="إدارة الوسائط والمصادر"
         actions={
           <>
-            <Link to="/admin/library/sources" className="btn btn-ghost">المصادر</Link>
-            <Link to="/admin/library/browser" className="btn btn-primary">متصفح الملفات</Link>
+            <AppLink href="/admin/library/sources" className="btn btn-ghost">المصادر</AppLink>
+            <AppLink href="/admin/library/browser" className="btn btn-primary">متصفح الملفات</AppLink>
           </>
         }
       />
@@ -26,7 +26,7 @@ export function AdminLibrary() {
             icon="🎬"
             title="لا وسائط بعد"
             text="أضف مصدر تخزين وابدأ الفحص لعرض الوسائط."
-            action={<Link to="/admin/library/sources" className="btn btn-primary">إضافة مصدر</Link>}
+            action={<AppLink href="/admin/library/sources" className="btn btn-primary">إضافة مصدر</AppLink>}
           />
         }
       >

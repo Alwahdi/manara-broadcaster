@@ -42,6 +42,15 @@ locked (antivirus, Search indexing, backup agents). This eliminates the
 intermittent "cannot save on Windows" failures that the old
 `writeFile` + `rename` pattern caused.
 
+## v2.6.18
+
+- Replaced the Vite/TanStack Router web UI shell with a Next.js App Router static export that still builds into `webui/dist` for the Electron Agent.
+- Added a small WIVA client navigation layer so `/admin/*`, `/setup/*`, `/library`, `/live`, and `/watch/*` continue to work without running a Next server.
+- Fixed the mobile RTL admin drawer so the hamburger menu opens inside the viewport and closes after navigation.
+- Added a platform registration gate: unregistered installs now see registration first, pending installs wait for owner approval, and admin/viewer routes only open after an active subscription.
+- Added LAN platform activation/refresh APIs so registration requests are written through the owner Neon platform table instead of staying local-only.
+- Hardened web UI install/build scripts with deterministic `npm ci --ignore-scripts --no-audit --no-fund` before typecheck/build.
+
 ## v2.6.17
 
 - Removed the legacy server-rendered UI entirely: `adminPage()`, `setupPage()`, the library page, and the player page are gone, along with the `/admin/legacy` and `/setup/legacy` routes and the `WIVA_ALLOW_LEGACY_UI` flag. The Vite + React web UI (`webui/dist`) is now the single user-facing surface.

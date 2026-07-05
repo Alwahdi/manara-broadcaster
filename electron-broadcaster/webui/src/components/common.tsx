@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Link } from "@tanstack/react-router";
+import { AppLink } from "@/components/AppLink";
 import type { MediaItem, Channel } from "@/lib/api";
 import { formatDuration } from "@/lib/format";
 
@@ -36,8 +36,8 @@ export function MediaTile({ item }: { item: MediaItem }) {
   const title = item.title || item.name || "بدون عنوان";
   const online = item.online !== false;
   return (
-    <Link
-      to="/watch/media/$id"
+    <AppLink
+      href="/watch/media/$id"
       params={{ id: String(item.id) }}
       className="card-hover"
       style={{ display: "block" }}
@@ -55,11 +55,11 @@ export function MediaTile({ item }: { item: MediaItem }) {
         {item.category || item.kind || "فيديو"}
         {item.durationSec ? ` · ${formatDuration(item.durationSec)}` : ""}
       </div>
-    </Link>
+    </AppLink>
   );
 }
 
-export function ChannelTile({ channel, to }: { channel: Channel; to?: string }) {
+export function ChannelTile({ channel, href }: { channel: Channel; href?: string }) {
   const inner = (
     <div className="card card-pad card-hover">
       <div className="row-between">
@@ -80,11 +80,11 @@ export function ChannelTile({ channel, to }: { channel: Channel; to?: string }) 
       </div>
     </div>
   );
-  if (to) {
+  if (href) {
     return (
-      <Link to={to as never} params={{ id: String(channel.id) } as never}>
+      <AppLink href={href} params={{ id: String(channel.id) }}>
         {inner}
-      </Link>
+      </AppLink>
     );
   }
   return inner;

@@ -1,4 +1,5 @@
-import { Link, Outlet } from "@tanstack/react-router";
+import type { ReactNode } from "react";
+import { AppLink, useAppPath } from "@/components/AppLink";
 import { useBrand } from "@/hooks/useBrand";
 import { LiveIndicator } from "@/components/LiveIndicator";
 import { OfflineBanner } from "@/components/OfflineBanner";
@@ -12,28 +13,32 @@ const NAV = [
   { to: "/account", label: "حسابي" },
 ];
 
-export function ViewerLayout() {
+function isActive(path: string, href: string, exact?: boolean) {
+  return exact ? path === href : path === href || path.startsWith(`${href}/`);
+}
+
+export function ViewerLayout({ children }: { children: ReactNode }) {
   const { brand } = useBrand();
+  const path = useAppPath();
   return (
     <div className="app-shell">
       <a href="#main" className="skip-link">تخطَّ إلى المحتوى</a>
       <OfflineBanner />
       <header className="topbar">
-        <Link to="/" className="brand">
+        <AppLink href="/" className="brand">
           <img src="/wiva-logo.png" alt="" className="brand-logo" />
           <span>{brand}</span>
-        </Link>
+        </AppLink>
         <nav className="topnav grow" aria-label="التنقل الرئيسي">
           {NAV.map((item) => (
-            <Link
+            <AppLink
               key={item.to}
-              to={item.to}
-              className="navlink"
-              activeProps={{ className: "navlink active", "aria-current": "page" }}
-              activeOptions={{ exact: item.exact }}
+              href={item.to}
+              className={`navlink ${isActive(path, item.to, item.exact) ? "active" : ""}`}
+              aria-current={isActive(path, item.to, item.exact) ? "page" : undefined}
             >
               {item.label}
-            </Link>
+            </AppLink>
           ))}
         </nav>
         <div className="row hide-sm">
@@ -41,7 +46,7 @@ export function ViewerLayout() {
         </div>
       </header>
       <main id="main" className="container page grow">
-        <Outlet />
+        {children}
       </main>
       <footer className="container" style={{ padding: "24px 0", color: "var(--text-dim)", fontSize: "0.82rem" }}>
         {brand} — شبكة محلية
