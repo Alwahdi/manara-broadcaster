@@ -42,6 +42,14 @@ locked (antivirus, Search indexing, backup agents). This eliminates the
 intermittent "cannot save on Windows" failures that the old
 `writeFile` + `rename` pattern caused.
 
+## v2.6.19
+
+- Fixed viewer live channel data so enabled IPTV channels appear in `/live` and `/api/viewer/state`, alongside local broadcast/capture channels.
+- Separated live/IPTV route entitlement from media-library entitlement so IPTV can show even when the media library feature is not enabled.
+- Fixed admin port saving from the web UI by mapping live/admin port fields to the persisted Agent ports and restarting services after save.
+- Simplified media library source management: admins can paste a folder/drive path, add it, and trigger a scan directly.
+- Added smoke coverage for IPTV visibility in viewer state and library source add/scan behavior.
+
 ## v2.6.18
 
 - Replaced the Vite/TanStack Router web UI shell with a Next.js App Router static export that still builds into `webui/dist` for the Electron Agent.
