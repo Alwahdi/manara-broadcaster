@@ -11,6 +11,11 @@ export function AdminLibrarySources() {
   const sources = useQuery({ queryKey: ["library-sources"], queryFn: api.librarySources });
   const [adding, setAdding] = useState(false);
   const [relinkFor, setRelinkFor] = useState<LibrarySource | null>(null);
+  const [path, setPath] = useState("");
+  const pathPlaceholder =
+    typeof navigator !== "undefined" && navigator.platform.toLowerCase().includes("win")
+      ? "D:\\Movies"
+      : "/Users/name/Movies";
 
   const rescan = useMutation({
     mutationFn: (id: number | string) => api.librarySourceRescan(id),
@@ -25,10 +30,11 @@ export function AdminLibrarySources() {
     },
   });
   const add = useMutation({
-    mutationFn: (path: string) => api.storageValidate(path),
-    onSuccess: () => {
-      setAdding(false);
+    mutationFn: (nextPath: string) => api.addLibrarySource({ path: nextPath, kind: "movies" }),
+    onSuccess: async () => {
+      setPath("");
       qc.invalidateQueries({ queryKey: ["library-sources"] });
+      qc.invalidateQueries({ queryKey: ["admin-state"] });
     },
   });
 
@@ -48,26 +54,40 @@ export function AdminLibrarySources() {
     );
   }
 
-  if (adding) {
-    return (
-      <div>
-        <PageHeader
-          title="إضافة مصدر تخزين"
-          subtitle="اختر القرص أو المجلد من متصفح الملفات"
-          actions={<button className="btn btn-ghost" onClick={() => setAdding(false)}>إلغاء</button>}
-        />
-        <StorageBrowser selectLabel="استخدام هذا المجلد" onSelect={(path) => add.mutate(path)} />
-      </div>
-    );
-  }
-
   return (
     <div>
       <PageHeader
         title="مصادر التخزين"
-        subtitle="الأقراص والمجلدات التي تُبنى منها المكتبة"
-        actions={<button className="btn btn-primary" onClick={() => setAdding(true)}>+ إضافة مصدر</button>}
+        subtitle="أضف مسار قرص أو مجلد، وسيبدأ WIVA فحصه وبناء المكتبة مباشرة."
       />
+      <div className="card card-pad" style={{ marginBottom: 18 }}>
+        <div className="field">
+          <label>مسار المجلد أو القرص</label>
+          <input
+            className="input mono"
+            dir="ltr"
+            value={path}
+            onChange={(e) => setPath(e.target.value)}
+            placeholder={pathPlaceholder}
+          />
+          <span className="hint">اكتب مسار المجلد كما يظهر في الجهاز الذي عليه WIVA Agent، أو اختره من المتصفح.</span>
+        </div>
+        <div className="row">
+          <button className="btn btn-primary" onClick={() => add.mutate(path)} disabled={add.isPending || !path.trim()}>
+            {add.isPending ? "جارٍ الإضافة والفحص…" : "إضافة وفحص"}
+          </button>
+          <button className="btn btn-ghost" onClick={() => setAdding((v) => !v)}>
+            {adding ? "إخفاء المتصفح" : "اختيار من المتصفح"}
+          </button>
+          {add.isSuccess ? <span className="badge badge-on badge-dot">تمت الإضافة والفحص</span> : null}
+          {add.isError ? <span className="badge badge-warn">{(add.error as Error).message}</span> : null}
+        </div>
+        {adding ? (
+          <div style={{ marginTop: 18 }}>
+            <StorageBrowser selectLabel="استخدام هذا المسار" onSelect={(picked) => setPath(picked)} />
+          </div>
+        ) : null}
+      </div>
       <QueryBoundary
         query={sources}
         isEmpty={(d) => (d.sources?.length || 0) === 0}
@@ -75,8 +95,7 @@ export function AdminLibrarySources() {
           <EmptyState
             icon="💾"
             title="لا مصادر تخزين"
-            text="أضف قرصًا أو مجلدًا ليبدأ بناء المكتبة."
-            action={<button className="btn btn-primary" onClick={() => setAdding(true)}>اختيار من متصفح الملفات</button>}
+            text="أضف مسار مجلد أو قرص من الأعلى ليبدأ بناء المكتبة."
           />
         }
       >

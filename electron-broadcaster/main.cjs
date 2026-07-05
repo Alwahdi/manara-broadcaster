@@ -638,6 +638,8 @@ function mediaServerOptions() {
       const currentLivePort = Number(settings.port) || DEFAULT_AGENT_PORT;
       const currentLibraryPort = Number(settings.libraryPort) || DEFAULT_LIBRARY_PORT;
       const clean = patch && typeof patch === 'object' ? patch : {};
+      const requestedLivePort = clean.port ?? clean.livePort;
+      const requestedLibraryPort = clean.libraryPort ?? clean.adminPort;
       const next = {
         setupCompleted: clean.setupCompleted !== false,
         setupCompletedAt: new Date().toISOString(),
@@ -646,18 +648,18 @@ function mediaServerOptions() {
         networkName: String(clean.networkName || '').trim(),
         networkNumber: String(clean.networkNumber || '').trim(),
         networkLocation: String(clean.networkLocation || '').trim(),
-        networkCountry: String(clean.networkCountry || '').trim(),
+        networkCountry: String(clean.networkCountry || clean.country || settings.networkCountry || '').trim(),
         networkRegion: String(clean.networkRegion || '').trim(),
-        networkCity: String(clean.networkCity || '').trim(),
-        networkTimezone: String(clean.networkTimezone || settings.networkTimezone || 'Asia/Aden').trim(),
+        networkCity: String(clean.networkCity || clean.city || settings.networkCity || '').trim(),
+        networkTimezone: String(clean.networkTimezone || clean.timezone || settings.networkTimezone || 'Asia/Aden').trim(),
         networkLogoDataUrl: /^data:image\/png;base64,/i.test(String(clean.networkLogoDataUrl || '')) ? clean.networkLogoDataUrl : settings.networkLogoDataUrl,
         experienceLayout: clean.experienceLayout === 'separate' ? 'separate' : 'unified',
         liveTheme: String(clean.liveTheme || settings.liveTheme || 'cinema').trim(),
         libraryTheme: String(clean.libraryTheme || settings.libraryTheme || 'cinema').trim(),
         adminPath: String(clean.adminPath || settings.adminPath || 'admin').replace(/^\/+|\/+$/g, '').replace(/[^\w\-./]/g, '') || 'admin',
         adminUsername: String(clean.adminUsername || settings.adminUsername || 'admin').trim() || 'admin',
-        port: Math.max(1, Math.min(65535, Number(clean.port || settings.port || DEFAULT_AGENT_PORT))),
-        libraryPort: Math.max(1, Math.min(65535, Number(clean.libraryPort || settings.libraryPort || DEFAULT_LIBRARY_PORT))),
+        port: Math.max(1, Math.min(65535, Number(requestedLivePort || settings.port || DEFAULT_AGENT_PORT))),
+        libraryPort: Math.max(1, Math.min(65535, Number(requestedLibraryPort || settings.libraryPort || DEFAULT_LIBRARY_PORT))),
       };
       const nextPassword = String(clean.adminPassword || '').trim();
       if (nextPassword) next.adminPasswordHash = hashAdminPassword(nextPassword);
@@ -725,6 +727,8 @@ function mediaServerOptions() {
       const ch = cloudIptv.getById(normalizeCloudId(id));
       return ch ? applyCloudIptvOverride(ch) : null;
     },
+    getIptvChannels: () => publicIptvChannels(),
+    getBroadcastChannels: () => syncBroadcastChannelsFromDb({ persist: false }),
     getLibraryConfig: () => ({
       tmdbKey: settings.tmdbKey || '',
       tmdbLang: settings.tmdbLang || 'ar',

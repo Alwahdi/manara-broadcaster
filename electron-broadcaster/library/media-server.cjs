@@ -620,6 +620,37 @@ function safeCloudIptvList() {
   catch { return []; }
 }
 
+function liveChannelsPayload(options = {}) {
+  const broadcastAllowed = featureAllowed(options, 'channels');
+  const iptvAllowed = featureAllowed(options, 'iptv');
+  const broadcast = broadcastAllowed && typeof options.getBroadcastChannels === 'function'
+    ? options.getBroadcastChannels()
+    : [];
+  const iptv = iptvAllowed && typeof options.getIptvChannels === 'function'
+    ? options.getIptvChannels()
+    : [];
+  const safeBroadcast = (Array.isArray(broadcast) ? broadcast : [])
+    .filter((ch) => ch && ch.enabled !== false && ch.enabled !== 0)
+    .map((ch) => ({
+      ...ch,
+      id: String(ch.id),
+      type: ch.type || 'broadcast',
+      group: ch.group || ch.category || 'البث المحلي',
+      enabled: true,
+    }));
+  const safeIptv = (Array.isArray(iptv) ? iptv : [])
+    .filter((ch) => ch && ch.enabled !== false && ch.enabled !== 0)
+    .map((ch) => ({
+      ...ch,
+      id: String(ch.id),
+      type: 'iptv',
+      group: ch.group || ch.category || 'IPTV',
+      enabled: true,
+      playUrl: `/iptv/${encodeURIComponent(String(ch.id))}/index.m3u8`,
+    }));
+  return { broadcast: safeBroadcast, iptv: safeIptv, channels: [...safeBroadcast, ...safeIptv] };
+}
+
 function platformStatus(options = {}) {
   try {
     return typeof options.getPlatformStatus === 'function' ? options.getPlatformStatus() : null;
@@ -901,9 +932,17 @@ function createHandler(options = {}) {
       if (!requireAdmin(req, res, options, adminBase)) return;
       return denyFeature(req, res, options, 'webAdmin');
     }
+    if (u.pathname === '/live' || u.pathname.startsWith('/live/') || u.pathname.startsWith('/watch/channel/')) {
+      if (!featureAllowed(options, 'channels') && !featureAllowed(options, 'iptv')) return denyFeature(req, res, options, 'iptv');
+      if ((req.method === 'GET' || req.method === 'HEAD') && webui.isAvailable() && webui.serveApp(req, res)) {
+        return;
+      }
+      if (req.method === 'GET' || req.method === 'HEAD') {
+        return uiUnavailable(res);
+      }
+    }
     if (u.pathname === '/library' || u.pathname.startsWith('/library/')
-        || u.pathname === '/live' || u.pathname.startsWith('/live/')
-        || u.pathname.startsWith('/watch/') || u.pathname === '/search'
+        || u.pathname.startsWith('/watch/media/') || u.pathname === '/search'
         || u.pathname === '/favorites' || u.pathname === '/account') {
       if (!featureAllowed(options, 'media')) return denyFeature(req, res, options, 'media');
       if ((req.method === 'GET' || req.method === 'HEAD') && webui.isAvailable() && webui.serveApp(req, res)) {
@@ -927,6 +966,19 @@ function createHandler(options = {}) {
     if (u.pathname === '/api/admin/library/sources' && req.method === 'GET') {
       if (!requireAdmin(req, res, options, adminBase)) return;
       return sendJson(res, 200, { sources: librarySourcesPayload() });
+    }
+    if (u.pathname === '/api/admin/library/sources' && req.method === 'POST') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      try {
+        const body = await parseJsonBody(req);
+        const validation = validateLibraryPath(body.path);
+        if (!validation.ok) return sendJson(res, 400, { error: 'invalid_path', message: validation.message });
+        db.addPath(validation.path, body.kind || 'movies', 0);
+        const cfg = typeof options.getLibraryConfig === 'function' ? options.getLibraryConfig() : {};
+        const result = await scanner.scanAll({ tmdbKey: cfg.tmdbKey || '', tmdbLang: cfg.tmdbLang || 'ar' });
+        webui.broadcast('library', { path: validation.path, scanned: true });
+        return sendJson(res, 200, { ok: true, ...result, sources: librarySourcesPayload() });
+      } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
     }
     let sourceMatch = /^\/api\/admin\/library\/sources\/(\d+)\/rescan$/.exec(u.pathname);
     if (sourceMatch && req.method === 'POST') {
@@ -1353,7 +1405,7 @@ function createHandler(options = {}) {
     }
     if (u.pathname === '/api/viewer/state') {
       const ctx = getViewerContext(req, res);
-      return sendJson(res, 200, { ...db.viewerState(ctx.viewerId), account: ctx.account });
+      return sendJson(res, 200, { ...db.viewerState(ctx.viewerId), ...liveChannelsPayload(options), account: ctx.account });
     }
     if (u.pathname === '/api/viewer/signup' && req.method === 'POST') {
       try {
