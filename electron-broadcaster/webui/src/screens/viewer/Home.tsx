@@ -20,19 +20,24 @@ export function ViewerHome() {
 
   return (
     <div>
-      <section className="card card-pad" style={{ marginBottom: 28, overflow: "hidden", position: "relative" }}>
-        <div style={{ position: "relative", zIndex: 1 }}>
+      <section className="viewer-hero">
+        <div className="viewer-hero-content">
           <span className="badge badge-dot badge-live">مباشر الآن</span>
-          <h1 className="page-title" style={{ fontSize: "clamp(1.8rem,5vw,3rem)", marginTop: 12 }}>
+          <h1>
             مرحبًا بك في {brand}
           </h1>
-          <p className="page-subtitle" style={{ maxWidth: "52ch" }}>
+          <p>
             شاهد البث المباشر والقنوات والمكتبة الكاملة عبر الشبكة المحلية — دون الحاجة إلى إنترنت.
           </p>
-          <div className="row" style={{ marginTop: 20 }}>
+          <div className="viewer-hero-actions">
             <AppLink href={crossPortHref("/live")} className="btn btn-primary">مشاهدة البث المباشر</AppLink>
             <AppLink href={crossPortHref("/library")} className="btn btn-ghost">تصفّح المكتبة</AppLink>
           </div>
+        </div>
+        <div className="viewer-hero-panel" aria-hidden>
+          <span>Live</span>
+          <strong>HD</strong>
+          <small>LAN Streaming</small>
         </div>
       </section>
 
@@ -49,7 +54,7 @@ export function ViewerHome() {
         }
       >
         {(data) => (
-          <div className="grid grid-auto">
+          <div className="media-rail">
             {data.items.slice(0, 12).map((item) => (
               <MediaTile key={item.id} item={item} />
             ))}

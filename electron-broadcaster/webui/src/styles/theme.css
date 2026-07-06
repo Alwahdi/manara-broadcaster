@@ -78,7 +78,7 @@ body {
 h1, h2, h3, h4 {
   font-family: var(--font-display);
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   margin: 0;
 }
 
@@ -152,6 +152,22 @@ button {
   color: var(--text-muted);
   font-size: 0.98rem;
   margin-top: 4px;
+}
+@media (max-width: 640px) {
+  .page-header {
+    align-items: stretch;
+    margin-bottom: 18px;
+  }
+  .page-header > .row {
+    width: 100%;
+  }
+  .page-header .btn {
+    flex: 1;
+    justify-content: center;
+  }
+  .page-title {
+    line-height: 1.18;
+  }
 }
 
 /* ---------- Cards & surfaces ---------- */
@@ -303,10 +319,25 @@ button {
 .muted { color: var(--text-muted); }
 .dim { color: var(--text-dim); }
 .gold { color: var(--gold); }
-.mono { font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+.mono { font-variant-numeric: tabular-nums; letter-spacing: 0; }
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stack-sm { display: flex; flex-direction: column; gap: 8px; }
 .center { display: flex; align-items: center; justify-content: center; }
 .grow { flex: 1; }
 .hide-sm { }
 @media (max-width: 720px) { .hide-sm { display: none !important; } }
+@media (max-width: 560px) {
+  .btn {
+    min-height: 44px;
+    padding-inline: 14px;
+  }
+  .row,
+  .row-between {
+    gap: 10px;
+  }
+  .input,
+  .select,
+  .textarea {
+    min-height: 46px;
+  }
+}

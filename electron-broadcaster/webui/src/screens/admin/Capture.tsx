@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/common";
 export function AdminCapture() {
   const devices = useQuery({ queryKey: ["capture-devices"], queryFn: api.captureDevices });
   return (
-    <div>
+    <div className="admin-wide">
       <PageHeader
         title="أجهزة الالتقاط"
         subtitle="الشاشات والنوافذ وأجهزة الفيديو والصوت المتاحة للبث"
@@ -40,7 +40,7 @@ function DeviceGroup({
 }: {
   title: string;
   icon: string;
-  items: { id: string; name: string }[];
+  items: { id: string; name: string; thumbnail?: string }[];
 }) {
   return (
     <div className="card card-pad">
@@ -52,9 +52,16 @@ function DeviceGroup({
           <span className="dim">لا يوجد</span>
         ) : (
           items.map((it) => (
-            <div key={it.id} className="row" style={{ padding: "6px 0" }}>
-              <span aria-hidden>{icon}</span>
-              <span className="truncate">{it.name}</span>
+            <div key={it.id} className="device-preview-row">
+              {it.thumbnail ? (
+                <img src={it.thumbnail} alt="" />
+              ) : (
+                <span aria-hidden>{icon}</span>
+              )}
+              <div>
+                <strong className="truncate">{it.name}</strong>
+                <small className="mono truncate" dir="ltr">{it.id}</small>
+              </div>
             </div>
           ))
         )}

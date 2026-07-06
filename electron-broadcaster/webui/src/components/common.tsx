@@ -61,24 +61,33 @@ export function MediaTile({ item }: { item: MediaItem }) {
 
 export function ChannelTile({ channel, href }: { channel: Channel; href?: string }) {
   const enabled = channel.enabled !== false && channel.enabled !== 0;
+  const kind = channel.type === "iptv" || channel.kind === "iptv" ? "IPTV" : "بث مباشر";
   const inner = (
-    <div className="card card-pad card-hover">
-      <div className="row-between">
-        <div className="row">
+    <div className="channel-card card-hover">
+      <div className="channel-card-glow" aria-hidden />
+      <div className="channel-card-head">
+        <div className="channel-logo-wrap">
           {channel.logo ? (
-            <img src={channel.logo} alt="" width={44} height={44} style={{ borderRadius: 10 }} />
+            <img src={channel.logo} alt="" />
           ) : (
-            <span style={{ fontSize: "1.6rem" }} aria-hidden>📺</span>
+            <span aria-hidden>📺</span>
           )}
-          <div>
-            <div style={{ fontWeight: 700 }}>{channel.name}</div>
-            {channel.group ? <div className="tile-sub">{channel.group}</div> : null}
-          </div>
         </div>
         <span className={`badge badge-dot ${enabled ? "badge-on" : "badge-off"}`}>
           {enabled ? "مفعّلة" : "متوقفة"}
         </span>
       </div>
+      <div className="channel-card-body">
+        <strong>{channel.name}</strong>
+        <span>{channel.group || channel.category || kind}</span>
+      </div>
+      {channel.qualities?.length ? (
+        <div className="channel-quality-row">
+          {channel.qualities.slice(0, 3).map((q) => (
+            <span key={String(q.id)}>{q.label || q.name || String(q.id)}</span>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
   if (href) {

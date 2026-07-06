@@ -29,7 +29,7 @@ export function AdminChannels() {
   });
 
   return (
-    <div>
+    <div className="admin-wide">
       <PageHeader
         title="القنوات"
         subtitle="إضافة وتعديل وحذف قنوات البث المباشر وأجهزة الالتقاط"
@@ -139,14 +139,42 @@ function ChannelEditor({
 
   return (
     <div className="card card-pad" style={{ marginBottom: 18 }}>
-      <h3 style={{ marginTop: 0 }}>تعديل القناة</h3>
+      <div className="row-between" style={{ marginBottom: 14 }}>
+        <div>
+          <h3 style={{ marginTop: 0 }}>تعديل القناة</h3>
+          <p className="hint" style={{ margin: 0 }}>عدّل الاسم والمصدر وجودة الالتقاط من مكان واحد.</p>
+        </div>
+        <span className="badge">Capture</span>
+      </div>
       <div className="grid grid-2">
         <div className="field"><label>اسم القناة</label><input className="input" value={form.name} onChange={set("name")} /></div>
         <div className="field"><label>وصف مختصر</label><input className="input" value={form.description} onChange={set("description")} /></div>
         <div className="field"><label>اسم المصدر</label><input className="input" value={form.sourceName} onChange={set("sourceName")} /></div>
         <div className="field"><label>اسم جهاز الصوت</label><input className="input" value={form.audioDeviceName} onChange={set("audioDeviceName")} /></div>
-        <div className="field"><label>الدقة</label><input className="input mono" dir="ltr" value={form.resolution} onChange={set("resolution")} /></div>
-        <div className="field"><label>الإطارات</label><input className="input mono" dir="ltr" value={form.fps} onChange={set("fps")} /></div>
+        <div className="field">
+          <label>الدقة</label>
+          <select className="select mono" dir="ltr" value={form.resolution} onChange={(event) => setForm((prev) => ({ ...prev, resolution: event.target.value }))}>
+            <option value="1920x1080">1920x1080 Full HD</option>
+            <option value="1280x720">1280x720 HD</option>
+            <option value="854x480">854x480 SD</option>
+          </select>
+        </div>
+        <div className="field">
+          <label>الإطارات</label>
+          <select className="select mono" dir="ltr" value={form.fps} onChange={(event) => setForm((prev) => ({ ...prev, fps: event.target.value }))}>
+            <option value="30">30 fps</option>
+            <option value="25">25 fps</option>
+            <option value="60">60 fps</option>
+          </select>
+        </div>
+        <div className="field">
+          <label>معدل البث</label>
+          <select className="select mono" dir="ltr" value={form.bitrateKbps} onChange={(event) => setForm((prev) => ({ ...prev, bitrateKbps: event.target.value }))}>
+            <option value="6000">6000 kbps</option>
+            <option value="4500">4500 kbps</option>
+            <option value="2500">2500 kbps</option>
+          </select>
+        </div>
       </div>
       <div className="row" style={{ marginTop: 14 }}>
         <button

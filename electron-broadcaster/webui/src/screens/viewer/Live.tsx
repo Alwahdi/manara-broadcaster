@@ -35,7 +35,7 @@ export function Live() {
             ? (d.channels as Channel[])
             : [...(((d.broadcast as Channel[]) || [])), ...(((d.iptv as Channel[]) || []))]);
           return (
-            <div className="grid grid-3">
+            <div className="live-channel-grid">
               {channels.map((ch) => (
                 <ChannelTile key={String(ch.id)} channel={ch} href="/watch/channel/$id" />
               ))}
