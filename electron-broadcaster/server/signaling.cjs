@@ -82,7 +82,7 @@ function startSignalingServer({
 
   const server = http.createServer((req, res) => {
     const url = req.url || '/';
-    if (mediaHandler && /^(\/$|\/index\.html(?:\?|$)|\/live(?:\/|\?|$)|\/watch(?:\/|\?|$)|\/iptv-player(?:\/|\?|$)|\/favicon\.ico|\/wiva-logo\.png|\/library-assets\/|\/iptv\/|\/setup(?:\/|\?|$)|\/api\/setup\/|\/agent(?:\/|\?|$)|\/api\/agent\/|\/admin(?:\/|\?|$)|\/api\/admin\/|\/library(?:\?|\/|$)|\/api\/library(?:\?|\/|$)|\/player\/|\/api\/media\/|\/api\/viewer\/|\/media\/|\/sub\/)/.test(url)) {
+    if (mediaHandler && /^(\/$|\/index\.html(?:\?|$)|\/_next\/|\/live(?:\/|\?|$)|\/watch(?:\/|\?|$)|\/iptv-player(?:\/|\?|$)|\/favicon\.ico|\/wiva-logo\.png|\/library-assets\/|\/iptv\/|\/setup(?:\/|\?|$)|\/api\/setup\/|\/agent(?:\/|\?|$)|\/api\/agent\/|\/admin(?:\/|\?|$)|\/api\/admin\/|\/library(?:\?|\/|$)|\/api\/library(?:\?|\/|$)|\/player\/|\/api\/media\/|\/api\/viewer\/|\/media\/|\/sub\/)/.test(url)) {
       return mediaHandler(req, res);
     }
     if (url === '/' || url === '/index.html') {

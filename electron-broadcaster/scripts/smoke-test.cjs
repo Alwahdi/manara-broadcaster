@@ -235,6 +235,11 @@ async function main() {
     if (spaBuilt) {
       assert.equal(res.status, 200, 'signaling / serves the modern SPA when built');
       assert.match(signalingHomeBody, /data-wiva-app="next"|\/_next\/static\//, 'signaling / serves the modern Next SPA shell');
+      const scriptMatch = signalingHomeBody.match(/src="(\/_next\/static\/[^"]+\.js)"/);
+      assert.ok(scriptMatch, 'signaling / includes a Next.js client script');
+      const assetRes = await request(signalingBase, scriptMatch[1]);
+      assert.equal(assetRes.status, 200, 'signaling server must serve Next.js static JS assets');
+      assert.match(assetRes.headers.get('content-type') || '', /javascript/, 'Next.js asset is served as JavaScript');
     }
 
     res = await request(signalingBase, '/watch/channel/smoke');

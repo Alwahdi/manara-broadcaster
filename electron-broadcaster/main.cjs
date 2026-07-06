@@ -42,6 +42,7 @@ const ADMIN_HASH_PREFIX = 'scrypt';
 const ADMIN_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const WINDOWS_STARTUP_TASK_NAME = 'WIVA Agent';
 const adminSessions = new Map();
+let shouldRevealWindowWhenReady = false;
 
 function getExplicitUserDataDir() {
   const arg = process.argv.find((part) => String(part || '').startsWith('--wiva-user-data-dir='));
@@ -80,6 +81,7 @@ initSentry();
 // launches. This is the real source of truth for all local data.
 try {
   app.setName(APP_NAME);
+  if (process.platform === 'win32') app.setAppUserModelId('app.wiva.agent');
   app.setPath('userData', getExplicitUserDataDir() || path.join(app.getPath('appData'), APP_DATA_DIR));
 } catch (e) {
   console.warn('[WIVA] could not force userData path:', e?.message || e);
@@ -96,13 +98,7 @@ if (!__gotSingleInstanceLock) {
   process.exit(0);
 } else {
   app.on('second-instance', () => {
-    try {
-      if (mainWindow) {
-        if (mainWindow.isMinimized()) mainWindow.restore();
-        if (!mainWindow.isVisible()) mainWindow.show();
-        mainWindow.focus();
-      }
-    } catch {}
+    revealMainWindow();
   });
 }
 
@@ -1292,7 +1288,29 @@ function createAppIcon() {
   return nativeImage.createFromDataURL('data:image/svg+xml;base64,' + Buffer.from(svg).toString('base64'));
 }
 
-function createWindow() {
+function revealMainWindow() {
+  shouldRevealWindowWhenReady = true;
+  try {
+    if (!app.isReady()) return;
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      createWindow({ forceShow: true });
+      return;
+    }
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.moveTop();
+    mainWindow.focus();
+    shouldRevealWindowWhenReady = false;
+  } catch (e) {
+    console.warn('[WIVA] failed to reveal main window:', e?.message || e);
+  }
+}
+
+function createWindow(options = {}) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (options.forceShow || shouldRevealWindowWhenReady) revealMainWindow();
+    return mainWindow;
+  }
   mainWindow = new BrowserWindow({
     width: 920,
     height: 720,
@@ -1302,17 +1320,23 @@ function createWindow() {
     title: APP_NAME + ' Agent',
     icon: createAppIcon(),
     autoHideMenuBar: true,
-    show: !(launchedAtBoot && settings.startMinimized),
+    show: !!options.forceShow || shouldRevealWindowWhenReady || !(launchedAtBoot && settings.startMinimized),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
     },
   });
+  mainWindow.once('ready-to-show', () => {
+    if (options.forceShow || shouldRevealWindowWhenReady) revealMainWindow();
+  });
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   mainWindow.webContents.once('did-finish-load', () => {
     syncBroadcastChannelsFromDb({ persist: false });
     notifyStorageReady();
+  });
+  mainWindow.on('closed', () => {
+    mainWindow = null;
   });
   mainWindow.on('close', (e) => {
     if (!app.isQuitting) {
@@ -1320,6 +1344,7 @@ function createWindow() {
       mainWindow.hide();
     }
   });
+  return mainWindow;
 }
 
 function createTray() {
@@ -1328,14 +1353,14 @@ function createTray() {
     tray = new Tray(icon);
     tray.setToolTip(APP_NAME + ' Agent');
     const menu = Menu.buildFromTemplate([
-      { label: 'فتح WIVA Agent', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
+      { label: 'فتح WIVA Agent', click: () => revealMainWindow() },
       { label: 'فتح الإعداد / الإدارة', click: () => shell.openExternal(settings.setupCompleted ? agentUrls().adminLocal : agentUrls().setupLocal) },
       { label: 'فتح الإدارة', click: () => shell.openExternal(agentUrls().adminLocal) },
       { type: 'separator' },
       { label: 'إيقاف وخروج', click: () => { app.isQuitting = true; app.quit(); } },
     ]);
     tray.setContextMenu(menu);
-    tray.on('click', () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } });
+    tray.on('click', () => revealMainWindow());
   } catch (e) { /* tray unsupported */ }
 }
 
@@ -1787,7 +1812,7 @@ app.whenReady().then(async () => {
   }
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    revealMainWindow();
   });
 });
 
