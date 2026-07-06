@@ -190,6 +190,8 @@ export interface LibrarySource {
   online?: boolean;
   mediaCount?: number;
   lastScan?: string | number | null;
+  excludePaths?: string[];
+  exclude_paths?: string[];
   [k: string]: unknown;
 }
 
@@ -295,10 +297,24 @@ export const api = {
 
   // Library sources
   librarySources: () => http.get<{ sources: LibrarySource[] }>("/api/admin/library/sources"),
-  addLibrarySource: (body: { path: string; kind?: string }) =>
+  addLibrarySource: (body: { path: string; kind?: string; excludePaths?: string[] }) =>
     http.post<{ ok: boolean; sources: LibrarySource[]; inserted?: number; updated?: number }>(
       "/api/admin/library/sources",
       body,
+    ),
+  updateLibrarySource: (id: number | string, body: { label?: string; kind?: string; excludePaths?: string[] }) =>
+    http.put<{ ok: boolean; source: LibrarySource; sources: LibrarySource[] }>(
+      `/api/admin/library/sources/${id}`,
+      body,
+    ),
+  addLibrarySourceExclude: (id: number | string, path: string) =>
+    http.post<{ ok: boolean; source: LibrarySource; sources: LibrarySource[] }>(
+      `/api/admin/library/sources/${id}/excludes`,
+      { path },
+    ),
+  removeLibrarySourceExclude: (id: number | string, path: string) =>
+    http.del<{ ok: boolean; source: LibrarySource; sources: LibrarySource[] }>(
+      `/api/admin/library/sources/${id}/excludes?path=${encodeURIComponent(path)}`,
     ),
   librarySourceRescan: (id: number | string) =>
     http.post<{ ok: boolean }>(`/api/admin/library/sources/${id}/rescan`),

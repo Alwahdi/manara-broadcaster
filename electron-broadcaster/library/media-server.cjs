@@ -401,6 +401,7 @@ function libraryPathStatus(row) {
 function librarySourcesPayload() {
   return db.listPaths().map((row) => {
     const info = libraryPathStatus(row);
+    const excludePaths = Array.isArray(row.exclude_paths) ? row.exclude_paths : Array.isArray(row.excludePaths) ? row.excludePaths : [];
     return {
       id: row.id,
       label: row.label || info.message || String(row.path || ''),
@@ -410,8 +411,31 @@ function librarySourcesPayload() {
       mediaCount: info.fileCount,
       lastScan: info.lastScanAt || row.last_scan_at || null,
       message: info.message,
+      excludePaths,
+      exclude_paths: excludePaths,
     };
   });
+}
+
+function normalizeExcludePaths(value, rootPath = '') {
+  const raw = Array.isArray(value) ? value : typeof value === 'string' ? value.split(/\r?\n|,/) : [];
+  const root = String(rootPath || '').trim();
+  const seen = new Set();
+  return raw
+    .map((entry) => String(entry || '').trim())
+    .filter(Boolean)
+    .map((entry) => {
+      if (!root || path.isAbsolute(entry)) return entry;
+      return path.join(root, entry);
+    })
+    .map((entry) => path.normalize(entry).replace(/[\\/]+$/g, ''))
+    .filter((entry) => {
+      const key = entry.toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 200);
 }
 
 // Minimal, dependency-free M3U/M3U8 playlist parser for IPTV import preview.
@@ -1104,14 +1128,60 @@ function createHandler(options = {}) {
         const body = await parseJsonBody(req);
         const validation = validateLibraryPath(body.path);
         if (!validation.ok) return sendJson(res, 400, { error: 'invalid_path', message: validation.message });
-        db.addPath(validation.path, body.kind || 'movies', 0);
+        db.addPath(validation.path, body.kind || 'movies', 0, {
+          excludePaths: normalizeExcludePaths(body.excludePaths || body.exclude_paths || [], validation.path),
+        });
         const cfg = typeof options.getLibraryConfig === 'function' ? options.getLibraryConfig() : {};
         const result = await scanner.scanAll({ tmdbKey: cfg.tmdbKey || '', tmdbLang: cfg.tmdbLang || 'ar', thumbnailDir: cfg.thumbnailDir || '' });
         webui.broadcast('library', { path: validation.path, scanned: true });
         return sendJson(res, 200, { ok: true, ...result, sources: librarySourcesPayload() });
       } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
     }
-    let sourceMatch = /^\/api\/admin\/library\/sources\/(\d+)\/rescan$/.exec(u.pathname);
+    let sourceMatch = /^\/api\/admin\/library\/sources\/(\d+)$/.exec(u.pathname);
+    if (sourceMatch && req.method === 'PUT') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      try {
+        const id = parseInt(sourceMatch[1], 10);
+        const current = db.listPaths().find((row) => String(row.id) === String(id));
+        if (!current) return sendJson(res, 404, { error: 'not_found', message: 'مصدر المكتبة غير موجود.' });
+        const body = await parseJsonBody(req);
+        const updated = db.updatePath(id, {
+          kind: body.kind || current.kind,
+          label: body.label,
+          excludePaths: body.excludePaths !== undefined || body.exclude_paths !== undefined
+            ? normalizeExcludePaths(body.excludePaths || body.exclude_paths || [], current.path)
+            : current.exclude_paths,
+        });
+        return sendJson(res, 200, { ok: true, source: updated, sources: librarySourcesPayload() });
+      } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
+    }
+    sourceMatch = /^\/api\/admin\/library\/sources\/(\d+)\/excludes$/.exec(u.pathname);
+    if (sourceMatch && req.method === 'POST') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      try {
+        const id = parseInt(sourceMatch[1], 10);
+        const current = db.listPaths().find((row) => String(row.id) === String(id));
+        if (!current) return sendJson(res, 404, { error: 'not_found', message: 'مصدر المكتبة غير موجود.' });
+        const body = await parseJsonBody(req);
+        const excludePath = normalizeExcludePaths([body.path || body.excludePath], current.path)[0];
+        if (!excludePath) return sendJson(res, 400, { error: 'invalid_path', message: 'اختر مساراً لاستثنائه.' });
+        const updated = db.addPathExclude(id, excludePath);
+        return sendJson(res, 200, { ok: true, source: updated, sources: librarySourcesPayload() });
+      } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
+    }
+    if (sourceMatch && req.method === 'DELETE') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      try {
+        const id = parseInt(sourceMatch[1], 10);
+        const current = db.listPaths().find((row) => String(row.id) === String(id));
+        if (!current) return sendJson(res, 404, { error: 'not_found', message: 'مصدر المكتبة غير موجود.' });
+        const excludePath = normalizeExcludePaths([u.query.path || ''], current.path)[0];
+        if (!excludePath) return sendJson(res, 400, { error: 'invalid_path', message: 'اختر مساراً لحذف الاستثناء.' });
+        const updated = db.removePathExclude(id, excludePath);
+        return sendJson(res, 200, { ok: true, source: updated, sources: librarySourcesPayload() });
+      } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
+    }
+    sourceMatch = /^\/api\/admin\/library\/sources\/(\d+)\/rescan$/.exec(u.pathname);
     if (sourceMatch && req.method === 'POST') {
       if (!requireAdmin(req, res, options, adminBase)) return;
       try {

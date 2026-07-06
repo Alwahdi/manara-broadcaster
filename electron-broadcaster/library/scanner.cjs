@@ -10,6 +10,8 @@ const VIDEO_EXT = new Set(['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v', '.ts
 const AUDIO_EXT = new Set(['.mp3', '.m4a', '.wav', '.flac', '.ogg', '.aac', '.wma', '.opus']);
 const SUB_EXT = new Set(['.srt', '.vtt', '.ass']);
 const URL_FILE = 'url.txt';
+const SYSTEM_DIRS = new Set(['.git', 'node_modules', '$recycle.bin', 'system volume information', '@eadir']);
+const SYSTEM_FILES = new Set(['.ds_store', 'thumbs.db', 'desktop.ini']);
 
 // Parse filename like: "Movie Name (2021).mkv" or "Show.S01E03.Title.mkv"
 function parseName(filename) {
@@ -56,18 +58,60 @@ function sourceReadable(dir) {
   }
 }
 
-function walk(dir, out = [], report = { folderCount: 0, permissionErrors: [] }) {
+function normalizeStoredPathList(value) {
+  if (Array.isArray(value)) return value.map((entry) => String(entry || '').trim()).filter(Boolean);
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed.map((entry) => String(entry || '').trim()).filter(Boolean);
+    } catch {}
+  }
+  return [];
+}
+
+function normalizeForCompare(value) {
+  return path.resolve(String(value || '')).replace(/[\\/]+$/g, '').toLowerCase();
+}
+
+function excludeMatcher(source) {
+  const root = path.resolve(String(source?.path || ''));
+  const excludes = normalizeStoredPathList(source?.exclude_paths ?? source?.excludePaths)
+    .map((entry) => {
+      const raw = String(entry || '').trim();
+      const absolute = path.isAbsolute(raw) ? raw : path.join(root, raw);
+      return normalizeForCompare(absolute);
+    })
+    .filter(Boolean);
+  return (target) => {
+    if (!excludes.length) return false;
+    const clean = normalizeForCompare(target);
+    return excludes.some((excluded) => clean === excluded || clean.startsWith(excluded + path.sep.toLowerCase()) || clean.startsWith(excluded + '/'));
+  };
+}
+
+function shouldSkipEntry(entry, fullPath, isExcluded) {
+  const name = String(entry?.name || '');
+  const lower = name.toLowerCase();
+  if (!name || name.startsWith('.')) return true;
+  if (entry.isDirectory() && SYSTEM_DIRS.has(lower)) return true;
+  if (entry.isFile() && SYSTEM_FILES.has(lower)) return true;
+  return isExcluded(fullPath);
+}
+
+function walk(dir, out = [], report = { folderCount: 0, permissionErrors: [] }, options = {}) {
   let entries;
   try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
   catch (e) {
     report.permissionErrors.push({ path: dir, error: e.message });
     return out;
   }
+  const isExcluded = typeof options.isExcluded === 'function' ? options.isExcluded : () => false;
   for (const e of entries) {
     const full = path.join(dir, e.name);
+    if (shouldSkipEntry(e, full, isExcluded)) continue;
     if (e.isDirectory()) {
       report.folderCount += 1;
-      walk(full, out, report);
+      walk(full, out, report, options);
     }
     else if (e.isFile()) out.push(full);
   }
@@ -169,7 +213,8 @@ async function scanAll({ tmdbKey, tmdbLang = 'ar', thumbnailDir = '' } = {}, onP
     }
     db.updatePathStatus(lp.id, { status: 'scanning', lastError: '', fileCount: Number(lp.file_count || 0), folderCount: Number(lp.folder_count || 0), label });
     const walkReport = { folderCount: 0, permissionErrors: [] };
-    const files = walk(lp.path, [], walkReport);
+    const isExcluded = excludeMatcher(lp);
+    const files = walk(lp.path, [], walkReport, { isExcluded });
     report.permissionErrors.push(...walkReport.permissionErrors);
     const allFiles = [];
     for (const f of files) {

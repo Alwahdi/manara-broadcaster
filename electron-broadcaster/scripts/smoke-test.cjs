@@ -322,6 +322,41 @@ async function main() {
     const sourceRow = addedSource.sources.find((s) => s.path === dir);
     assert.ok(sourceRow?.id, 'added library source has an id for folder browsing');
 
+    const scannedDir = path.join(dir, 'قسم للفحص');
+    const excludedDir = path.join(dir, 'قسم مستبعد');
+    fs.mkdirSync(scannedDir, { recursive: true });
+    fs.mkdirSync(excludedDir, { recursive: true });
+    fs.writeFileSync(path.join(scannedDir, 'included-video.mp4'), Buffer.from('fake video'));
+    fs.writeFileSync(path.join(excludedDir, 'excluded-video.mp4'), Buffer.from('fake video'));
+
+    res = await request(base, `/api/admin/library/sources/${encodeURIComponent(sourceRow.id)}/excludes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...auth },
+      body: JSON.stringify({ path: excludedDir }),
+    });
+    assert.equal(res.status, 200);
+    const excludeAdded = await res.json();
+    const sourceWithExclude = excludeAdded.sources.find((s) => String(s.id) === String(sourceRow.id));
+    assert.ok(sourceWithExclude.excludePaths.includes(excludedDir), 'library source stores excluded paths');
+
+    res = await request(base, `/api/admin/library/sources/${encodeURIComponent(sourceRow.id)}/rescan`, {
+      method: 'POST',
+      headers: auth,
+    });
+    assert.equal(res.status, 200);
+
+    res = await request(base, '/api/library');
+    assert.equal(res.status, 200);
+    let scannedLibraryPayload = await res.json();
+    assert.ok(scannedLibraryPayload.items.some((item) => item.title === 'included-video'), 'scanner indexes media outside excluded folders');
+    assert.ok(!scannedLibraryPayload.items.some((item) => item.title === 'excluded-video'), 'scanner skips excluded folders');
+
+    res = await request(base, '/api/library/browse?sourceId=' + encodeURIComponent(sourceRow.id));
+    assert.equal(res.status, 200);
+    let scannedBrowseSource = await res.json();
+    assert.ok(scannedBrowseSource.entries.some((entry) => entry.type === 'folder' && entry.name === 'قسم للفحص'), 'folder browser shows included source folders');
+    assert.ok(!scannedBrowseSource.entries.some((entry) => entry.name === 'قسم مستبعد'), 'folder browser hides excluded source folders');
+
     // Adding a single capture channel through the wizard endpoint.
     res = await request(base, '/api/admin/broadcast', {
       method: 'POST',

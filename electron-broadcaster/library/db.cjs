@@ -135,6 +135,35 @@ function saveChannelsFile() {
 // ---------- Media library (sqlite preferred, JSON fallback) ----------
 let _mediaFallbackPath = null;
 let _mediaFallback = { media_items: [], library_paths: [], watch_progress: {}, subtitles: [] };
+function normalizePathList(value) {
+  let raw = value;
+  if (typeof raw === 'string') {
+    try { raw = JSON.parse(raw); } catch { raw = raw.split(/\r?\n|,/); }
+  }
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set();
+  return raw
+    .map((entry) => String(entry || '').trim())
+    .filter(Boolean)
+    .filter((entry) => {
+      const key = entry.replace(/[\\/]+$/g, '');
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 200);
+}
+function serializePathList(value) {
+  return JSON.stringify(normalizePathList(value));
+}
+function publicLibraryPath(row = {}) {
+  const excludePaths = normalizePathList(row.exclude_paths ?? row.excludePaths ?? []);
+  return {
+    ...row,
+    exclude_paths: excludePaths,
+    excludePaths,
+  };
+}
 function loadMediaFallback(dbPath) {
   _mediaFallbackPath = dbPath + '.media.json';
   try {
@@ -143,6 +172,11 @@ function loadMediaFallback(dbPath) {
     }
     if (!_mediaFallback.watch_progress || typeof _mediaFallback.watch_progress !== 'object') _mediaFallback.watch_progress = {};
     if (!Array.isArray(_mediaFallback.subtitles)) _mediaFallback.subtitles = [];
+    if (!Array.isArray(_mediaFallback.library_paths)) _mediaFallback.library_paths = [];
+    _mediaFallback.library_paths = _mediaFallback.library_paths.map((row) => ({
+      ...row,
+      exclude_paths: normalizePathList(row.exclude_paths ?? row.excludePaths ?? []),
+    }));
   } catch (e) { console.error('[WIVA] media fallback read failed:', e.message); }
 }
 function saveMediaFallback() {
@@ -178,6 +212,7 @@ function init(dbPath, seed = {}) {
       status TEXT NOT NULL DEFAULT 'connected',
       last_scan_at INTEGER,
       last_error TEXT,
+      exclude_paths TEXT NOT NULL DEFAULT '[]',
       file_count INTEGER NOT NULL DEFAULT 0,
       folder_count INTEGER NOT NULL DEFAULT 0
     );
@@ -235,6 +270,7 @@ function init(dbPath, seed = {}) {
       'ALTER TABLE library_paths ADD COLUMN status TEXT NOT NULL DEFAULT "connected"',
       'ALTER TABLE library_paths ADD COLUMN last_scan_at INTEGER',
       'ALTER TABLE library_paths ADD COLUMN last_error TEXT',
+      'ALTER TABLE library_paths ADD COLUMN exclude_paths TEXT NOT NULL DEFAULT \'[]\'',
       'ALTER TABLE library_paths ADD COLUMN file_count INTEGER NOT NULL DEFAULT 0',
       'ALTER TABLE library_paths ADD COLUMN folder_count INTEGER NOT NULL DEFAULT 0',
     ]) {
@@ -257,10 +293,11 @@ function db() {
 
 // ---- library paths ----
 function listPaths() {
-  if (!_db) return _mediaFallback.library_paths.slice();
-  return db().prepare('SELECT * FROM library_paths ORDER BY id').all();
+  if (!_db) return _mediaFallback.library_paths.slice().map(publicLibraryPath);
+  return db().prepare('SELECT * FROM library_paths ORDER BY id').all().map(publicLibraryPath);
 }
-function addPath(p, kind = 'movies', locked = 0) {
+function addPath(p, kind = 'movies', locked = 0, options = {}) {
+  const excludePaths = normalizePathList(options.excludePaths ?? options.exclude_paths ?? []);
   if (!_db) {
     if (!_mediaFallback.library_paths.find((r) => r.path === p)) {
       const id = (_mediaFallback.library_paths.reduce((m, r) => Math.max(m, r.id || 0), 0)) + 1;
@@ -274,6 +311,7 @@ function addPath(p, kind = 'movies', locked = 0) {
         status: 'connected',
         last_scan_at: null,
         last_error: '',
+        exclude_paths: excludePaths,
         file_count: 0,
         folder_count: 0,
       });
@@ -282,8 +320,8 @@ function addPath(p, kind = 'movies', locked = 0) {
     return;
   }
   const label = path.basename(String(p).replace(/[\\/]+$/, '')) || p;
-  db().prepare('INSERT OR IGNORE INTO library_paths (path, kind, locked, added_at, label, status) VALUES (?,?,?,?,?,?)')
-    .run(p, kind, locked ? 1 : 0, Date.now(), label, 'connected');
+  db().prepare('INSERT OR IGNORE INTO library_paths (path, kind, locked, added_at, label, status, exclude_paths) VALUES (?,?,?,?,?,?,?)')
+    .run(p, kind, locked ? 1 : 0, Date.now(), label, 'connected', serializePathList(excludePaths));
 }
 function removePath(id) {
   if (!_db) {
@@ -322,6 +360,39 @@ function updatePathStatus(id, patch = {}) {
     SET status=?, last_scan_at=?, last_error=?, file_count=?, folder_count=?, label=COALESCE(?, label)
     WHERE id=?`).run(clean.status, clean.last_scan_at, clean.last_error, clean.file_count, clean.folder_count, clean.label, id);
   return listPaths().find((row) => String(row.id) === String(id)) || null;
+}
+function updatePath(id, patch = {}) {
+  const current = listPaths().find((row) => String(row.id) === String(id));
+  if (!current) return null;
+  const clean = {
+    kind: patch.kind ? String(patch.kind).trim().slice(0, 40) : current.kind || 'movies',
+    label: patch.label !== undefined ? String(patch.label || '').trim().slice(0, 120) : current.label || null,
+    exclude_paths: normalizePathList(patch.excludePaths ?? patch.exclude_paths ?? current.exclude_paths),
+  };
+  if (!_db) {
+    _mediaFallback.library_paths = _mediaFallback.library_paths.map((row) => String(row.id) === String(id)
+      ? { ...row, kind: clean.kind, label: clean.label || row.label, exclude_paths: clean.exclude_paths }
+      : row);
+    saveMediaFallback();
+    return listPaths().find((row) => String(row.id) === String(id)) || null;
+  }
+  db().prepare('UPDATE library_paths SET kind=?, label=COALESCE(?, label), exclude_paths=? WHERE id=?')
+    .run(clean.kind, clean.label || null, serializePathList(clean.exclude_paths), id);
+  return listPaths().find((row) => String(row.id) === String(id)) || null;
+}
+function setPathExcludes(id, excludePaths = []) {
+  return updatePath(id, { excludePaths });
+}
+function addPathExclude(id, excludePath) {
+  const current = listPaths().find((row) => String(row.id) === String(id));
+  if (!current) return null;
+  return setPathExcludes(id, [...normalizePathList(current.exclude_paths), excludePath]);
+}
+function removePathExclude(id, excludePath) {
+  const target = String(excludePath || '').trim().replace(/[\\/]+$/g, '');
+  const current = listPaths().find((row) => String(row.id) === String(id));
+  if (!current) return null;
+  return setPathExcludes(id, normalizePathList(current.exclude_paths).filter((entry) => entry.replace(/[\\/]+$/g, '') !== target));
 }
 
 // ---- media ----
@@ -1300,7 +1371,7 @@ function diagnostics() {
 
 module.exports = {
   init, diagnostics, reloadChannelsFromDisk,
-  listPaths, addPath, removePath, updatePathStatus,
+  listPaths, addPath, removePath, updatePathStatus, updatePath, setPathExcludes, addPathExclude, removePathExclude,
   upsertMedia, listMedia, getMedia, updateMedia, removeMedia, mediaStats, deleteMissing, deleteMissingForSource,
   setProgress, addSubtitle, listSubtitles, getSubtitle,
   listIptv, getIptv, addIptv, updateIptv, removeIptv,

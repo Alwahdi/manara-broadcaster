@@ -11,6 +11,8 @@ export function AdminLibrarySources() {
   const sources = useQuery({ queryKey: ["library-sources"], queryFn: api.librarySources });
   const [adding, setAdding] = useState(false);
   const [relinkFor, setRelinkFor] = useState<LibrarySource | null>(null);
+  const [excludePickerFor, setExcludePickerFor] = useState<LibrarySource | null>(null);
+  const [excludeInputs, setExcludeInputs] = useState<Record<string, string>>({});
   const [path, setPath] = useState("");
   const pathPlaceholder =
     typeof navigator !== "undefined" && navigator.platform.toLowerCase().includes("win")
@@ -37,6 +39,20 @@ export function AdminLibrarySources() {
       qc.invalidateQueries({ queryKey: ["admin-state"] });
     },
   });
+  const addExclude = useMutation({
+    mutationFn: ({ id, excludePath }: { id: number | string; excludePath: string }) =>
+      api.addLibrarySourceExclude(id, excludePath),
+    onSuccess: (_data, variables) => {
+      setExcludeInputs((prev) => ({ ...prev, [String(variables.id)]: "" }));
+      setExcludePickerFor(null);
+      qc.invalidateQueries({ queryKey: ["library-sources"] });
+    },
+  });
+  const removeExclude = useMutation({
+    mutationFn: ({ id, excludePath }: { id: number | string; excludePath: string }) =>
+      api.removeLibrarySourceExclude(id, excludePath),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["library-sources"] }),
+  });
 
   if (relinkFor) {
     return (
@@ -49,6 +65,22 @@ export function AdminLibrarySources() {
         <StorageBrowser
           selectLabel="إعادة الربط بهذا المجلد"
           onSelect={(path) => relink.mutate({ id: relinkFor.id, path })}
+        />
+      </div>
+    );
+  }
+
+  if (excludePickerFor) {
+    return (
+      <div>
+        <PageHeader
+          title={`استثناء مجلد من: ${excludePickerFor.label || excludePickerFor.path}`}
+          subtitle="اختر مجلداً لا تريد ظهوره أو فحصه داخل الاستراحة."
+          actions={<button className="btn btn-ghost" onClick={() => setExcludePickerFor(null)}>إلغاء</button>}
+        />
+        <StorageBrowser
+          selectLabel="استثناء هذا المجلد"
+          onSelect={(picked) => addExclude.mutate({ id: excludePickerFor.id, excludePath: picked })}
         />
       </div>
     );
@@ -103,6 +135,11 @@ export function AdminLibrarySources() {
           <div className="grid grid-2">
             {(d.sources || []).map((s) => (
               <div key={s.id} className="card card-pad">
+                {(() => {
+                  const sourceKey = String(s.id);
+                  const excludes = (Array.isArray(s.excludePaths) ? s.excludePaths : Array.isArray(s.exclude_paths) ? s.exclude_paths : []) as string[];
+                  return (
+                    <>
                 <div className="row-between">
                   <div className="row">
                     <span style={{ fontSize: "1.6rem" }} aria-hidden>{s.online === false ? "⚠️" : "💽"}</span>
@@ -133,6 +170,57 @@ export function AdminLibrarySources() {
                     إعادة الربط
                   </button>
                 </div>
+                <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+                  <div className="row-between">
+                    <div>
+                      <div style={{ fontWeight: 800 }}>المسارات المستثناة</div>
+                      <div className="hint">أي مجلد تضيفه هنا لن يتم فحصه ولن يظهر للمشاهدين.</div>
+                    </div>
+                    <button className="btn btn-sm btn-ghost" onClick={() => setExcludePickerFor(s)}>
+                      اختيار مجلد
+                    </button>
+                  </div>
+                  <div className="row" style={{ marginTop: 10 }}>
+                    <input
+                      className="input mono"
+                      dir="ltr"
+                      value={excludeInputs[sourceKey] || ""}
+                      onChange={(e) => setExcludeInputs((prev) => ({ ...prev, [sourceKey]: e.target.value }))}
+                      placeholder={pathPlaceholder}
+                      style={{ flex: 1, minWidth: 220 }}
+                    />
+                    <button
+                      className="btn btn-sm btn-primary"
+                      disabled={addExclude.isPending || !(excludeInputs[sourceKey] || "").trim()}
+                      onClick={() => addExclude.mutate({ id: s.id, excludePath: excludeInputs[sourceKey] || "" })}
+                    >
+                      استثناء
+                    </button>
+                  </div>
+                  {excludes.length ? (
+                    <div className="row" style={{ marginTop: 10 }}>
+                      {excludes.map((excludePath) => (
+                        <span key={excludePath} className="badge" style={{ maxWidth: "100%", gap: 8 }}>
+                          <code className="mono truncate" dir="ltr" style={{ maxWidth: 260 }}>{excludePath}</code>
+                          <button
+                            className="btn btn-sm btn-ghost"
+                            aria-label="حذف الاستثناء"
+                            onClick={() => removeExclude.mutate({ id: s.id, excludePath })}
+                            disabled={removeExclude.isPending}
+                            style={{ minHeight: 28, padding: "0 8px" }}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="hint" style={{ marginTop: 10 }}>لا توجد استثناءات لهذا المصدر.</p>
+                  )}
+                </div>
+                    </>
+                  );
+                })()}
               </div>
             ))}
           </div>
