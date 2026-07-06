@@ -102,10 +102,25 @@ function FolderCard({ entry, onOpen }: { entry: LibraryBrowseEntry; onOpen: () =
 function MediaFileCard({ entry }: { entry: LibraryBrowseEntry }) {
   const item = entry.media;
   const title = item?.title || item?.name || entry.name;
+  const mediaId = item?.id ? String(item.id) : "";
+  if (!mediaId) {
+    return (
+      <div className="folder-card folder-file-card" aria-disabled="true">
+        <div className="folder-card-art">
+          {entry.cover ? <img src={entry.cover} alt="" loading="lazy" /> : <span aria-hidden>🎬</span>}
+          <span className="offline-ribbon">غير جاهز</span>
+        </div>
+        <div className="folder-card-body">
+          <span className="folder-card-title">{title}</span>
+          <span className="folder-card-sub">أعد فحص المكتبة من لوحة الإدارة</span>
+        </div>
+      </div>
+    );
+  }
   return (
     <AppLink
       href="/watch/media/$id"
-      params={{ id: String(item?.id || "") }}
+      params={{ id: mediaId }}
       className="folder-card folder-file-card"
     >
       <div className="folder-card-art">

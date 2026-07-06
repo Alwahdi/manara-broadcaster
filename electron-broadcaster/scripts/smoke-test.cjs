@@ -377,7 +377,7 @@ async function main() {
     fs.mkdirSync(nestedDir, { recursive: true });
     const mediaPath = path.join(nestedDir, 'smoke-video.mp4');
     fs.writeFileSync(mediaPath, Buffer.from('fake video'));
-    db.upsertMedia({
+    const mediaId = db.upsertMedia({
       path: mediaPath,
       kind: 'movie',
       title: 'فيلم smoke',
@@ -412,6 +412,12 @@ async function main() {
     const browseNested = await res.json();
     assert.ok(browseNested.entries.some((entry) => entry.type === 'media' && entry.media?.title === 'فيلم smoke'), 'folder browser shows media files inside nested folders');
 
+    res = await request(base, `/api/media/${mediaId}`);
+    assert.equal(res.status, 200);
+    const mediaDetails = await res.json();
+    assert.equal(mediaDetails.id, mediaId, 'media details API returns the media item directly for the web player');
+    assert.ok(Array.isArray(mediaDetails.subtitles), 'media details include subtitles array');
+
     res = await request(base, '/api/admin/iptv', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...auth },
@@ -429,6 +435,9 @@ async function main() {
     const iptvUpdated = await res.json();
     assert.equal(iptvUpdated.name, 'Smoke IPTV FHD');
     assert.equal(iptvUpdated.category, 'اختبار معدل');
+
+    res = await request(base, `/iptv/${iptvCreated.id}/index.m3u8`);
+    assert.notEqual(res.status, 404, 'IPTV proxy accepts the player /index.m3u8 route');
 
     res = await request(base, '/api/viewer/state');
     assert.equal(res.status, 200);

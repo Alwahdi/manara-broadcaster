@@ -6,8 +6,17 @@ import { PageHeader, MediaTile } from "@/components/common";
 import { useBrand } from "@/hooks/useBrand";
 
 export function ViewerHome() {
-  const { brand } = useBrand();
+  const { brand, state } = useBrand();
   const library = useQuery({ queryKey: ["library", "home"], queryFn: () => api.library() });
+  const mode = String(state?.ports?.mode || state?.settings?.experienceLayout || "unified");
+  const livePort = Number(state?.ports?.live || state?.settings?.port || 0);
+  const libraryPort = Number(state?.ports?.library || state?.ports?.libraryConfigured || state?.settings?.libraryPort || 0);
+  const crossPortHref = (path: "/live" | "/library") => {
+    if (typeof window === "undefined" || mode !== "separate") return path;
+    const targetPort = path === "/live" ? livePort : libraryPort;
+    if (!targetPort || Number(window.location.port) === targetPort) return path;
+    return `${window.location.protocol}//${window.location.hostname}:${targetPort}${path}`;
+  };
 
   return (
     <div>
@@ -21,8 +30,8 @@ export function ViewerHome() {
             شاهد البث المباشر والقنوات والمكتبة الكاملة عبر الشبكة المحلية — دون الحاجة إلى إنترنت.
           </p>
           <div className="row" style={{ marginTop: 20 }}>
-            <AppLink href="/live" className="btn btn-primary">مشاهدة البث المباشر</AppLink>
-            <AppLink href="/library" className="btn btn-ghost">تصفّح المكتبة</AppLink>
+            <AppLink href={crossPortHref("/live")} className="btn btn-primary">مشاهدة البث المباشر</AppLink>
+            <AppLink href={crossPortHref("/library")} className="btn btn-ghost">تصفّح المكتبة</AppLink>
           </div>
         </div>
       </section>

@@ -1421,7 +1421,14 @@ function createHandler(options = {}) {
           const type = String(body.captureKind || body.sourceType || 'screen').trim();
           const sourceId = String(body.sourceId || '').trim();
           const sourceName = String(body.sourceName || '').trim();
-          source = type === 'url' ? { type: 'url', url: sourceId, name: sourceName } : { type, id: sourceId, name: sourceName };
+          source = type === 'url'
+            ? { type: 'url', url: sourceId, name: sourceName, matchName: sourceName }
+            : { type, id: sourceId, name: sourceName, matchName: sourceName };
+        } else {
+          source = {
+            ...source,
+            matchName: String(source.matchName || source.name || body.sourceName || '').trim(),
+          };
         }
         const channel = db.upsertBroadcastChannel({
           id: body.id || ('ch_' + Date.now().toString(36) + '_' + crypto.randomBytes(3).toString('hex')),
@@ -1430,6 +1437,7 @@ function createHandler(options = {}) {
           source,
           audioDeviceId: String(body.audioId || body.audioDeviceId || 'none').trim() || 'none',
           audioDeviceName: String(body.audioName || body.audioDeviceName || '').trim(),
+          audioDeviceMatchName: String(body.audioName || body.audioDeviceName || '').trim(),
           resolution: body.resolution || '1280x720',
           fps: body.fps || 30,
           bitrateKbps: body.bitrateKbps || 2500,
@@ -1472,6 +1480,7 @@ function createHandler(options = {}) {
             type,
             id: String(body.sourceId || source.id || '').trim(),
             name: String(body.sourceName || source.name || '').trim(),
+            matchName: String(body.sourceMatchName || body.sourceName || source.matchName || source.name || '').trim(),
           };
         }
         const channel = db.upsertBroadcastChannel({
@@ -1483,6 +1492,7 @@ function createHandler(options = {}) {
           source,
           audioDeviceId: String(body.audioId ?? body.audioDeviceId ?? current.audioDeviceId ?? 'none').trim() || 'none',
           audioDeviceName: String(body.audioName ?? body.audioDeviceName ?? current.audioDeviceName ?? '').trim(),
+          audioDeviceMatchName: String(body.audioDeviceMatchName ?? body.audioName ?? body.audioDeviceName ?? current.audioDeviceMatchName ?? current.audioDeviceName ?? '').trim(),
           enabled: body.enabled == null ? current.enabled !== false : body.enabled !== false && body.enabled !== 0,
         });
         if (options.onChannelsChanged) options.onChannelsChanged();
@@ -1704,9 +1714,9 @@ function createHandler(options = {}) {
     m = /^\/api\/media\/(\d+)$/.exec(u.pathname);
     if (m) {
       if (!featureAllowed(options, 'media')) return denyFeature(req, res, options, 'media');
-      const item = db.getMedia(parseInt(m[1], 10));
+      const item = mediaPayload(db.getMedia(parseInt(m[1], 10)));
       if (!item) return sendJson(res, 404, { error: 'not found' });
-      return sendJson(res, 200, { media: item, subtitles: db.listSubtitles(item.id) });
+      return sendJson(res, 200, { ...item, subtitles: db.listSubtitles(item.id) });
     }
     m = /^\/media\/(\d+)$/.exec(u.pathname);
     if (m) {
@@ -1738,12 +1748,12 @@ function createHandler(options = {}) {
       } catch (e) { res.writeHead(500); res.end(String(e.message)); return; }
     }
     // IPTV proxy: /iptv/:id  (local numeric or cloud-<uuid>)
-    m = /^\/iptv\/(cloud-[^/]+|\d+)(?:\/(\w+))?$/i.exec(u.pathname);
+    m = /^\/iptv\/(cloud-[^/]+|\d+)(?:\/([^?]+))?$/i.exec(u.pathname);
     if (m) {
       if (!featureAllowed(options, 'iptv')) return denyFeature(req, res, options, 'iptv');
       try {
         const rawId = m[1];
-        const sub = m[2] || '';
+        const sub = (m[2] || '').replace(/^\/+|\/+$/g, '');
         let ch = null;
         if (rawId.startsWith('cloud-')) {
           const cc = typeof options.getCloudIptvChannel === 'function'
@@ -1767,7 +1777,7 @@ function createHandler(options = {}) {
         attachRequestAccounting(req, res, { action: 'iptv', targetType: 'iptv', targetId: rawId, targetName: ch.name || rawId });
         const baseProxyUrl = `http://${req.headers.host}/iptv/${rawId}`;
         const policy = typeof options.getIptvPolicy === 'function' ? options.getIptvPolicy() : {};
-        return iptv.handleRequest(ch, sub, u.query, req, res, baseProxyUrl, policy);
+        return iptv.handleRequest(ch, sub === 'index.m3u8' || sub === 'index' ? '' : sub, u.query, req, res, baseProxyUrl, policy);
       } catch (e) {
         const message = `Local IPTV proxy failed: ${e.message}`;
         res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8', 'X-Manara-Error': encodeURIComponent(message) });

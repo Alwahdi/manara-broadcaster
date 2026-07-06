@@ -33,12 +33,16 @@ function findDevice(devices, kind, wantedId, wantedName) {
   const rows = devices.filter((device) => device.kind === kind);
   const id = norm(wantedId);
   const name = norm(wantedName);
-  return rows.find((device) => device.deviceId === wantedId)
-    || rows.find((device) => id && norm(device.label).includes(id))
+  const direct = rows.find((device) => device.deviceId === wantedId);
+  if (direct) return direct;
+  const byIdLabel = rows.find((device) => id && norm(device.label).includes(id));
+  if (byIdLabel) return byIdLabel;
+  const byName = rows.find((device) => name && norm(device.label) === name)
     || rows.find((device) => name && norm(device.label).includes(name))
-    || rows.find((device) => name && name.includes(norm(device.label)))
-    || rows[0]
-    || null;
+    || rows.find((device) => name && name.includes(norm(device.label)));
+  if (byName) return byName;
+  if (wantedId || wantedName) return null;
+  return rows[0] || null;
 }
 
 async function captureStream() {
@@ -50,12 +54,18 @@ async function captureStream() {
 
   let audio = false;
   if (audioId && audioId !== 'none') {
-    const audioDevice = findDevice(devices, 'audioinput', audioId, config.audioDeviceName || audioId);
+    const audioDevice = findDevice(devices, 'audioinput', audioId, config.audioDeviceMatchName || config.audioDeviceName || audioId);
+    if (!audioDevice && (audioId || config.audioDeviceName)) {
+      throw new Error('Selected audio capture device is not available: ' + (config.audioDeviceName || audioId));
+    }
     audio = audioDevice ? { deviceId: { exact: audioDevice.deviceId } } : true;
   }
 
   if (sourceType === 'device') {
-    const videoDevice = findDevice(devices, 'videoinput', source.id, source.name || config.name);
+    const videoDevice = findDevice(devices, 'videoinput', source.id, source.matchName || source.name || config.name);
+    if (!videoDevice && (source.id || source.name || source.matchName)) {
+      throw new Error('Selected video capture device is not available: ' + (source.name || source.id));
+    }
     return navigator.mediaDevices.getUserMedia({
       video: videoDevice ? { deviceId: { exact: videoDevice.deviceId } } : true,
       audio,
