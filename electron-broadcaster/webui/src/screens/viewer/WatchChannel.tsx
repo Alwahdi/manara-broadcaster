@@ -218,16 +218,16 @@ function HlsPlayer({ src }: { src: string }) {
   }, [src, retryKey]);
 
   return (
-    <div className="card" style={{ overflow: "hidden", marginBottom: 20, position: "relative" }}>
+    <div className="live-player-card">
       <video
         ref={videoRef}
         controls
         autoPlay
         playsInline
-        style={{ width: "100%", aspectRatio: "16/9", background: "#000", display: "block" }}
+        className="live-player-video"
       />
       {status || error ? (
-        <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", padding: 24, textAlign: "center", background: "rgba(2,6,23,.72)" }}>
+        <div className="live-player-overlay">
           <div>
             {status && !error ? <div className="spinner" style={{ margin: "0 auto 12px" }} /> : null}
             <strong>{error || status}</strong>
@@ -350,16 +350,16 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
   }, [channelId, livePort]);
 
   return (
-    <div className="card" style={{ overflow: "hidden", marginBottom: 20, position: "relative" }}>
+    <div className="live-player-card">
       <video
         ref={videoRef}
         controls
         autoPlay
         playsInline
-        style={{ width: "100%", aspectRatio: "16/9", background: "#000", display: "block" }}
+        className="live-player-video live-player-video-fill"
       />
       {!ready ? (
-        <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", padding: 24, textAlign: "center", background: "rgba(2,6,23,.72)" }}>
+        <div className="live-player-overlay">
           <div>
             <div className="spinner" style={{ margin: "0 auto 12px" }} />
             <strong>{status}</strong>

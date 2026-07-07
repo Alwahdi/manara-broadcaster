@@ -704,6 +704,36 @@ button.folder-card {
   font-size: 0.72rem;
   font-weight: 800;
 }
+.live-player-card {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 20px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  background: #000;
+  box-shadow: var(--shadow-lift);
+}
+.live-player-video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: min(72vh, 720px);
+  min-height: 260px;
+  background: #000;
+  object-fit: contain;
+}
+.live-player-video-fill {
+  object-fit: cover;
+}
+.live-player-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  text-align: center;
+  background: rgba(2, 6, 23, 0.72);
+}
 
 /* Capture channel wizard */
 .capture-wizard {
@@ -954,6 +984,10 @@ button.folder-card {
     height: 52px;
     border-radius: 14px;
   }
+  .live-player-video {
+    min-height: 220px;
+    max-height: 68vh;
+  }
   .capture-choice-grid,
   .capture-source-grid,
   .capture-audio-grid,
@@ -978,6 +1012,14 @@ button.folder-card {
   .live-channel-grid,
   .folder-grid {
     grid-template-columns: 1fr;
+  }
+  .live-player-card {
+    margin-inline: -12px;
+    border-radius: 0;
+    border-inline: 0;
+  }
+  .live-player-video {
+    min-height: 210px;
   }
 }
 
