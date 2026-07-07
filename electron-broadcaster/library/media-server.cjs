@@ -523,13 +523,44 @@ function normalizeRelativePath(value = '') {
     .replace(/\/{2,}/g, '/');
 }
 
+function isHiddenOrSystemEntry(name = '') {
+  const lower = String(name || '').toLowerCase();
+  return !lower || lower.startsWith('.') ||
+    lower === '$recycle.bin' ||
+    lower === 'system volume information' ||
+    lower === '@eadir' ||
+    lower === 'node_modules';
+}
+
+function isWithinPath(rootPath, targetPath) {
+  const root = path.resolve(String(rootPath || ''));
+  const target = path.resolve(String(targetPath || ''));
+  return target === root || target.startsWith(root + path.sep);
+}
+
+function sourceExcludeMatcher(source) {
+  const root = path.resolve(String(source?.path || ''));
+  const excludes = normalizeExcludePaths(source?.excludePaths || source?.exclude_paths || [], root)
+    .map((entry) => path.resolve(entry).replace(/[\\/]+$/g, '').toLowerCase());
+  return (targetPath) => {
+    if (!excludes.length) return false;
+    const target = path.resolve(String(targetPath || '')).replace(/[\\/]+$/g, '').toLowerCase();
+    return excludes.some((entry) => target === entry || target.startsWith(entry + path.sep));
+  };
+}
+
 function libraryBrowsePayload(query = {}) {
-  const sources = db.listPaths().map((source) => ({
-    id: source.id,
-    name: source.label || path.basename(String(source.path || '').replace(/[\\/]+$/g, '')) || source.path,
-    path: source.path,
-    online: source.status !== 'missing',
-  }));
+  const sources = db.listPaths().map((source) => {
+    let online = source.status !== 'missing';
+    try { online = online && fs.existsSync(source.path) && fs.statSync(source.path).isDirectory(); } catch { online = false; }
+    return {
+      id: source.id,
+      name: source.label || path.basename(String(source.path || '').replace(/[\\/]+$/g, '')) || source.path,
+      path: source.path,
+      online,
+      excludePaths: Array.isArray(source.excludePaths) ? source.excludePaths : Array.isArray(source.exclude_paths) ? source.exclude_paths : [],
+    };
+  });
   const media = listLibraryItems({ limit: 100000 });
   const sourceId = query.sourceId ? String(query.sourceId) : '';
   const currentPath = normalizeRelativePath(query.path || '');
@@ -555,6 +586,31 @@ function libraryBrowsePayload(query = {}) {
   const source = sources.find((row) => String(row.id) === sourceId) || null;
   const folders = new Map();
   const files = [];
+  if (source?.online) {
+    const root = path.resolve(String(source.path || ''));
+    const target = path.resolve(root, currentPath);
+    const excluded = sourceExcludeMatcher(source);
+    if (isWithinPath(root, target) && !excluded(target)) {
+      try {
+        for (const entry of fs.readdirSync(target, { withFileTypes: true })) {
+          if (!entry.isDirectory() || isHiddenOrSystemEntry(entry.name)) continue;
+          const fullPath = path.join(target, entry.name);
+          if (excluded(fullPath)) continue;
+          const rel = normalizeRelativePath(path.relative(root, fullPath));
+          if (!rel) continue;
+          folders.set(rel, {
+            type: 'folder',
+            sourceId,
+            name: entry.name,
+            path: rel,
+            count: 0,
+            cover: '',
+            online: true,
+          });
+        }
+      } catch {}
+    }
+  }
   for (const item of media.filter((row) => String(row.source_id || '') === sourceId)) {
     const rel = normalizeRelativePath(item.relative_path || path.basename(item.path || item.title || ''));
     if (!rel) continue;
@@ -755,6 +811,13 @@ function safeCloudIptvList(options = {}) {
   catch { return []; }
 }
 
+function channelEnabled(ch) {
+  const value = ch?.enabled;
+  if (value === false || value === 0) return false;
+  const text = String(value ?? 'true').trim().toLowerCase();
+  return !['false', '0', 'off', 'disabled', 'no'].includes(text);
+}
+
 function liveChannelsPayload(options = {}) {
   const broadcastAllowed = featureAllowed(options, 'channels');
   const iptvAllowed = featureAllowed(options, 'iptv');
@@ -765,7 +828,7 @@ function liveChannelsPayload(options = {}) {
     ? options.getIptvChannels()
     : [];
   const safeBroadcast = (Array.isArray(broadcast) ? broadcast : [])
-    .filter((ch) => ch && ch.enabled !== false && ch.enabled !== 0)
+    .filter((ch) => ch && channelEnabled(ch))
     .map((ch) => ({
       ...ch,
       id: String(ch.id),
@@ -775,7 +838,7 @@ function liveChannelsPayload(options = {}) {
       playUrl: `/watch?ch=${encodeURIComponent(String(ch.id))}`,
     }));
   const safeIptv = (Array.isArray(iptv) ? iptv : [])
-    .filter((ch) => ch && ch.enabled !== false && ch.enabled !== 0)
+    .filter((ch) => ch && channelEnabled(ch))
     .map((ch) => ({
       ...ch,
       id: String(ch.id),
@@ -1272,6 +1335,28 @@ function createHandler(options = {}) {
       const sessions = typeof db.listSessions === 'function' ? db.listSessions() : [];
       const viewers = typeof db.listViewerAccounts === 'function' ? db.listViewerAccounts() : [];
       const logs = typeof db.listAccessLogs === 'function' ? db.listAccessLogs(1000) : [];
+      const iptvRows = Object.values(iptv.status() || {});
+      const iptvTotals = iptvRows.reduce((acc, row) => {
+        acc.activeIptvViewers += Number(row.viewers) || 0;
+        acc.peakIptvViewers = Math.max(acc.peakIptvViewers, Number(row.peakViewers) || 0);
+        acc.iptvUpstreamBytes += Number(row.totalUpstreamBytes) || 0;
+        acc.iptvDownstreamBytes += Number(row.totalDownstreamBytes) || 0;
+        acc.iptvProviderRequests += Number(row.upstreamRequests) || 0;
+        acc.iptvErrors += Number(row.errors) || 0;
+        acc.iptvCacheHits += Number(row.cacheHits) || 0;
+        acc.iptvCacheMisses += Number(row.cacheMisses) || 0;
+        return acc;
+      }, {
+        activeIptvViewers: 0,
+        peakIptvViewers: 0,
+        iptvUpstreamBytes: 0,
+        iptvDownstreamBytes: 0,
+        iptvProviderRequests: 0,
+        iptvErrors: 0,
+        iptvCacheHits: 0,
+        iptvCacheMisses: 0,
+      });
+      const cacheTotal = iptvTotals.iptvCacheHits + iptvTotals.iptvCacheMisses;
       return sendJson(res, 200, {
         totalMedia: stats.total || stats.count || 0,
         totalMovies: stats.movies || 0,
@@ -1280,7 +1365,10 @@ function createHandler(options = {}) {
         activeSessions: sessions.length,
         totalRequests: logs.length,
         sources: librarySourcesPayload().length,
+        ...iptvTotals,
+        iptvCacheHitRate: cacheTotal ? Math.round((iptvTotals.iptvCacheHits / cacheTotal) * 100) : 0,
         stats,
+        iptv: iptvRows,
       });
     }
     if (u.pathname === '/api/admin/diagnostics' && req.method === 'GET') {

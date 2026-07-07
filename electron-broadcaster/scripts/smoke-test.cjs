@@ -323,8 +323,10 @@ async function main() {
     assert.ok(sourceRow?.id, 'added library source has an id for folder browsing');
 
     const scannedDir = path.join(dir, 'قسم للفحص');
+    const emptyVisibleDir = path.join(dir, 'مجلد ظاهر بدون ملفات');
     const excludedDir = path.join(dir, 'قسم مستبعد');
     fs.mkdirSync(scannedDir, { recursive: true });
+    fs.mkdirSync(emptyVisibleDir, { recursive: true });
     fs.mkdirSync(excludedDir, { recursive: true });
     fs.writeFileSync(path.join(scannedDir, 'included-video.mp4'), Buffer.from('fake video'));
     fs.writeFileSync(path.join(excludedDir, 'excluded-video.mp4'), Buffer.from('fake video'));
@@ -355,6 +357,7 @@ async function main() {
     assert.equal(res.status, 200);
     let scannedBrowseSource = await res.json();
     assert.ok(scannedBrowseSource.entries.some((entry) => entry.type === 'folder' && entry.name === 'قسم للفحص'), 'folder browser shows included source folders');
+    assert.ok(scannedBrowseSource.entries.some((entry) => entry.type === 'folder' && entry.name === 'مجلد ظاهر بدون ملفات'), 'folder browser shows real disk folders even before media is indexed');
     assert.ok(!scannedBrowseSource.entries.some((entry) => entry.name === 'قسم مستبعد'), 'folder browser hides excluded source folders');
 
     // Adding a single capture channel through the wizard endpoint.

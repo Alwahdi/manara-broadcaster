@@ -251,6 +251,7 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const [status, setStatus] = useState("جاري الاتصال بمصدر البث...");
   const [ready, setReady] = useState(false);
+  const [fitMode, setFitMode] = useState<"fit" | "fill" | "zoom">("zoom");
 
   useEffect(() => {
     let closed = false;
@@ -351,12 +352,30 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
 
   return (
     <div className="live-player-card">
+      {ready ? (
+        <div className="live-player-toolbar" aria-label="حجم صورة البث">
+          {([
+            ["fit", "كامل"],
+            ["fill", "ملء"],
+            ["zoom", "تقريب"],
+          ] as const).map(([mode, label]) => (
+            <button
+              key={mode}
+              type="button"
+              className={fitMode === mode ? "active" : ""}
+              onClick={() => setFitMode(mode)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <video
         ref={videoRef}
         controls
         autoPlay
         playsInline
-        className="live-player-video live-player-video-fill"
+        className={`live-player-video live-player-video-${fitMode}`}
       />
       {!ready ? (
         <div className="live-player-overlay">

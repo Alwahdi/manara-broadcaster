@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { QueryBoundary, EmptyState } from "@/components/States";
 import { PageHeader, StatTile } from "@/components/common";
-import { formatNumber } from "@/lib/format";
+import { formatBytes, formatNumber } from "@/lib/format";
 
 // Arabic labels for the numeric metrics returned by /api/admin/reports.
 // Presenting raw English keys in an Arabic RTL interface is confusing, so every
@@ -18,7 +18,22 @@ const REPORT_LABELS: Record<string, string> = {
   sources: "مصادر التخزين",
   total: "الإجمالي",
   uniqueDevices: "الأجهزة الفريدة",
+  activeIptvViewers: "مشاهدو IPTV الآن",
+  peakIptvViewers: "أعلى مشاهدي IPTV",
+  iptvUpstreamBytes: "سحب IPTV من الإنترنت",
+  iptvDownstreamBytes: "إرسال IPTV للشبكة",
+  iptvProviderRequests: "طلبات مزود IPTV",
+  iptvErrors: "أخطاء IPTV",
+  iptvCacheHits: "نجاحات كاش IPTV",
+  iptvCacheMisses: "طلبات كاش جديدة",
+  iptvCacheHitRate: "نسبة كاش IPTV",
 };
+
+function reportValue(key: string, value: number) {
+  if (key.toLowerCase().includes("bytes")) return formatBytes(value);
+  if (key.toLowerCase().includes("rate")) return `${formatNumber(value)}%`;
+  return formatNumber(value);
+}
 
 export function AdminReports() {
   const reports = useQuery({ queryKey: ["admin-reports"], queryFn: api.reports });
@@ -47,7 +62,7 @@ export function AdminReports() {
           return (
             <div className="grid grid-4">
               {entries.map(([key, value]) => (
-                <StatTile key={key} value={formatNumber(value)} label={REPORT_LABELS[key] || key} />
+                <StatTile key={key} value={reportValue(key, value)} label={REPORT_LABELS[key] || key} />
               ))}
             </div>
           );
