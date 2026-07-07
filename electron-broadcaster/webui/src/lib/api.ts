@@ -234,10 +234,22 @@ export interface ViewerMessage {
   [k: string]: unknown;
 }
 
+export interface DiagnosticsStorage {
+  backend?: string;
+  driver?: string;
+  ok?: boolean;
+  fallbackActive?: boolean;
+  migratedFromFallback?: boolean;
+  loadError?: string;
+  initError?: string;
+  recoveryAction?: string;
+}
+
 export interface Diagnostics {
   health?: Record<string, unknown>;
   system?: Record<string, unknown>;
   services?: { name: string; ok: boolean; detail?: string }[];
+  storage?: DiagnosticsStorage;
   [k: string]: unknown;
 }
 

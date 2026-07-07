@@ -21,7 +21,8 @@
     "platform": "node scripts/platform-admin.cjs",
     "platform:apply-schema": "node scripts/platform-admin.cjs apply-schema",
     "platform:list": "node scripts/platform-admin.cjs list all",
-    "test": "node scripts/smoke-test.cjs && node scripts/entitlements-test.cjs && node scripts/format-test.cjs && node scripts/settings-test.cjs",
+    "test": "node scripts/smoke-test.cjs && node scripts/entitlements-test.cjs && node scripts/format-test.cjs && node scripts/settings-test.cjs && node scripts/persistence-test.cjs",
+    "test:native": "node scripts/native-db-test.cjs",
     "test:load": "node scripts/load-test.cjs",
     "audit:prod": "npm audit --omit=dev --audit-level=moderate",
     "ci": "npm run test && npm run typecheck:webui && npm run audit:prod"

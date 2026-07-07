@@ -40,9 +40,11 @@ Key areas:
 ## Persistence Rules
 
 - Use the existing DB/settings helpers instead of ad hoc writes.
-- Protect Windows saves with atomic writes or transactional DB operations.
+- Protect Windows saves with atomic writes or transactional DB operations. Use `writeJsonAtomic` from `library/atomic-write.cjs` (fsync + retry on Windows file locks) — do not hand-roll temp+rename writes.
 - Preserve migrations from old Manara paths/names unless a migration issue explicitly removes them.
 - Do not delete media library records just because a drive is temporarily offline.
+- The media library uses SQLite (`better-sqlite3`) when available and only falls back to JSON when the native module cannot load. `db.diagnostics()` reports the active backend (`sqlite` / `json-fallback` / `recovery`), the exact load/init failure cause, and an admin recovery action. Production must not silently run in JSON fallback — surface it in the admin Diagnostics screen.
+- When SQLite becomes available after a JSON-fallback run, `db.init()` migrates the fallback media data back into SQLite (recovery mode) and keeps the old file as `*.media.json.migrated`.
 
 ## Release And Packaging Rules
 
@@ -53,6 +55,7 @@ Key areas:
 
 ## Validation
 
-- Run `npm --prefix electron-broadcaster run test` for logic/runtime changes.
+- Run `npm --prefix electron-broadcaster run test` for logic/runtime changes. This includes `persistence-test.cjs`, which simulates a restart and the JSON-fallback → SQLite recovery/migration path.
 - Run `npm --prefix electron-broadcaster run ci` for release-facing changes.
+- Run `npm --prefix electron-broadcaster run test:native` to verify `better-sqlite3` loads and completes a read/write round-trip. The Windows packaging CI job runs this before building the installer so a broken native DB build is caught early.
 - For native SQLite issues, use `npm --prefix electron-broadcaster run dev:repair-native` when needed.

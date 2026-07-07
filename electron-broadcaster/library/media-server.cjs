@@ -473,15 +473,30 @@ function diagnosticsPayload(options) {
   const health = serviceHealth(options);
   let dbDiag = {};
   try { dbDiag = db.diagnostics(); } catch { dbDiag = {}; }
+  const backend = dbDiag.storageBackend || (dbDiag.sqliteAvailable ? 'sqlite' : 'json-fallback');
+  const storageOk = backend === 'sqlite' || backend === 'recovery';
+  const storageDetail = backend === 'recovery'
+    ? 'SQLite (تمت الاستعادة من JSON)'
+    : (backend === 'sqlite' ? 'SQLite' : 'JSON احتياطي');
   const services = [
     { name: 'خادم الوسائط', ok: true, detail: 'يعمل' },
     { name: 'قنوات IPTV', ok: !!iptv.status, detail: 'وكيل البث' },
-    { name: 'قاعدة البيانات', ok: !!dbDiag, detail: dbDiag.driver || (dbDiag.mediaFallbackPath ? 'JSON' : 'SQLite') },
+    { name: 'قاعدة البيانات', ok: storageOk, detail: storageDetail },
     { name: 'البث المباشر', ok: webui.clientCount() >= 0, detail: `${webui.clientCount()} متصل` },
   ];
   return {
     health,
     services,
+    storage: {
+      backend,
+      driver: dbDiag.driver || (storageOk ? 'SQLite' : 'JSON'),
+      ok: storageOk,
+      fallbackActive: !!dbDiag.mediaFallbackActive,
+      migratedFromFallback: !!dbDiag.migratedFromFallback,
+      loadError: dbDiag.sqliteLoadError || '',
+      initError: dbDiag.sqliteInitError || '',
+      recoveryAction: dbDiag.recoveryAction || '',
+    },
     system: {
       platform: os.platform(),
       arch: os.arch(),
