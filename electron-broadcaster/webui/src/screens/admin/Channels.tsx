@@ -130,9 +130,9 @@ function ChannelEditor({
     description: channel.description || "",
     sourceName: String(source.name || ""),
     audioDeviceName: channel.audioDeviceName || "",
-    resolution: channel.resolution || "1280x720",
+    resolution: channel.resolution || "1920x1080",
     fps: String(channel.fps || 30),
-    bitrateKbps: String(channel.bitrateKbps || 2500),
+    bitrateKbps: String(channel.bitrateKbps || 6000),
   });
   const set = (key: keyof typeof form) => (event: ChangeEvent<HTMLInputElement>) =>
     setForm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -187,7 +187,7 @@ function ChannelEditor({
             audioDeviceName: form.audioDeviceName,
             resolution: form.resolution,
             fps: Number(form.fps) || 30,
-            bitrateKbps: Number(form.bitrateKbps) || 2500,
+            bitrateKbps: Number(form.bitrateKbps) || 6000,
           })}
         >
           حفظ التعديل

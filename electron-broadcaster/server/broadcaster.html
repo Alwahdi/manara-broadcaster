@@ -25,6 +25,43 @@ let ws = null;
 let stream = null;
 let reconnectTimer = null;
 
+function positiveNumber(value, fallback, min, max) {
+  const next = Number(value);
+  if (!Number.isFinite(next) || next <= 0) return fallback;
+  return Math.max(min, Math.min(max, Math.round(next)));
+}
+
+function targetQuality() {
+  return {
+    width: positiveNumber(config.width, 1920, 320, 3840),
+    height: positiveNumber(config.height, 1080, 240, 2160),
+    fps: positiveNumber(config.fps, 30, 15, 60),
+    bitrateKbps: positiveNumber(config.bitrateKbps, 6000, 800, 25000),
+    audioBitrateKbps: positiveNumber(config.audioBitrateKbps, 192, 64, 320),
+  };
+}
+
+function directAudioConstraints(audioDevice) {
+  const constraints = {
+    sampleRate: { ideal: 48000 },
+    channelCount: { ideal: 2 },
+    echoCancellation: false,
+    noiseSuppression: false,
+    autoGainControl: false,
+  };
+  if (audioDevice) constraints.deviceId = { exact: audioDevice.deviceId };
+  return constraints;
+}
+
+function trackSummary(track) {
+  let settings = {};
+  try { settings = track.getSettings ? track.getSettings() : {}; } catch {}
+  if (track.kind === 'video') {
+    return `video:${track.label || 'source'} ${settings.width || '?'}x${settings.height || '?'} ${settings.frameRate || '?'}fps`;
+  }
+  return `audio:${track.label || 'source'} ${settings.sampleRate || '?'}Hz ${settings.channelCount || '?'}ch`;
+}
+
 function norm(value) {
   return String(value || '').toLowerCase().replace(/[^a-z0-9\u0600-\u06ff]+/g, ' ').trim();
 }
@@ -49,6 +86,7 @@ async function captureStream() {
   const source = config.source || {};
   const sourceType = String(source.type || 'screen');
   const audioId = String(config.audioDeviceId || '').trim();
+  const quality = targetQuality();
   let devices = [];
   try { devices = await navigator.mediaDevices.enumerateDevices(); } catch {}
 
@@ -58,7 +96,7 @@ async function captureStream() {
     if (!audioDevice && (audioId || config.audioDeviceName)) {
       throw new Error('Selected audio capture device is not available: ' + (config.audioDeviceName || audioId));
     }
-    audio = audioDevice ? { deviceId: { exact: audioDevice.deviceId } } : true;
+    audio = directAudioConstraints(audioDevice);
   }
 
   if (sourceType === 'device') {
@@ -66,10 +104,27 @@ async function captureStream() {
     if (!videoDevice && (source.id || source.name || source.matchName)) {
       throw new Error('Selected video capture device is not available: ' + (source.name || source.id));
     }
-    return navigator.mediaDevices.getUserMedia({
-      video: videoDevice ? { deviceId: { exact: videoDevice.deviceId } } : true,
-      audio,
-    });
+    const baseVideo = videoDevice ? { deviceId: { exact: videoDevice.deviceId } } : {};
+    const strictVideo = {
+      ...baseVideo,
+      width: { min: Math.min(1280, quality.width), ideal: quality.width, max: quality.width },
+      height: { min: Math.min(720, quality.height), ideal: quality.height, max: quality.height },
+      frameRate: { ideal: quality.fps, max: quality.fps },
+      aspectRatio: { ideal: quality.width / quality.height },
+    };
+    const relaxedVideo = {
+      ...baseVideo,
+      width: { ideal: quality.width },
+      height: { ideal: quality.height },
+      frameRate: { ideal: quality.fps, max: quality.fps },
+      aspectRatio: { ideal: quality.width / quality.height },
+    };
+    try {
+      return await navigator.mediaDevices.getUserMedia({ video: strictVideo, audio });
+    } catch (error) {
+      log('strict capture constraints failed, retrying relaxed constraints:', error.message);
+      return navigator.mediaDevices.getUserMedia({ video: relaxedVideo, audio });
+    }
   }
 
   const sourceId = String(source.id || '').trim();
@@ -77,9 +132,11 @@ async function captureStream() {
     mandatory: {
       chromeMediaSource: 'desktop',
       chromeMediaSourceId: sourceId,
-      maxWidth: Number(config.width) || 1920,
-      maxHeight: Number(config.height) || 1080,
-      maxFrameRate: Number(config.fps) || 30,
+      minWidth: Math.min(1280, quality.width),
+      minHeight: Math.min(720, quality.height),
+      maxWidth: quality.width,
+      maxHeight: quality.height,
+      maxFrameRate: quality.fps,
     },
   };
   try {
@@ -87,7 +144,14 @@ async function captureStream() {
   } catch (error) {
     log('desktop getUserMedia failed, trying getDisplayMedia:', error.message);
     if (navigator.mediaDevices.getDisplayMedia) {
-      return navigator.mediaDevices.getDisplayMedia({ video: true, audio: !!audio });
+      return navigator.mediaDevices.getDisplayMedia({
+        video: {
+          width: { ideal: quality.width },
+          height: { ideal: quality.height },
+          frameRate: { ideal: quality.fps, max: quality.fps },
+        },
+        audio: !!audio,
+      });
     }
     throw error;
   }
@@ -106,8 +170,30 @@ async function ensureStream() {
       restartSoon();
     };
   }
-  log('capture ready for', config.channelId, stream.getTracks().map((track) => track.kind + ':' + track.label).join(', '));
+  log('capture ready for', config.channelId, stream.getTracks().map(trackSummary).join(', '));
   return stream;
+}
+
+async function tuneSender(sender, track) {
+  if (!sender || !track || typeof sender.getParameters !== 'function' || typeof sender.setParameters !== 'function') return;
+  const quality = targetQuality();
+  const params = sender.getParameters() || {};
+  params.encodings = Array.isArray(params.encodings) && params.encodings.length ? params.encodings : [{}];
+  if (track.kind === 'video') {
+    params.degradationPreference = 'maintain-resolution';
+    params.encodings[0] = {
+      ...params.encodings[0],
+      maxBitrate: quality.bitrateKbps * 1000,
+      maxFramerate: quality.fps,
+      scaleResolutionDownBy: 1,
+    };
+  } else if (track.kind === 'audio') {
+    params.encodings[0] = {
+      ...params.encodings[0],
+      maxBitrate: quality.audioBitrateKbps * 1000,
+    };
+  }
+  try { await sender.setParameters(params); } catch (error) { log('sender tuning skipped:', track.kind, error.message); }
 }
 
 function closePeer(id) {
@@ -125,7 +211,10 @@ async function offerToViewer(viewerId) {
   const localStream = await ensureStream();
   const pc = new RTCPeerConnection({ iceServers: [] });
   peers.set(id, pc);
-  for (const track of localStream.getTracks()) pc.addTrack(track, localStream);
+  for (const track of localStream.getTracks()) {
+    const sender = pc.addTrack(track, localStream);
+    await tuneSender(sender, track);
+  }
   pc.onicecandidate = (event) => {
     if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'ice', to: id, candidate: event.candidate }));

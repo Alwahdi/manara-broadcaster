@@ -678,8 +678,9 @@ function channelBroadcasterSignature(channel = {}) {
     source,
     audioDeviceId: channel.audioDeviceId || 'none',
     audioDeviceMatchName: channel.audioDeviceMatchName || channel.audioDeviceName || '',
-    resolution: channel.resolution || '1280x720',
+    resolution: channel.resolution || '1920x1080',
     fps: Number(channel.fps) || 30,
+    bitrateKbps: Number(channel.bitrateKbps) || 6000,
     port: serverInfo?.port || settings.port || DEFAULT_AGENT_PORT,
   });
 }
@@ -704,7 +705,7 @@ function startChannelBroadcaster(channel = {}) {
   if (existing && existing.signature === signature && !existing.window.isDestroyed()) return;
   stopChannelBroadcaster(id);
 
-  const [width, height] = String(channel.resolution || '1280x720').split('x').map((n) => Number(n) || 0);
+  const [width, height] = String(channel.resolution || '1920x1080').split('x').map((n) => Number(n) || 0);
   const source = channelSource(channel);
   const config = {
     channelId: id,
@@ -717,6 +718,8 @@ function startChannelBroadcaster(channel = {}) {
     width: width || 1280,
     height: height || 720,
     fps: Number(channel.fps) || 30,
+    bitrateKbps: Number(channel.bitrateKbps) || 6000,
+    audioBitrateKbps: Number(channel.audioBitrateKbps) || 192,
     wsUrl: liveWsUrl(),
   };
   const encoded = Buffer.from(JSON.stringify(config)).toString('base64url');

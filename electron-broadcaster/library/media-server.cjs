@@ -1596,9 +1596,9 @@ function createHandler(options = {}) {
           audioDeviceId: String(body.audioId || body.audioDeviceId || 'none').trim() || 'none',
           audioDeviceName: String(body.audioName || body.audioDeviceName || '').trim(),
           audioDeviceMatchName: String(body.audioName || body.audioDeviceName || '').trim(),
-          resolution: body.resolution || '1280x720',
+          resolution: body.resolution || '1920x1080',
           fps: body.fps || 30,
-          bitrateKbps: body.bitrateKbps || 2500,
+          bitrateKbps: body.bitrateKbps || 6000,
           autoStart: !!body.autoStart,
           enabled: body.enabled !== false,
         });
