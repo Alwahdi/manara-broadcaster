@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { AppLink } from "@/components/AppLink";
 import type { MediaItem, Channel } from "@/lib/api";
 import { formatDuration } from "@/lib/format";
+import { getChannelQualityLabel } from "@/screens/viewer/viewer-utils";
 
 export function PageHeader({
   title,
@@ -126,9 +127,7 @@ export function ChannelTile({ channel, href }: { channel: Channel; href?: string
   const enabled = channel.enabled !== false && channel.enabled !== 0;
   const kind = channel.type === "iptv" || channel.kind === "iptv" ? "قناة مباشرة" : "بث مباشر";
   const qualities = Array.isArray(channel.qualities) ? channel.qualities : [];
-  const qualityLabel = qualities.length
-    ? qualities.slice(0, 2).map((q) => q.label || q.name || String(q.id)).join(" / ")
-    : channel.resolution || "HD";
+  const qualityLabel = getChannelQualityLabel(channel);
   const inner = (
     <div className="channel-card card-hover">
       <div className="channel-card-glow" aria-hidden />

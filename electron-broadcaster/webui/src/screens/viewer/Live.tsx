@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AppLink } from "@/components/AppLink";
-import { api, type Channel } from "@/lib/api";
+import { api } from "@/lib/api";
 import { QueryBoundary, EmptyState } from "@/components/States";
 import { CategoryChips, ChannelTile, ContentSection } from "@/components/common";
+import { filterChannels, getViewerChannels } from "./viewer-utils";
 
 const FILTERS = [
   { value: "all", label: "الكل" },
@@ -11,7 +12,6 @@ const FILTERS = [
   { value: "news", label: "أخبار" },
   { value: "movies", label: "أفلام" },
   { value: "kids", label: "أطفال" },
-  { value: "favorites", label: "المفضلة" },
 ];
 
 export function Live() {
@@ -20,28 +20,11 @@ export function Live() {
   const [term, setTerm] = useState("");
 
   const channels = useMemo(() => {
-    const data = state.data;
-    if (!data) return [];
-    return (((data.channels as Channel[]) || []).length
-      ? (data.channels as Channel[])
-      : [...(((data.broadcast as Channel[]) || [])), ...(((data.iptv as Channel[]) || []))]);
+    return getViewerChannels(state.data);
   }, [state.data]);
 
   const filtered = useMemo(() => {
-    const q = term.trim().toLowerCase();
-    return channels.filter((channel) => {
-      const haystack = `${channel.name || ""} ${channel.group || ""} ${channel.category || ""} ${channel.description || ""}`.toLowerCase();
-      const matchesTerm = !q || haystack.includes(q);
-      const category = haystack;
-      const matchesFilter =
-        filter === "all" ||
-        (filter === "favorites" && Boolean(channel.favorite)) ||
-        (filter === "sports" && /sport|رياض|bein|match|كرة/i.test(category)) ||
-        (filter === "news" && /news|أخبار|اخبار/i.test(category)) ||
-        (filter === "movies" && /movie|film|cinema|أفلام|افلام/i.test(category)) ||
-        (filter === "kids" && /kids|طفل|أطفال|اطفال/i.test(category));
-      return matchesTerm && matchesFilter;
-    });
+    return filterChannels(channels, filter, term);
   }, [channels, filter, term]);
 
   const featured = filtered.find((channel) => channel.enabled !== false && channel.enabled !== 0) || filtered[0] || channels[0];
@@ -89,7 +72,7 @@ export function Live() {
         }}
         empty={
           <EmptyState
-            icon="📡"
+            icon="W"
             title="لا توجد قنوات مباشرة"
             text="لا توجد قنوات متاحة حاليًا. ستظهر هنا عند توفر بث مباشر على الشبكة."
           />

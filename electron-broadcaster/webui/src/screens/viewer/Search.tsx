@@ -1,12 +1,15 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, type Channel } from "@/lib/api";
+import { AppLink } from "@/components/AppLink";
+import { api } from "@/lib/api";
 import { QueryBoundary, EmptyState } from "@/components/States";
 import { ChannelTile, ContentSection, MediaTile } from "@/components/common";
+import { folderResults, getViewerChannels } from "./viewer-utils";
 
 export function Search() {
   const [term, setTerm] = useState("");
   const library = useQuery({ queryKey: ["library"], queryFn: () => api.library() });
+  const browse = useQuery({ queryKey: ["library-browse", "search-root"], queryFn: () => api.libraryBrowse() });
   const viewer = useQuery({ queryKey: ["viewer-state"], queryFn: api.viewerState });
 
   const mediaResults = useMemo(() => {
@@ -20,18 +23,16 @@ export function Search() {
     );
   }, [library.data, term]);
   const channelResults = useMemo(() => {
-    const data = viewer.data;
-    const channels = data
-      ? (((data.channels as Channel[]) || []).length
-        ? (data.channels as Channel[])
-        : [...(((data.broadcast as Channel[]) || [])), ...(((data.iptv as Channel[]) || []))])
-      : [];
+    const channels = getViewerChannels(viewer.data);
     const q = term.trim().toLowerCase();
     if (!q) return channels.slice(0, 8);
     return channels.filter((channel) =>
       `${channel.name || ""} ${channel.group || ""} ${channel.category || ""}`.toLowerCase().includes(q),
     );
   }, [viewer.data, term]);
+  const folderMatches = useMemo(() => {
+    return folderResults(browse.data?.entries, term).filter((entry) => entry.type === "folder").slice(0, term.trim() ? 12 : 8);
+  }, [browse.data, term]);
 
   return (
     <div className="search-page">
@@ -48,7 +49,7 @@ export function Search() {
       </section>
       <QueryBoundary query={library} isEmpty={() => false}>
         {() =>
-          mediaResults.length === 0 && channelResults.length === 0 ? (
+          mediaResults.length === 0 && channelResults.length === 0 && folderMatches.length === 0 ? (
             <EmptyState
               icon="•"
               title={term ? "لا نتائج" : "ابدأ البحث"}
@@ -66,10 +67,32 @@ export function Search() {
                 </ContentSection>
               ) : null}
               {mediaResults.length ? (
-                <ContentSection title="المكتبة" subtitle="أفلام وملفات ومجلدات مطابقة">
+                <ContentSection title="محتوى المكتبة" subtitle="نتائج مطابقة من محتوى الشبكة">
                   <div className="grid grid-auto">
                     {mediaResults.map((item) => (
                       <MediaTile key={item.id} item={item} />
+                    ))}
+                  </div>
+                </ContentSection>
+              ) : null}
+              {folderMatches.length ? (
+                <ContentSection title="أقسام المكتبة" subtitle="أقسام يمكنك تصفحها مباشرة">
+                  <div className="guide-card-grid">
+                    {folderMatches.map((entry) => (
+                      <AppLink
+                        key={`${entry.sourceId || "root"}-${entry.path || entry.name}`}
+                        href="/library"
+                        className="guide-card"
+                      >
+                        <span className="guide-card-logo">
+                          {entry.cover ? <img src={entry.cover} alt="" /> : <span>{String(entry.name || "W").slice(0, 1)}</span>}
+                        </span>
+                        <span className="guide-card-info">
+                          <strong>{entry.name}</strong>
+                          <small>{entry.count || 0} عنصر</small>
+                        </span>
+                        <span className="quality-badge">قسم</span>
+                      </AppLink>
                     ))}
                   </div>
                 </ContentSection>

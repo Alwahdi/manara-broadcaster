@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AppLink, useAppPath } from "@/components/AppLink";
-import { api, type Channel } from "@/lib/api";
+import { api } from "@/lib/api";
 import { QueryBoundary } from "@/components/States";
 import { ChannelTile, ContentSection } from "@/components/common";
+import { getViewerChannels } from "./viewer-utils";
 
 type FitMode = "fit" | "fill" | "zoom";
 
@@ -21,9 +22,7 @@ export function WatchChannel() {
     <div className="watch-channel-page">
       <QueryBoundary query={state}>
         {(data) => {
-          const channels = (((data.channels as Channel[]) || []).length
-            ? (data.channels as Channel[])
-            : [...(((data.broadcast as Channel[]) || [])), ...(((data.iptv as Channel[]) || []))]);
+          const channels = getViewerChannels(data);
           const channel = channels.find((ch) => String(ch.id) === String(id));
           const qualityOptions = Array.isArray(channel?.qualities) ? channel.qualities : [];
           const activeQualityId = qualityOptions.some((quality) => String(quality.id) === String(selectedQualityId))
@@ -189,7 +188,7 @@ function HlsPlayer({ src }: { src: string }) {
     async function start() {
       cleanup();
       setError("");
-      setStatus("جاري تحميل البث...");
+      setStatus("جاري تشغيل البث...");
       if (media.canPlayType("application/vnd.apple.mpegurl")) {
         media.src = src;
         try { await media.play(); } catch {}

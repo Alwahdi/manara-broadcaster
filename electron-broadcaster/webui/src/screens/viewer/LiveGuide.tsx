@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { AppLink } from "@/components/AppLink";
-import { api, type Channel } from "@/lib/api";
+import { api } from "@/lib/api";
 import { QueryBoundary, EmptyState } from "@/components/States";
 import { ContentSection } from "@/components/common";
+import { getChannelQualityLabel, getViewerChannels } from "./viewer-utils";
 
 export function LiveGuide() {
   const state = useQuery({ queryKey: ["viewer-state"], queryFn: api.viewerState });
@@ -21,17 +22,12 @@ export function LiveGuide() {
       <QueryBoundary
         query={state}
         isEmpty={(d) => {
-          const list = ((d.channels as unknown[]) || []).length
-            ? (d.channels as unknown[])
-            : [...((d.broadcast as unknown[]) || []), ...((d.iptv as unknown[]) || [])];
-          return list.length === 0;
+          return getViewerChannels(d).length === 0;
         }}
         empty={<EmptyState icon="•" title="لا توجد قنوات متاحة حاليًا" text="ستظهر القنوات هنا عند توفر بث مباشر على الشبكة." />}
       >
         {(d) => {
-          const channels = (((d.channels as Channel[]) || []).length
-            ? (d.channels as Channel[])
-            : [...(((d.broadcast as Channel[]) || [])), ...(((d.iptv as Channel[]) || []))]);
+          const channels = getViewerChannels(d);
           return (
             <ContentSection title="القنوات المتاحة" subtitle={`${channels.length} قناة في الدليل`}>
               <div className="guide-card-grid">
@@ -44,6 +40,7 @@ export function LiveGuide() {
                       <strong>{ch.name}</strong>
                       <small>{ch.group || ch.category || "قناة مباشرة"}</small>
                     </span>
+                    <span className="quality-badge">{getChannelQualityLabel(ch)}</span>
                     <span className={`badge badge-dot ${ch.enabled === false ? "badge-off" : "badge-live"}`}>
                       {ch.enabled === false ? "غير متاح" : "مباشر"}
                     </span>

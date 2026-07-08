@@ -1,10 +1,11 @@
 import type { CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AppLink } from "@/components/AppLink";
-import { api, type Channel, type MediaItem } from "@/lib/api";
+import { api, type MediaItem } from "@/lib/api";
 import { EmptyState, QueryBoundary } from "@/components/States";
 import { ChannelTile, ContentSection, MediaTile } from "@/components/common";
 import { useBrand } from "@/hooks/useBrand";
+import { getViewerChannels } from "./viewer-utils";
 
 export function ViewerHome() {
   const { brand, logo, state } = useBrand();
@@ -19,11 +20,7 @@ export function ViewerHome() {
     if (!targetPort || Number(window.location.port) === targetPort) return path;
     return `${window.location.protocol}//${window.location.hostname}:${targetPort}${path}`;
   };
-  const channels = viewer.data
-    ? (((viewer.data.channels as Channel[]) || []).length
-      ? (viewer.data.channels as Channel[])
-      : [...(((viewer.data.broadcast as Channel[]) || [])), ...(((viewer.data.iptv as Channel[]) || []))])
-    : [];
+  const channels = getViewerChannels(viewer.data);
   const media = (library.data?.items || []) as MediaItem[];
   const featuredChannel = channels.find((item) => item.enabled !== false && item.enabled !== 0) || channels[0];
   const featuredMedia = media.find((item) => item.poster) || media[0];
@@ -121,7 +118,7 @@ export function ViewerHome() {
       </ContentSection>
 
       {favorites.length ? (
-        <ContentSection title="المفضلة" subtitle="محتوى حفظته للعودة السريعة">
+        <ContentSection title="المفضلة" subtitle="اختياراتك للعودة السريعة">
           <div className="media-rail horizontal-rail">
             {favorites.map((item) => <MediaTile key={item.id} item={item} />)}
           </div>

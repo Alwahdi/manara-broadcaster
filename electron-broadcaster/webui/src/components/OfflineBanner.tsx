@@ -20,7 +20,7 @@ export function OfflineBanner() {
   if (online) return null;
   return (
     <div className="offline-banner" role="status" aria-live="polite">
-      <span aria-hidden>⚠️</span>
+      <span aria-hidden>!</span>
       <span>لا يوجد اتصال بالشبكة — بعض المحتوى قد لا يكون متاحًا حتى عودة الاتصال.</span>
     </div>
   );

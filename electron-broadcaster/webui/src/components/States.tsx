@@ -11,7 +11,7 @@ export function LoadingState({ label = "جارٍ التحميل…" }: { label?:
 }
 
 export function EmptyState({
-  icon = "🗂️",
+  icon = "W",
   title = "لا توجد عناصر بعد",
   text,
   action,
@@ -47,7 +47,7 @@ export function ErrorState({
   return (
     <div className="state" role="alert">
       <div className="state-icon" aria-hidden>
-        ⚠️
+        !
       </div>
       <div className="state-title">تعذّر تحميل البيانات</div>
       <p className="state-text">{message}</p>
