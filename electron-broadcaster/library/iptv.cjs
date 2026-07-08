@@ -15,12 +15,14 @@
 
 const http = require('http');
 const https = require('https');
+const crypto = require('crypto');
 const { URL } = require('url');
 
 const TS_CHANNELS = new Map(); // id -> { clients:Set<res>, upstreamReq, idleTimer, contentType }
 const HLS_IDLE = new Map();    // id -> { lastHit, idleTimer }
 const METRICS = new Map();     // id -> detailed transfer/viewer counters
 const HLS_RESOURCE_CACHE = new Map(); // key -> { expiresAt, value, promise, channelId, bytes }
+const HLS_URI_TOKENS = new Map(); // token -> { url, channelId, expiresAt }
 
 const DEFAULT_BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36';
 const UA = { 'User-Agent': DEFAULT_BROWSER_UA };
@@ -29,6 +31,7 @@ const HLS_VIEWER_TTL_MS = 25000;
 const RATE_WINDOW_MS = 30000;
 const HLS_PLAYLIST_CACHE_MS = 1200;
 const HLS_SEGMENT_CACHE_MS = 2 * 60 * 1000;
+const HLS_URI_TOKEN_TTL_MS = 10 * 60 * 1000;
 const HLS_CACHE_MAX = 900;
 const HLS_CACHE_MAX_BYTES = 192 * 1024 * 1024;
 const HLS_CACHEABLE_MAX_BYTES = 32 * 1024 * 1024;
@@ -400,6 +403,7 @@ function serveTs(channel, req, res, policy = {}) {
     console.log('[IPTV][TS] client left', channel.id, 'remaining=', s.clients.size);
     if (s.clients.size === 0) {
       s.idleTimer = setTimeout(() => { stopTsUpstream(channel, s); s.idleTimer = null; }, IDLE_MS);
+      if (typeof s.idleTimer.unref === 'function') s.idleTimer.unref();
     }
   };
   req.on('close', cleanup);
@@ -477,6 +481,46 @@ function hlsCacheStatsFor(id) {
   return { entries, bytes };
 }
 
+function pruneHlsUriTokens() {
+  const now = Date.now();
+  for (const [token, row] of HLS_URI_TOKENS) {
+    if (!row || row.expiresAt <= now) HLS_URI_TOKENS.delete(token);
+  }
+}
+
+function registerHlsUri(channelId, absoluteUrl) {
+  pruneHlsUriTokens();
+  const id = String(channelId);
+  const url = String(absoluteUrl || '');
+  const token = crypto
+    .createHash('sha256')
+    .update(id)
+    .update('\0')
+    .update(url)
+    .digest('base64url')
+    .slice(0, 36);
+  HLS_URI_TOKENS.set(token, { url, channelId: id, expiresAt: Date.now() + HLS_URI_TOKEN_TTL_MS });
+  return token;
+}
+
+function resolveHlsUri(channelId, token) {
+  pruneHlsUriTokens();
+  const row = HLS_URI_TOKENS.get(String(token || ''));
+  if (!row || String(row.channelId) !== String(channelId)) return '';
+  row.expiresAt = Date.now() + HLS_URI_TOKEN_TTL_MS;
+  return row.url;
+}
+
+function hlsTokenStatsFor(id) {
+  pruneHlsUriTokens();
+  const channelId = String(id);
+  let entries = 0;
+  for (const row of HLS_URI_TOKENS.values()) {
+    if (String(row.channelId) === channelId) entries += 1;
+  }
+  return { entries };
+}
+
 async function fetchCachedHlsResource(channel, targetUrl, headers, ttlMs) {
   pruneHlsCache();
   const rangeKey = headers?.Range || headers?.range || '';
@@ -543,20 +587,23 @@ function touchHls(id) {
     m.hlsViewers.clear();
     HLS_IDLE.delete(id);
   }, IDLE_MS * 3);
+  if (typeof s.idleTimer.unref === 'function') s.idleTimer.unref();
   HLS_IDLE.set(id, s);
 }
 
-function rewritePlaylist(body, playlistUrl, baseProxyUrl) {
+function rewritePlaylist(body, playlistUrl, baseProxyUrl, channelId) {
   const base = new URL(playlistUrl);
   return body.split(/\r?\n/).map((line) => {
     if (!line || line.startsWith('#')) {
       return line.replace(/URI="([^"]+)"/g, (_m, uri) => {
         const abs = new URL(uri, base).toString();
-        return `URI="${baseProxyUrl}/seg?u=${encodeURIComponent(abs)}"`;
+        const token = registerHlsUri(channelId, abs);
+        return `URI="${baseProxyUrl}/seg?t=${encodeURIComponent(token)}"`;
       });
     }
     const abs = new URL(line.trim(), base).toString();
-    return `${baseProxyUrl}/seg?u=${encodeURIComponent(abs)}`;
+    const token = registerHlsUri(channelId, abs);
+    return `${baseProxyUrl}/seg?t=${encodeURIComponent(token)}`;
   }).join('\n');
 }
 
@@ -592,7 +639,7 @@ async function serveHlsPlaylist(channel, playlistUrl, baseProxyUrl, req, res, po
       sendIptvError(res, 503, issue);
       return;
     }
-    const rewritten = rewritePlaylist(body, playlistUrl, baseProxyUrl);
+    const rewritten = rewritePlaylist(body, playlistUrl, baseProxyUrl, channel.id);
     addBytes(channel.id, up.fromCache ? 0 : Buffer.byteLength(body), Buffer.byteLength(rewritten));
     const blockedNow = limitExceeded(channel, policy);
     if (blockedNow) {
@@ -648,7 +695,7 @@ async function serveHlsSegment(channel, segUrl, baseProxyUrl, req, res, policy =
         sendIptvError(res, 503, issue);
         return;
       }
-      const rewritten = rewritePlaylist(bodyText, segUrl, baseProxyUrl);
+      const rewritten = rewritePlaylist(bodyText, segUrl, baseProxyUrl, channel.id);
       addBytes(channel.id, up.fromCache ? 0 : body.length, Buffer.byteLength(rewritten));
       const blockedNow = limitExceeded(channel, policy);
       if (blockedNow) {
@@ -702,8 +749,15 @@ async function serveHlsSegment(channel, segUrl, baseProxyUrl, req, res, policy =
 // ---- Public entry called from media-server ----
 async function handleRequest(channel, subPath, query, req, res, baseProxyUrl, policy = {}) {
   if (isHls(channel.url)) {
-    if (subPath === 'seg' && query.u) {
-      return serveHlsSegment(channel, query.u, baseProxyUrl, req, res, policy);
+    if (subPath === 'seg') {
+      const segUrl = resolveHlsUri(channel.id, query.t);
+      if (!segUrl) {
+        const message = 'Invalid or expired IPTV segment token. Refresh the channel and try again.';
+        markError(channel.id, message, 400);
+        sendIptvError(res, 400, message);
+        return;
+      }
+      return serveHlsSegment(channel, segUrl, baseProxyUrl, req, res, policy);
     }
     return serveHlsPlaylist(channel, channel.url, baseProxyUrl, req, res, policy);
   }
@@ -723,6 +777,7 @@ function status() {
   }
   for (const [id] of METRICS) {
     if (!out[id]) out[id] = snapshotMetrics(id);
+    out[id].hlsTokenEntries = hlsTokenStatsFor(id).entries;
   }
   return out;
 }

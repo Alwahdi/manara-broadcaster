@@ -3,9 +3,23 @@
 // Viewers list channels via GET /api/channels then connect to /ws and join a channel.
 
 const http = require('http');
-const fs = require('fs');
-const path = require('path');
 const { WebSocketServer } = require('ws');
+
+const UNBUILT_UI_HTML = `<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WIVA</title>
+  <style>
+    body{margin:0;min-height:100vh;display:grid;place-items:center;background:#070b18;color:#f8fafc;font-family:Cairo,system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;text-align:center;padding:24px}
+    main{max-width:560px;padding:28px;border:1px solid rgba(255,255,255,.12);border-radius:20px;background:rgba(255,255,255,.04)}
+    h1{margin:0 0 10px;font-size:24px}
+    p{margin:0;color:#cbd5e1;line-height:1.8}
+  </style>
+</head>
+<body><main><h1>واجهة WIVA الحديثة غير جاهزة</h1><p>شغّل بناء الواجهة الحديثة أو افتح التطبيق من حزمة الإصدار. لا توجد واجهة قديمة بديلة في هذا المسار.</p></main></body>
+</html>`;
 
 function startSignalingServer({
   port = 8787,
@@ -14,11 +28,6 @@ function startSignalingServer({
   getBroadcastChannels = null,
   getFeatureAllowed = null,
 } = {}) {
-  const viewerHtml = fs.readFileSync(path.join(__dirname, 'viewer.html'), 'utf8');
-  const watchHtml = fs.readFileSync(path.join(__dirname, 'watch.html'), 'utf8');
-  const iptvPlayerHtml = fs.readFileSync(path.join(__dirname, 'iptv-player.html'), 'utf8');
-  const hlsJs = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'hls.min.js'), 'utf8');
-
   let brand = {
     brandName: 'ويفا',
     brandTagline: 'خدمة مشاهدة داخل الشبكة',
@@ -87,19 +96,11 @@ function startSignalingServer({
     }
     if (url === '/' || url === '/index.html') {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-      res.end(viewerHtml); return;
+      res.end(UNBUILT_UI_HTML); return;
     }
-    if (url.startsWith('/watch')) {
+    if (url.startsWith('/watch') || url.startsWith('/iptv-player')) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-      res.end(watchHtml); return;
-    }
-    if (url.startsWith('/iptv-player')) {
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-      res.end(iptvPlayerHtml); return;
-    }
-    if (url === '/hls.min.js') {
-      res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=86400' });
-      res.end(hlsJs); return;
+      res.end(UNBUILT_UI_HTML); return;
     }
     if (url === '/api/brand') {
       res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
