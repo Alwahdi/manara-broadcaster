@@ -20,6 +20,7 @@ export function WatchChannel() {
 
   return (
     <div className="watch-channel-page">
+      <div className="watch-backdrop" aria-hidden />
       <QueryBoundary query={state}>
         {(data) => {
           const channels = getViewerChannels(data);
@@ -46,6 +47,7 @@ export function WatchChannel() {
                 </div>
               </div>
               <section className="player-stage">
+              <div className="player-stage-glow" aria-hidden />
               {isIptv ? (
                 <>
                   {qualityOptions.length > 1 ? (

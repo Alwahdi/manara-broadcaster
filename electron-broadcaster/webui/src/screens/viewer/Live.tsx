@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AppLink } from "@/components/AppLink";
 import { api } from "@/lib/api";
-import { QueryBoundary, EmptyState } from "@/components/States";
+import { QueryBoundary, EmptyState, ViewerSkeleton } from "@/components/States";
 import { CategoryChips, ChannelTile, ContentSection } from "@/components/common";
 import { filterChannels, getViewerChannels } from "./viewer-utils";
 
@@ -32,10 +32,11 @@ export function Live() {
   return (
     <div className="live-page">
       <section className="live-feature-card">
+        <div className="live-pulse-field" aria-hidden />
         <div>
           <span className="badge badge-dot badge-live">مباشر</span>
           <h1>{featured?.name || "البث المباشر"}</h1>
-          <p>{featured?.description || "كل القنوات المباشرة المتاحة على الشبكة في مكان واحد، بتصفح سريع ومناسب للجوال."}</p>
+          <p>{featured?.description || "كل القنوات المباشرة المتاحة في تجربة مصممة للمشاهدة السريعة والسلسة على كل الأجهزة."}</p>
           <div className="row">
             {featured ? (
               <AppLink href="/watch/channel/$id" params={{ id: String(featured.id) }} className="btn btn-primary">
@@ -80,7 +81,7 @@ export function Live() {
       >
         {() => filtered.length === 0 ? (
           <EmptyState
-            icon="•"
+            icon="W"
             title="لا توجد نتائج مطابقة"
             text="جرّب إزالة الفلتر أو البحث باسم قناة مختلف."
           />
@@ -111,6 +112,7 @@ export function Live() {
           </>
         )}
       </QueryBoundary>
+      {state.isLoading ? <ViewerSkeleton count={6} /> : null}
     </div>
   );
 }

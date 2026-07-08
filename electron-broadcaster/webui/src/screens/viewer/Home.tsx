@@ -2,14 +2,15 @@ import type { CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AppLink } from "@/components/AppLink";
 import { api, type MediaItem } from "@/lib/api";
-import { EmptyState, QueryBoundary } from "@/components/States";
+import { EmptyState, QueryBoundary, ViewerSkeleton } from "@/components/States";
 import { ChannelTile, ContentSection, MediaTile } from "@/components/common";
 import { useBrand } from "@/hooks/useBrand";
-import { getViewerChannels } from "./viewer-utils";
+import { folderResults, getViewerChannels } from "./viewer-utils";
 
 export function ViewerHome() {
   const { brand, logo, state } = useBrand();
   const library = useQuery({ queryKey: ["library", "home"], queryFn: () => api.library() });
+  const folders = useQuery({ queryKey: ["library-browse", "home-root"], queryFn: () => api.libraryBrowse() });
   const viewer = useQuery({ queryKey: ["viewer-state"], queryFn: api.viewerState });
   const mode = String(state?.ports?.mode || state?.settings?.experienceLayout || "unified");
   const livePort = Number(state?.ports?.live || state?.settings?.port || 0);
@@ -27,45 +28,54 @@ export function ViewerHome() {
   const heroPoster = String(featuredMedia?.poster || "");
   const favorites = ((viewer.data?.favorites as MediaItem[]) || []).slice(0, 10);
   const continueItems = (((viewer.data?.history as MediaItem[] | undefined) || (viewer.data?.continueWatching as MediaItem[] | undefined) || [])).slice(0, 10);
+  const folderPreview = folderResults(folders.data?.entries).filter((entry) => entry.type === "folder").slice(0, 8);
+  const showFavoritesShortcut = favorites.length > 0;
 
   return (
     <div className="viewer-home">
       <section className="viewer-hero ott-hero" style={heroPoster ? { "--hero-art": `url(${heroPoster})` } as CSSProperties : undefined}>
+        <div className="hero-ambient" aria-hidden />
         <div className="viewer-hero-content">
-          <span className="badge badge-dot badge-live">يبث الآن</span>
+          <span className="badge badge-dot badge-live">تجربة مشاهدة مباشرة</span>
           <h1>
             {featuredChannel?.name || `مرحبًا بك في ${brand}`}
           </h1>
           <p>
-            شاهد القنوات المباشرة ومحتوى الشبكة من مكان واحد بتجربة سريعة وسهلة على كل أجهزتك.
+            شاهد القنوات المباشرة واستكشف الاستراحة من مكان واحد بتجربة سريعة ومصممة للجوال والشاشات الكبيرة.
           </p>
           <div className="viewer-hero-actions">
             <AppLink href={featuredChannel ? `/watch/channel/${encodeURIComponent(String(featuredChannel.id))}` : crossPortHref("/live")} className="btn btn-primary">
               تشغيل الآن
             </AppLink>
             <AppLink href={crossPortHref("/live")} className="btn btn-ghost">كل القنوات</AppLink>
-            <AppLink href={crossPortHref("/library")} className="btn btn-ghost">المكتبة</AppLink>
+            <AppLink href={crossPortHref("/library")} className="btn btn-ghost">الاستراحة</AppLink>
           </div>
           <div className="hero-meta-strip" aria-label="ملخص المنصة">
             <div><strong>{channels.length}</strong><span>قناة مباشرة</span></div>
-            <div><strong>{media.length}</strong><span>عنصر مكتبة</span></div>
-            <div><strong>HD</strong><span>مشاهدة سلسة</span></div>
+            <div><strong>{folderPreview.length || media.length}</strong><span>قسم متاح</span></div>
+            <div><strong>سريع</strong><span>داخل الشبكة</span></div>
           </div>
         </div>
-        <div className="viewer-hero-panel" aria-hidden>
-          <img src={logo} alt="" />
-          <span>WIVA</span>
-          <strong>مباشر</strong>
-          <small>{brand}</small>
+        <div className="viewer-hero-panel hero-device-preview" aria-hidden>
+          <div className="hero-device-screen">
+            <img src={logo} alt="" />
+            <span>{brand}</span>
+            <strong>مباشر</strong>
+          </div>
+          <div className="hero-mini-rail">
+            <i />
+            <i />
+            <i />
+          </div>
         </div>
       </section>
 
       <div className="quick-action-row" aria-label="اختصارات">
         <AppLink href={crossPortHref("/live")} className="quick-action active">البث المباشر</AppLink>
         <AppLink href="/live/guide" className="quick-action">دليل اليوم</AppLink>
-        <AppLink href={crossPortHref("/library")} className="quick-action">المجلدات</AppLink>
-        <AppLink href="/favorites" className="quick-action">المفضلة</AppLink>
+        <AppLink href={crossPortHref("/library")} className="quick-action">الاستراحة</AppLink>
         <AppLink href="/search" className="quick-action">بحث سريع</AppLink>
+        {showFavoritesShortcut ? <AppLink href="/favorites" className="quick-action">المفضلة</AppLink> : null}
       </div>
 
       {continueItems.length ? (
@@ -83,7 +93,7 @@ export function ViewerHome() {
         action={<AppLink href="/live" className="btn btn-ghost btn-sm">عرض الكل</AppLink>}
       >
         {viewer.isLoading ? (
-          <div className="rail-skeleton"><div className="skeleton" /><div className="skeleton" /><div className="skeleton" /></div>
+          <ViewerSkeleton count={4} />
         ) : channels.length ? (
           <div className="live-channel-grid horizontal-rail">
             {channels.slice(0, 8).map((channel) => (
@@ -91,11 +101,33 @@ export function ViewerHome() {
             ))}
           </div>
         ) : (
-          <EmptyState icon="•" title="لا توجد قنوات مباشرة" text="ستظهر القنوات هنا عند توفر بث مباشر على الشبكة." />
+          <EmptyState icon="W" title="لا توجد قنوات مباشرة" text="ستظهر القنوات هنا عند توفر بث مباشر على الشبكة." />
         )}
       </ContentSection>
 
-      <ContentSection title="أضيف حديثًا" subtitle="آخر محتوى تمت إضافته إلى المكتبة">
+      {folderPreview.length ? (
+        <ContentSection title="الاستراحة" subtitle="تصفح الأقسام والمجلدات المتاحة">
+          <div className="folder-grid home-folder-preview">
+            {folderPreview.map((entry) => (
+              <AppLink
+                key={`${entry.sourceId || "root"}-${entry.path || entry.name}`}
+                href="/library"
+                className="folder-card folder-card-cinematic"
+              >
+                <div className="folder-card-art">
+                  {entry.cover ? <img src={entry.cover} alt="" loading="lazy" /> : <span aria-hidden>قسم</span>}
+                </div>
+                <div className="folder-card-body">
+                  <span className="folder-card-title">{entry.name}</span>
+                  <span className="folder-card-sub">{entry.count || 0} عنصر</span>
+                </div>
+              </AppLink>
+            ))}
+          </div>
+        </ContentSection>
+      ) : null}
+
+      <ContentSection title="أضيف حديثًا" subtitle="آخر محتوى متاح في الاستراحة">
       <QueryBoundary
         query={library}
         isEmpty={(d) => !d.items || d.items.length === 0}

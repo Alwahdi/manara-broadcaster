@@ -3,9 +3,16 @@ import type { UseQueryResult } from "@tanstack/react-query";
 
 export function LoadingState({ label = "جارٍ التحميل…" }: { label?: string }) {
   return (
-    <div className="state" role="status" aria-live="polite">
-      <div className="spinner" />
+    <div className="state viewer-state-premium" role="status" aria-live="polite">
+      <div className="state-orbit" aria-hidden>
+        <span />
+      </div>
       <div className="state-title">{label}</div>
+      <div className="viewer-skeleton-row" aria-hidden>
+        <span />
+        <span />
+        <span />
+      </div>
     </div>
   );
 }
@@ -22,9 +29,9 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="state">
-      <div className="state-icon" aria-hidden>
-        {icon}
+    <div className="state viewer-state-premium">
+      <div className="state-icon state-icon-premium" aria-hidden>
+        <span>{icon}</span>
       </div>
       <div className="state-title">{title}</div>
       {text ? <p className="state-text">{text}</p> : null}
@@ -45,17 +52,51 @@ export function ErrorState({
       ? String((error as { message: unknown }).message)
       : "") || "حدث خطأ غير متوقع.";
   return (
-    <div className="state" role="alert">
-      <div className="state-icon" aria-hidden>
-        !
+    <div className="state viewer-state-premium" role="alert">
+      <div className="state-icon state-icon-premium state-icon-error" aria-hidden>
+        <span>!</span>
       </div>
-      <div className="state-title">تعذّر تحميل البيانات</div>
-      <p className="state-text">{message}</p>
+      <div className="state-title">تعذّر تحميل المحتوى</div>
+      <p className="state-text">{message || "تحقق من اتصالك بالشبكة ثم حاول مرة أخرى."}</p>
       {onRetry ? (
         <button className="btn btn-primary" onClick={onRetry}>
           إعادة المحاولة
         </button>
       ) : null}
+    </div>
+  );
+}
+
+export function ViewerSkeleton({
+  variant = "cards",
+  count = 4,
+}: {
+  variant?: "hero" | "cards" | "folders" | "player" | "search";
+  count?: number;
+}) {
+  if (variant === "hero") {
+    return (
+      <div className="viewer-hero hero-skeleton" aria-hidden>
+        <div className="skeleton-copy">
+          <span />
+          <span />
+          <span />
+        </div>
+        <div className="skeleton-poster" />
+      </div>
+    );
+  }
+  if (variant === "player") {
+    return <div className="skeleton-player" aria-hidden />;
+  }
+  return (
+    <div className={`viewer-skeleton-grid viewer-skeleton-${variant}`} aria-hidden>
+      {Array.from({ length: count }).map((_, index) => (
+        <div key={index} className="skeleton-card">
+          <span />
+          <span />
+        </div>
+      ))}
     </div>
   );
 }

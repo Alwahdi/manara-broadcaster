@@ -10,21 +10,22 @@ export function WatchMedia() {
 
   return (
     <div className="watch-media-page">
+      <div className="watch-backdrop" aria-hidden />
       <QueryBoundary query={media}>
         {(item) => (
           <div>
             <div className="watch-channel-head player-page-head">
               <AppLink href="/library" className="btn btn-ghost btn-sm">
-                ← المكتبة
+                ← الاستراحة
               </AppLink>
               <div>
-                <span className="badge">المكتبة</span>
+                <span className="badge">الاستراحة</span>
                 <h1 className="page-title">{item.title || item.name}</h1>
               </div>
             </div>
             <div className="media-player-shell">
               <div className="player-chrome-top">
-                <span>مشغل المكتبة</span>
+                <span>مشغل الاستراحة</span>
                 {item.durationSec ? <span>{formatDuration(item.durationSec)}</span> : null}
               </div>
               <video

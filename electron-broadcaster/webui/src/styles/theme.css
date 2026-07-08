@@ -30,6 +30,8 @@
   --gold-2: #c9a24b;
   --accent: #5b8cff;
   --accent-2: #8b5cff;
+  --accent-cyan: #19d3ff;
+  --accent-teal: #22e6b8;
   --danger: #ff6b6b;
   --success: #4ad991;
   --warning: #ffcf5c;
@@ -41,6 +43,7 @@
 
   --shadow-soft: 0 10px 40px -20px rgba(0, 0, 0, 0.8);
   --shadow-lift: 0 30px 80px -40px rgba(9, 12, 24, 0.95);
+  --shadow-cinema: 0 34px 120px -48px rgba(0, 0, 0, 0.96), 0 0 0 1px rgba(255,255,255,0.04) inset;
   --glow-gold: 0 0 0 1px rgba(231, 201, 128, 0.25), 0 20px 60px -30px rgba(231, 201, 128, 0.4);
 
   --ring: 0 0 0 3px rgba(91, 140, 255, 0.35);

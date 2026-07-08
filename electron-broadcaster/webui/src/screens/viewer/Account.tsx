@@ -41,7 +41,7 @@ export function Account() {
                   </AppLink>
                   <AppLink href="/search" className="settings-row">
                     <span>البحث</span>
-                    <strong>ابحث في القنوات والمكتبة</strong>
+                    <strong>ابحث في القنوات والاستراحة</strong>
                   </AppLink>
                   <AppLink href="/live" className="settings-row">
                     <span>جودة التشغيل</span>

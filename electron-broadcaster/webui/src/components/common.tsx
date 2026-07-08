@@ -104,7 +104,7 @@ export function MediaTile({ item }: { item: MediaItem }) {
       params={{ id: String(item.id) }}
       className="media-card card-hover"
     >
-      <div className="poster">
+      <div className="poster media-poster-premium">
         {item.poster ? (
           <img src={item.poster} alt="" loading="lazy" />
         ) : (
@@ -113,6 +113,11 @@ export function MediaTile({ item }: { item: MediaItem }) {
         <span className="poster-shade" aria-hidden />
         <span className="media-kind">{item.category || item.kind || "فيديو"}</span>
         {!online ? <span className="offline-ribbon">غير متاح حاليًا</span> : null}
+        <span className="poster-play" aria-hidden>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor" />
+          </svg>
+        </span>
       </div>
       <div className="tile-title truncate">{title}</div>
       <div className="tile-sub">
@@ -131,6 +136,7 @@ export function ChannelTile({ channel, href }: { channel: Channel; href?: string
   const inner = (
     <div className="channel-card card-hover">
       <div className="channel-card-glow" aria-hidden />
+      <div className="channel-card-pattern" aria-hidden />
       <div className="channel-card-head">
         <div className="channel-logo-wrap">
           {channel.logo ? (
@@ -150,6 +156,12 @@ export function ChannelTile({ channel, href }: { channel: Channel; href?: string
         <strong>{channel.name}</strong>
         <span>{channel.group || channel.category || kind}</span>
         {channel.description ? <small>{channel.description}</small> : null}
+      </div>
+      <div className="channel-watch-affordance" aria-hidden>
+        <span>شاهد الآن</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+          <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
       </div>
       {qualities.length ? (
         <div className="channel-quality-row">

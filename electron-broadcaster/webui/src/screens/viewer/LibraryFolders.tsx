@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppLink } from "@/components/AppLink";
 import { api, type LibraryBrowseEntry } from "@/lib/api";
-import { QueryBoundary, EmptyState } from "@/components/States";
+import { QueryBoundary, EmptyState, ViewerSkeleton } from "@/components/States";
 import { CategoryChips, ContentSection } from "@/components/common";
 
 const LIBRARY_FILTERS = [
@@ -13,6 +13,7 @@ const LIBRARY_FILTERS = [
 
 /** Folder-first subscriber library view. */
 export function LibraryFolders() {
+  const queryClient = useQueryClient();
   const [sourceId, setSourceId] = useState<string>("");
   const [path, setPath] = useState<string>("");
   const [term, setTerm] = useState("");
@@ -26,7 +27,29 @@ export function LibraryFolders() {
   const browse = useQuery({
     queryKey: ["library-browse", sourceId, path],
     queryFn: () => api.libraryBrowse(params),
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
   });
+
+  useEffect(() => {
+    const entries = browse.data?.entries || [];
+    const sources = browse.data?.sources || [];
+    if (!sourceId && !path && sources.length === 1 && entries.length === 1 && entries[0]?.type === "folder") {
+      setSourceId(String(entries[0].sourceId || sources[0].id));
+      setPath("");
+    }
+  }, [browse.data, path, sourceId]);
+
+  const prefetchFolder = (entry: LibraryBrowseEntry) => {
+    if (!entry.sourceId) return;
+    const nextSource = String(entry.sourceId);
+    const nextPath = entry.path || "";
+    queryClient.prefetchQuery({
+      queryKey: ["library-browse", nextSource, nextPath],
+      queryFn: () => api.libraryBrowse({ sourceId: nextSource, ...(nextPath ? { path: nextPath } : {}) }),
+      staleTime: 60_000,
+    });
+  };
 
   const openRoot = () => {
     setSourceId("");
@@ -46,13 +69,18 @@ export function LibraryFolders() {
     <div className="library-page">
       <section className="library-hero">
         <span className="badge">محتوى الشبكة</span>
-        <h1>مكتبة الشبكة</h1>
+        <h1>الاستراحة</h1>
         <p>تصفّح الأقسام والمجلدات المتاحة وشاهد المحتوى مباشرة من داخل الشبكة.</p>
+        <div className="library-hero-orbits" aria-hidden>
+          <span />
+          <span />
+          <span />
+        </div>
       </section>
       <QueryBoundary
         query={browse}
         isEmpty={(d) => !d.entries || d.entries.length === 0}
-        empty={<EmptyState icon="•" title="لا يوجد محتوى متاح حاليًا" text="ستظهر الأقسام هنا عند توفر محتوى جديد على الشبكة." />}
+        empty={<EmptyState icon="W" title="لا يوجد محتوى متاح حاليًا" text="ستظهر الأقسام هنا عند توفر محتوى جديد على الشبكة." />}
       >
         {(data) => {
           const q = term.trim().toLowerCase();
@@ -63,8 +91,10 @@ export function LibraryFolders() {
           });
           const folderCount = data.entries.filter((entry) => entry.type === "folder").length;
           const mediaCount = data.entries.filter((entry) => entry.type === "media").length;
+          const singleSourceMode = (data.sources?.length || 0) === 1;
           return (
-            <section className="folder-browser" aria-label="تصفح المكتبة">
+            <section className="folder-browser" aria-label="تصفح الاستراحة">
+              {browse.isFetching && !browse.isLoading ? <div className="folder-refresh-line" aria-hidden /> : null}
               <div className="viewer-filter-bar">
                 <label className="search-shell">
                   <span>بحث</span>
@@ -72,9 +102,9 @@ export function LibraryFolders() {
                 </label>
                 <CategoryChips items={LIBRARY_FILTERS} value={filter} onChange={setFilter} />
               </div>
-              <nav className="folder-breadcrumbs" aria-label="مسار المكتبة">
-                <button type="button" onClick={openRoot}>المكتبة</button>
-                {data.source ? (
+              <nav className="folder-breadcrumbs" aria-label="تنقل الاستراحة">
+                <button type="button" onClick={openRoot}>الاستراحة</button>
+                {data.source && !singleSourceMode ? (
                   <>
                     <span>/</span>
                     <button type="button" onClick={() => openSource(data.source!.id)}>
@@ -94,7 +124,7 @@ export function LibraryFolders() {
                 <div><strong>{mediaCount}</strong><span>ملفات</span></div>
                 <div><strong>{entries.length}</strong><span>نتائج</span></div>
               </div>
-              <ContentSection title={data.source ? "محتوى القسم" : "أقسام المكتبة"} subtitle="تصفّح المحتوى المتاح داخل الشبكة">
+              <ContentSection title={data.source ? "محتوى القسم" : "أقسام الاستراحة"} subtitle="تصفّح المحتوى المتاح داخل الشبكة">
                 {entries.length ? (
                   <div className="folder-grid">
                     {entries.map((entry) =>
@@ -103,6 +133,7 @@ export function LibraryFolders() {
                           key={`${entry.sourceId || "root"}-${entry.path || entry.name}`}
                           entry={entry}
                           onOpen={() => (sourceId ? openFolder(entry) : openSource(entry.sourceId || ""))}
+                          onPrefetch={() => prefetchFolder(entry)}
                         />
                       ) : (
                         <MediaFileCard key={`${entry.media?.id || entry.path}`} entry={entry} />
@@ -110,9 +141,10 @@ export function LibraryFolders() {
                     )}
                   </div>
                 ) : (
-                  <EmptyState icon="•" title="لا توجد نتائج" text="جرّب إزالة البحث أو تغيير الفلتر." />
+                  <EmptyState icon="W" title="لا توجد نتائج" text="جرّب إزالة البحث أو تغيير الفلتر." />
                 )}
               </ContentSection>
+              {browse.isLoading ? <ViewerSkeleton variant="folders" count={6} /> : null}
             </section>
           );
         }}
@@ -121,9 +153,9 @@ export function LibraryFolders() {
   );
 }
 
-function FolderCard({ entry, onOpen }: { entry: LibraryBrowseEntry; onOpen: () => void }) {
+function FolderCard({ entry, onOpen, onPrefetch }: { entry: LibraryBrowseEntry; onOpen: () => void; onPrefetch?: () => void }) {
   return (
-    <button type="button" className="folder-card" onClick={onOpen}>
+    <button type="button" className="folder-card folder-card-cinematic" onClick={onOpen} onPointerEnter={onPrefetch} onFocus={onPrefetch}>
       <div className="folder-card-art">
         {entry.cover ? <img src={entry.cover} alt="" loading="lazy" /> : <span aria-hidden>ملف</span>}
         {!entry.online ? <span className="offline-ribbon">غير متاح حاليًا</span> : null}

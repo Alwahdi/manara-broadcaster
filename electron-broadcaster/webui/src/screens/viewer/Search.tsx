@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AppLink } from "@/components/AppLink";
 import { api } from "@/lib/api";
 import { useBrand } from "@/hooks/useBrand";
-import { QueryBoundary, EmptyState } from "@/components/States";
+import { QueryBoundary, EmptyState, ViewerSkeleton } from "@/components/States";
 import { ChannelTile, ContentSection, MediaTile } from "@/components/common";
 import { folderResults, getViewerChannels } from "./viewer-utils";
 
@@ -39,6 +39,11 @@ export function Search() {
   return (
     <div className="search-page">
       <section className="search-hero">
+        <div className="search-visual" aria-hidden>
+          <span />
+          <span />
+          <span />
+        </div>
         <h1>ابحث في {brand}</h1>
         <p>ابحث عن القنوات والمجلدات والمحتوى المتاح داخل الشبكة.</p>
         <input
@@ -51,9 +56,11 @@ export function Search() {
       </section>
       <QueryBoundary query={library} isEmpty={() => false}>
         {() =>
-          mediaResults.length === 0 && channelResults.length === 0 && folderMatches.length === 0 ? (
+          library.isLoading || viewer.isLoading || browse.isLoading ? (
+            <ViewerSkeleton variant="search" count={5} />
+          ) : mediaResults.length === 0 && channelResults.length === 0 && folderMatches.length === 0 ? (
             <EmptyState
-              icon="•"
+              icon="W"
               title={term ? "لم نجد نتائج مطابقة" : "ابدأ بالبحث"}
               text={term ? "جرّب كلمة أبسط أو ابحث باسم آخر." : "ابحث عن القنوات والمحتوى المتاح داخل الشبكة."}
             />
@@ -69,7 +76,7 @@ export function Search() {
                 </ContentSection>
               ) : null}
               {mediaResults.length ? (
-                <ContentSection title="محتوى المكتبة" subtitle="نتائج مطابقة من محتوى الشبكة">
+                <ContentSection title="محتوى الاستراحة" subtitle="نتائج مطابقة من محتوى الشبكة">
                   <div className="grid grid-auto">
                     {mediaResults.map((item) => (
                       <MediaTile key={item.id} item={item} />
@@ -78,7 +85,7 @@ export function Search() {
                 </ContentSection>
               ) : null}
               {folderMatches.length ? (
-                <ContentSection title="أقسام المكتبة" subtitle="أقسام يمكنك تصفحها مباشرة">
+                <ContentSection title="أقسام الاستراحة" subtitle="أقسام يمكنك تصفحها مباشرة">
                   <div className="guide-card-grid">
                     {folderMatches.map((entry) => (
                       <AppLink

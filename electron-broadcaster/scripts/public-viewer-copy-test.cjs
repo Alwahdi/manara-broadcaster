@@ -41,6 +41,8 @@ const forbidden = [
   /provider unavailable/i,
   /سيرفر/,
   /مصدر/,
+  /مسار/,
+  /مكتبة/,
   /فحص/,
   /تخزين/,
   /\bIPTV\b/i,

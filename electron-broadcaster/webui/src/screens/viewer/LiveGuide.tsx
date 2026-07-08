@@ -10,6 +10,7 @@ export function LiveGuide() {
   return (
     <div className="live-guide-page">
       <section className="live-feature-card">
+        <div className="live-guide-timeline-bg" aria-hidden />
         <div>
           <span className="badge badge-dot badge-live">مباشر</span>
           <h1>دليل القنوات</h1>
@@ -24,7 +25,7 @@ export function LiveGuide() {
         isEmpty={(d) => {
           return getViewerChannels(d).length === 0;
         }}
-        empty={<EmptyState icon="•" title="لا توجد قنوات متاحة حاليًا" text="ستظهر القنوات هنا عند توفر بث مباشر على الشبكة." />}
+        empty={<EmptyState icon="W" title="لا توجد قنوات متاحة حاليًا" text="ستظهر القنوات هنا عند توفر بث مباشر على الشبكة." />}
       >
         {(d) => {
           const channels = getViewerChannels(d);
@@ -33,6 +34,7 @@ export function LiveGuide() {
               <div className="guide-card-grid">
                 {channels.map((ch) => (
                   <AppLink key={String(ch.id)} href="/watch/channel/$id" params={{ id: String(ch.id) }} className="guide-card">
+                    <span className="guide-now-pill">الآن</span>
                     <span className="guide-card-logo">
                       {ch.logo ? <img src={ch.logo} alt="" /> : <span>{String(ch.name || "W").slice(0, 1)}</span>}
                     </span>

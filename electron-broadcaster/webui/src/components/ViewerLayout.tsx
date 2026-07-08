@@ -7,7 +7,7 @@ import { OfflineBanner } from "@/components/OfflineBanner";
 const NAV = [
   { to: "/", label: "الرئيسية", short: "الرئيسية", icon: "home", exact: true },
   { to: "/live", label: "البث المباشر", short: "مباشر", icon: "live" },
-  { to: "/library", label: "المكتبة", short: "المكتبة", icon: "library" },
+  { to: "/library", label: "الاستراحة", short: "الاستراحة", icon: "library" },
   { to: "/search", label: "البحث", short: "بحث", icon: "search" },
   { to: "/account", label: "الحساب والإعدادات", short: "حسابي", icon: "user" },
 ];
@@ -70,7 +70,7 @@ export function ViewerLayout({ children }: { children: ReactNode }) {
         </nav>
         <div className="row hide-sm">
           <AppLink href={portAwareHref("/search", state)} className="top-search-link">
-            ابحث في القنوات والمكتبة
+            ابحث في القنوات والاستراحة
           </AppLink>
           <LiveIndicator />
         </div>
