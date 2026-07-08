@@ -1,10 +1,6 @@
 import { useEffect, useState } from "react";
 
-/**
- * Shows a subtle banner when the device loses its network connection.
- * WIVA is a LAN-first product, so a clear offline signal helps viewers and
- * operators understand why streams or admin actions may be unavailable.
- */
+/** Shows a subtle banner when the device loses its network connection. */
 export function OfflineBanner() {
   const [online, setOnline] = useState(() =>
     typeof navigator === "undefined" ? true : navigator.onLine,

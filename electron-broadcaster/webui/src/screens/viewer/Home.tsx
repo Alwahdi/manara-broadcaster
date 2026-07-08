@@ -40,7 +40,7 @@ export function ViewerHome() {
             {featuredChannel?.name || `مرحبًا بك في ${brand}`}
           </h1>
           <p>
-            شاهد القنوات المباشرة والمكتبة المحلية بتجربة سريعة ومصممة للجوال والشاشات الكبيرة.
+            شاهد القنوات المباشرة ومحتوى الشبكة من مكان واحد بتجربة سريعة وسهلة على كل أجهزتك.
           </p>
           <div className="viewer-hero-actions">
             <AppLink href={featuredChannel ? `/watch/channel/${encodeURIComponent(String(featuredChannel.id))}` : crossPortHref("/live")} className="btn btn-primary">
@@ -52,7 +52,7 @@ export function ViewerHome() {
           <div className="hero-meta-strip" aria-label="ملخص المنصة">
             <div><strong>{channels.length}</strong><span>قناة مباشرة</span></div>
             <div><strong>{media.length}</strong><span>عنصر مكتبة</span></div>
-            <div><strong>LAN</strong><span>بث محلي سريع</span></div>
+            <div><strong>HD</strong><span>مشاهدة سلسة</span></div>
           </div>
         </div>
         <div className="viewer-hero-panel" aria-hidden>
@@ -94,7 +94,7 @@ export function ViewerHome() {
             ))}
           </div>
         ) : (
-          <EmptyState icon="•" title="لا توجد قنوات مباشرة" text="عند تفعيل القنوات من لوحة الإدارة ستظهر هنا مباشرة." />
+          <EmptyState icon="•" title="لا توجد قنوات مباشرة" text="ستظهر القنوات هنا عند توفر بث مباشر على الشبكة." />
         )}
       </ContentSection>
 
@@ -105,8 +105,8 @@ export function ViewerHome() {
         empty={
           <div className="state">
             <div className="state-icon">W</div>
-            <div className="state-title">المكتبة فارغة حاليًا</div>
-            <p className="state-text">لم تتم إضافة أي وسائط بعد. تواصل مع المشرف لإضافة المحتوى.</p>
+            <div className="state-title">لا يوجد محتوى متاح حاليًا</div>
+            <p className="state-text">ستظهر الأقسام هنا عند توفر محتوى جديد على الشبكة.</p>
           </div>
         }
       >

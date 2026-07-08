@@ -632,6 +632,7 @@ button.folder-card {
 /* Viewer home and live cards */
 .viewer-home,
 .live-page,
+.live-guide-page,
 .library-page,
 .search-page,
 .watch-media-page,
@@ -1183,6 +1184,58 @@ button.folder-card {
   display: grid;
   gap: 8px;
 }
+.guide-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+.guide-card {
+  min-width: 0;
+  min-height: 86px;
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: rgba(13, 18, 34, 0.72);
+}
+.guide-card:hover {
+  border-color: var(--border-strong);
+  background: rgba(22, 29, 52, 0.78);
+}
+.guide-card-logo {
+  width: 54px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.32);
+  color: var(--gold);
+  font-weight: 900;
+  overflow: hidden;
+}
+.guide-card-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 8px;
+}
+.guide-card-info {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.guide-card-info strong,
+.guide-card-info small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.guide-card-info small {
+  color: var(--text-muted);
+}
 .tv-guide-row {
   min-height: 72px;
   display: grid;
@@ -1428,6 +1481,16 @@ button.folder-card {
   }
   .tv-guide-row {
     grid-template-columns: 42px 44px minmax(0, 1fr);
+  }
+  .guide-card-grid {
+    grid-template-columns: 1fr;
+  }
+  .guide-card {
+    grid-template-columns: 48px minmax(0, 1fr);
+  }
+  .guide-card .badge {
+    grid-column: 2;
+    width: max-content;
   }
   .tv-guide-row .badge {
     display: none;

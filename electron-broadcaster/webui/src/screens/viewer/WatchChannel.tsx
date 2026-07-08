@@ -45,10 +45,6 @@ export function WatchChannel() {
                   <span className="badge badge-dot badge-live">بث مباشر</span>
                   <h1 className="page-title">{channel?.name || `القناة ${id}`}</h1>
                 </div>
-                <div className="row">
-                  <button type="button" className="btn btn-ghost btn-sm">حفظ</button>
-                  <button type="button" className="btn btn-ghost btn-sm">مشاركة</button>
-                </div>
               </div>
               <section className="player-stage">
               {isIptv ? (
@@ -87,17 +83,17 @@ export function WatchChannel() {
                 <div className="player-info-card">
                   <span>الحالة</span>
                   <strong>يبث الآن</strong>
-                  <small>عند انقطاع المصدر سيحاول WIVA إعادة الاتصال تلقائيًا.</small>
+                  <small>إذا انقطع الاتصال مؤقتًا سنحاول إعادة التشغيل تلقائيًا.</small>
                 </div>
                 <div className="player-info-card">
                   <span>النوع</span>
-                  <strong>{isIptv ? "IPTV" : "بث من جهاز التقاط"}</strong>
+                  <strong>{isIptv ? "قناة مباشرة" : "بث مباشر"}</strong>
                   <small>{activeQuality?.label || activeQuality?.name || channel?.resolution || "جودة تلقائية"}</small>
                 </div>
                 <div className="player-info-card">
                   <span>الشبكة</span>
-                  <strong>بث محلي</strong>
-                  <small>مصمم للمشاهدة داخل الشبكة المحلية.</small>
+                  <strong>مشاهدة داخلية</strong>
+                  <small>استمتع بالمشاهدة مباشرة من شبكتك.</small>
                 </div>
               </div>
               {related.length ? (
@@ -227,7 +223,7 @@ function HlsPlayer({ src }: { src: string }) {
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (!data?.fatal) return;
         if (data.type === Hls.ErrorTypes?.NETWORK_ERROR) {
-          setStatus("انقطع الاتصال بالمصدر. نحاول إعادة الاتصال...");
+          setStatus("انقطع الاتصال مؤقتًا، نحاول إعادة التشغيل...");
           try { hls.startLoad?.(); } catch {}
           return;
         }
@@ -290,7 +286,7 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
-  const [status, setStatus] = useState("جاري الاتصال بمصدر البث...");
+  const [status, setStatus] = useState("جاري تشغيل البث...");
   const [ready, setReady] = useState(false);
   const [fitMode, setFitMode] = useState<FitMode>("fill");
   const [retryKey, setRetryKey] = useState(0);
@@ -315,18 +311,18 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
     function connect() {
       if (closed) return;
       cleanupPeer();
-      setStatus("جاري الاتصال بمصدر البث...");
+      setStatus("جاري تشغيل البث...");
       let ws: WebSocket;
       try {
         ws = new WebSocket(wsUrl());
       } catch {
-        setStatus("تعذر فتح اتصال البث. سنعيد المحاولة تلقائيًا.");
+        setStatus("تعذر تشغيل البث الآن. سنحاول مرة أخرى...");
         retry = setTimeout(connect, 2500);
         return;
       }
       wsRef.current = ws;
       ws.onopen = () => {
-        setStatus("تم الاتصال. ننتظر مصدر القناة...");
+        setStatus("جاري تجهيز القناة...");
         ws.send(JSON.stringify({ type: "register-viewer", channelId }));
       };
       ws.onerror = () => {
@@ -343,16 +339,16 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
         let msg: Record<string, unknown>;
         try { msg = JSON.parse(String(event.data)); } catch { return; }
         if (msg.type === "viewer-id") {
-          if (!msg.hasBroadcaster) setStatus("القناة غير متاحة حاليًا. شغّل المصدر من لوحة الإدارة أو اختر قناة أخرى.");
+          if (!msg.hasBroadcaster) setStatus("القناة غير متاحة حاليًا. اختر قناة أخرى أو جرّب لاحقًا.");
           return;
         }
         if (msg.type === "broadcaster-online") {
-          setStatus("المصدر يعمل الآن. جاري فتح الصورة...");
+          setStatus("جاري فتح الصورة...");
           return;
         }
         if (msg.type === "broadcaster-left") {
           cleanupPeer();
-          setStatus("توقف مصدر البث مؤقتًا. سنحاول إعادة الاتصال تلقائيًا.");
+          setStatus("انقطع الاتصال مؤقتًا، نحاول إعادة التشغيل...");
           return;
         }
         if (msg.type === "offer" && typeof msg.sdp === "string") {

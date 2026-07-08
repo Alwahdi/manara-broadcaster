@@ -3,7 +3,7 @@ import { useLiveStatus, type LiveStatus } from "@/hooks/useLiveStatus";
 const LABEL: Record<LiveStatus, string> = {
   connecting: "يتصل…",
   online: "مباشر",
-  offline: "غير متصل",
+  offline: "لا يتوفر بث",
 };
 const CLASS: Record<LiveStatus, string> = {
   connecting: "badge-warn",
@@ -11,7 +11,7 @@ const CLASS: Record<LiveStatus, string> = {
   offline: "badge-off",
 };
 
-/** Small always-visible live connection indicator for dashboards and TV screens. */
+/** Small always-visible live status indicator. */
 export function LiveIndicator() {
   const { status } = useLiveStatus();
   return (

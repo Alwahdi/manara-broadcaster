@@ -44,7 +44,7 @@ export function WatchMedia() {
               <div className="row">
                 {item.category ? <span className="badge">{item.category}</span> : null}
                 {item.durationSec ? <span className="badge">{formatDuration(item.durationSec)}</span> : null}
-                {item.online === false ? <span className="badge badge-warn">المصدر غير متصل</span> : null}
+                {item.online === false ? <span className="badge badge-warn">غير متاح حاليًا</span> : null}
               </div>
             </div>
           </div>

@@ -111,7 +111,7 @@ export function MediaTile({ item }: { item: MediaItem }) {
         )}
         <span className="poster-shade" aria-hidden />
         <span className="media-kind">{item.category || item.kind || "فيديو"}</span>
-        {!online ? <span className="offline-ribbon">غير متصل</span> : null}
+        {!online ? <span className="offline-ribbon">غير متاح حاليًا</span> : null}
       </div>
       <div className="tile-title truncate">{title}</div>
       <div className="tile-sub">
@@ -124,7 +124,7 @@ export function MediaTile({ item }: { item: MediaItem }) {
 
 export function ChannelTile({ channel, href }: { channel: Channel; href?: string }) {
   const enabled = channel.enabled !== false && channel.enabled !== 0;
-  const kind = channel.type === "iptv" || channel.kind === "iptv" ? "IPTV" : "بث مباشر";
+  const kind = channel.type === "iptv" || channel.kind === "iptv" ? "قناة مباشرة" : "بث مباشر";
   const qualities = Array.isArray(channel.qualities) ? channel.qualities : [];
   const qualityLabel = qualities.length
     ? qualities.slice(0, 2).map((q) => q.label || q.name || String(q.id)).join(" / ")

@@ -11,7 +11,7 @@ const LIBRARY_FILTERS = [
   { value: "media", label: "ملفات" },
 ];
 
-/** File-explorer style library view based on real source paths and relative paths. */
+/** Folder-first subscriber library view. */
 export function LibraryFolders() {
   const [sourceId, setSourceId] = useState<string>("");
   const [path, setPath] = useState<string>("");
@@ -45,14 +45,14 @@ export function LibraryFolders() {
   return (
     <div className="library-page">
       <section className="library-hero">
-        <span className="badge">المكتبة المحلية</span>
-        <h1>تصفّح ملفاتك كما هي على جهاز السيرفر</h1>
-        <p>مجلدات، أقسام، أفلام، مسلسلات، وإعادات مرتبة بصريًا بدون إخفاء بنية الملفات الحقيقية.</p>
+        <span className="badge">محتوى الشبكة</span>
+        <h1>مكتبة الشبكة</h1>
+        <p>تصفّح الأقسام والمجلدات المتاحة وشاهد المحتوى مباشرة من داخل الشبكة.</p>
       </section>
       <QueryBoundary
         query={browse}
         isEmpty={(d) => !d.entries || d.entries.length === 0}
-        empty={<EmptyState icon="📂" title="لا يوجد محتوى" text="أضف مسارًا من لوحة الإدارة ثم شغّل الفحص." />}
+        empty={<EmptyState icon="•" title="لا يوجد محتوى متاح حاليًا" text="ستظهر الأقسام هنا عند توفر محتوى جديد على الشبكة." />}
       >
         {(data) => {
           const q = term.trim().toLowerCase();
@@ -73,12 +73,12 @@ export function LibraryFolders() {
                 <CategoryChips items={LIBRARY_FILTERS} value={filter} onChange={setFilter} />
               </div>
               <nav className="folder-breadcrumbs" aria-label="مسار المكتبة">
-                <button type="button" onClick={openRoot}>المصادر</button>
+                <button type="button" onClick={openRoot}>المكتبة</button>
                 {data.source ? (
                   <>
                     <span>/</span>
                     <button type="button" onClick={() => openSource(data.source!.id)}>
-                      {data.source.name || data.source.label || "مصدر"}
+                      {data.source.name || data.source.label || "قسم"}
                     </button>
                   </>
                 ) : null}
@@ -90,11 +90,11 @@ export function LibraryFolders() {
                 ))}
               </nav>
               <div className="library-stats">
-                <div><strong>{folderCount}</strong><span>مجلد</span></div>
-                <div><strong>{mediaCount}</strong><span>ملف</span></div>
-                <div><strong>{entries.length}</strong><span>نتيجة معروضة</span></div>
+                <div><strong>{folderCount}</strong><span>أقسام</span></div>
+                <div><strong>{mediaCount}</strong><span>ملفات</span></div>
+                <div><strong>{entries.length}</strong><span>نتائج</span></div>
               </div>
-              <ContentSection title={data.source ? "محتوى المجلد" : "مصادر المكتبة"} subtitle="نفس بنية المجلدات الموجودة على جهاز السيرفر">
+              <ContentSection title={data.source ? "محتوى القسم" : "أقسام المكتبة"} subtitle="تصفّح المحتوى المتاح داخل الشبكة">
                 {entries.length ? (
                   <div className="folder-grid">
                     {entries.map((entry) =>
@@ -126,7 +126,7 @@ function FolderCard({ entry, onOpen }: { entry: LibraryBrowseEntry; onOpen: () =
     <button type="button" className="folder-card" onClick={onOpen}>
       <div className="folder-card-art">
         {entry.cover ? <img src={entry.cover} alt="" loading="lazy" /> : <span aria-hidden>ملف</span>}
-        {!entry.online ? <span className="offline-ribbon">غير متصل</span> : null}
+        {!entry.online ? <span className="offline-ribbon">غير متاح حاليًا</span> : null}
       </div>
       <div className="folder-card-body">
         <span className="folder-card-title">{entry.name}</span>
@@ -149,7 +149,7 @@ function MediaFileCard({ entry }: { entry: LibraryBrowseEntry }) {
         </div>
         <div className="folder-card-body">
           <span className="folder-card-title">{title}</span>
-          <span className="folder-card-sub">أعد فحص المكتبة من لوحة الإدارة</span>
+          <span className="folder-card-sub">هذا المحتوى غير جاهز للمشاهدة الآن</span>
         </div>
       </div>
     );
@@ -162,7 +162,7 @@ function MediaFileCard({ entry }: { entry: LibraryBrowseEntry }) {
     >
       <div className="folder-card-art">
         {entry.cover ? <img src={entry.cover} alt="" loading="lazy" /> : <span aria-hidden>فيديو</span>}
-        {!entry.online ? <span className="offline-ribbon">غير متصل</span> : null}
+        {!entry.online ? <span className="offline-ribbon">غير متاح حاليًا</span> : null}
       </div>
       <div className="folder-card-body">
         <span className="folder-card-title">{title}</span>
