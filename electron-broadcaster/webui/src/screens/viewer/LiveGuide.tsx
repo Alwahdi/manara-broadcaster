@@ -11,12 +11,12 @@ export function LiveGuide() {
     <div className="live-guide-page">
       <section className="live-feature-card">
         <div>
-          <span className="badge badge-dot badge-live">LIVE</span>
+          <span className="badge badge-dot badge-live">مباشر</span>
           <h1>دليل القنوات</h1>
           <p>اختر قناة وشاهد البث المتاح الآن من داخل الشبكة.</p>
         </div>
         <div className="live-feature-art" aria-hidden>
-          <span>TV</span>
+          <span>بث</span>
         </div>
       </section>
       <QueryBoundary

@@ -24,7 +24,7 @@ export function WatchMedia() {
             </div>
             <div className="media-player-shell">
               <div className="player-chrome-top">
-                <span>مشغل WIVA</span>
+                <span>مشغل المكتبة</span>
                 {item.durationSec ? <span>{formatDuration(item.durationSec)}</span> : null}
               </div>
               <video
@@ -39,7 +39,7 @@ export function WatchMedia() {
             <div className="detail-panel">
               <div>
                 <h2>{item.title || item.name}</h2>
-                <p>{String(item.description || item.folder || "محتوى من المكتبة المحلية جاهز للتشغيل داخل الشبكة.")}</p>
+                <p>{String(item.description || "محتوى متاح للمشاهدة داخل الشبكة.")}</p>
               </div>
               <div className="row">
                 {item.category ? <span className="badge">{item.category}</span> : null}

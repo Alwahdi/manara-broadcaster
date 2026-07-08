@@ -90,3 +90,8 @@ The publish target remains the existing GitHub repository so installed apps can 
 - [Project audit](docs/AUDIT.md)
 - [Security notes](docs/SECURITY.md)
 - [Release flow](electron-broadcaster/RELEASES.md)
+- [Sales ready checklist](docs/SALES_READY_CHECKLIST.md)
+- [Arabic customer install guide](docs/CUSTOMER_INSTALL_GUIDE_AR.md)
+- [Arabic admin operations guide](docs/ADMIN_OPERATIONS_GUIDE_AR.md)
+- [Arabic network requirements](docs/NETWORK_REQUIREMENTS_AR.md)
+- [Release checklist](docs/RELEASE_CHECKLIST.md)

@@ -33,7 +33,7 @@ export function Live() {
     <div className="live-page">
       <section className="live-feature-card">
         <div>
-          <span className="badge badge-dot badge-live">LIVE</span>
+          <span className="badge badge-dot badge-live">مباشر</span>
           <h1>{featured?.name || "البث المباشر"}</h1>
           <p>{featured?.description || "كل القنوات المباشرة المتاحة على الشبكة في مكان واحد، بتصفح سريع ومناسب للجوال."}</p>
           <div className="row">
@@ -46,7 +46,7 @@ export function Live() {
           </div>
         </div>
         <div className="live-feature-art" aria-hidden>
-          {featured?.logo ? <img src={featured.logo} alt="" /> : <span>LIVE</span>}
+          {featured?.logo ? <img src={featured.logo} alt="" /> : <span>بث</span>}
         </div>
       </section>
 
@@ -103,7 +103,7 @@ export function Live() {
                       <strong>{channel.name}</strong>
                       <small>{channel.group || channel.category || "بث مباشر"}</small>
                     </span>
-                    <span className="badge badge-dot badge-live">LIVE</span>
+                    <span className="badge badge-dot badge-live">مباشر</span>
                   </AppLink>
                 ))}
               </div>

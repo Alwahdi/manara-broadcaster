@@ -2,11 +2,13 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AppLink } from "@/components/AppLink";
 import { api } from "@/lib/api";
+import { useBrand } from "@/hooks/useBrand";
 import { QueryBoundary, EmptyState } from "@/components/States";
 import { ChannelTile, ContentSection, MediaTile } from "@/components/common";
 import { folderResults, getViewerChannels } from "./viewer-utils";
 
 export function Search() {
+  const { brand } = useBrand();
   const [term, setTerm] = useState("");
   const library = useQuery({ queryKey: ["library"], queryFn: () => api.library() });
   const browse = useQuery({ queryKey: ["library-browse", "search-root"], queryFn: () => api.libraryBrowse() });
@@ -37,11 +39,11 @@ export function Search() {
   return (
     <div className="search-page">
       <section className="search-hero">
-        <h1>ابحث في WIVA</h1>
-        <p>قنوات مباشرة، مباريات، أفلام، مسلسلات، وإعادات في مكان واحد.</p>
+        <h1>ابحث في {brand}</h1>
+        <p>ابحث عن القنوات والمجلدات والمحتوى المتاح داخل الشبكة.</p>
         <input
           className="search-input-xl"
-          placeholder="اكتب اسم قناة، فيلم، تصنيف، أو مجلد"
+          placeholder="ابحث عن قناة، قسم، أو محتوى"
           value={term}
           onChange={(e) => setTerm(e.target.value)}
           autoFocus
@@ -52,8 +54,8 @@ export function Search() {
           mediaResults.length === 0 && channelResults.length === 0 && folderMatches.length === 0 ? (
             <EmptyState
               icon="•"
-              title={term ? "لا نتائج" : "ابدأ البحث"}
-              text={term ? "لم نجد شيئاً مطابقاً. جرّب كلمة أبسط أو تصنيفاً مختلفاً." : "اكتب كلمة للبحث في القنوات والمكتبة."}
+              title={term ? "لم نجد نتائج مطابقة" : "ابدأ بالبحث"}
+              text={term ? "جرّب كلمة أبسط أو ابحث باسم آخر." : "ابحث عن القنوات والمحتوى المتاح داخل الشبكة."}
             />
           ) : (
             <>

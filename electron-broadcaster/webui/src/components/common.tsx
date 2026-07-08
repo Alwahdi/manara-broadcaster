@@ -141,7 +141,7 @@ export function ChannelTile({ channel, href }: { channel: Channel; href?: string
         </div>
         <div className="channel-status-stack">
           <span className={`badge badge-dot ${enabled ? "badge-live" : "badge-off"}`}>
-            {enabled ? "LIVE" : "متوقف"}
+            {enabled ? "مباشر" : "متوقف"}
           </span>
           <span className="quality-badge">{qualityLabel}</span>
         </div>

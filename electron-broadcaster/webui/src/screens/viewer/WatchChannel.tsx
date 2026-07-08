@@ -251,8 +251,8 @@ function HlsPlayer({ src }: { src: string }) {
   return (
     <div className="live-player-card">
       <div className="player-chrome-top">
-        <span className="badge badge-dot badge-live">LIVE</span>
-        <span>مشغل WIVA</span>
+        <span className="badge badge-dot badge-live">مباشر</span>
+        <span>مشغل البث</span>
       </div>
       <PlayerFitToolbar fitMode={fitMode} setFitMode={setFitMode} />
       <video
@@ -390,8 +390,8 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
   return (
     <div className="live-player-card">
       <div className="player-chrome-top">
-        <span className="badge badge-dot badge-live">LIVE</span>
-        <span>مشغل WIVA</span>
+        <span className="badge badge-dot badge-live">مباشر</span>
+        <span>مشغل البث</span>
       </div>
       <PlayerFitToolbar fitMode={fitMode} setFitMode={setFitMode} />
       <video

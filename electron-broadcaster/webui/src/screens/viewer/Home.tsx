@@ -32,7 +32,7 @@ export function ViewerHome() {
     <div className="viewer-home">
       <section className="viewer-hero ott-hero" style={heroPoster ? { "--hero-art": `url(${heroPoster})` } as CSSProperties : undefined}>
         <div className="viewer-hero-content">
-          <span className="badge badge-dot badge-live">مباشر الآن</span>
+          <span className="badge badge-dot badge-live">يبث الآن</span>
           <h1>
             {featuredChannel?.name || `مرحبًا بك في ${brand}`}
           </h1>
@@ -55,7 +55,7 @@ export function ViewerHome() {
         <div className="viewer-hero-panel" aria-hidden>
           <img src={logo} alt="" />
           <span>WIVA</span>
-          <strong>LIVE</strong>
+          <strong>مباشر</strong>
           <small>{brand}</small>
         </div>
       </section>
@@ -77,7 +77,7 @@ export function ViewerHome() {
       ) : null}
 
       <ContentSection
-        eyebrow="LIVE"
+        eyebrow="مباشر"
         title="يبث الآن"
         subtitle="القنوات المتاحة حاليًا على الشبكة"
         action={<AppLink href="/live" className="btn btn-ghost btn-sm">عرض الكل</AppLink>}
