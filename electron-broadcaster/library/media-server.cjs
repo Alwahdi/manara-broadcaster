@@ -1595,10 +1595,10 @@ function createHandler(options = {}) {
           source,
           audioDeviceId: String(body.audioId || body.audioDeviceId || 'none').trim() || 'none',
           audioDeviceName: String(body.audioName || body.audioDeviceName || '').trim(),
-          audioDeviceMatchName: String(body.audioName || body.audioDeviceName || '').trim(),
+          audioDeviceMatchName: String(body.audioDeviceMatchName || body.audioName || body.audioDeviceName || '').trim(),
           resolution: body.resolution || '1920x1080',
           fps: body.fps || 30,
-          bitrateKbps: body.bitrateKbps || 6000,
+          bitrateKbps: body.bitrateKbps || 8000,
           autoStart: !!body.autoStart,
           enabled: body.enabled !== false,
         });

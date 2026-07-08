@@ -4,6 +4,8 @@ import { AppLink, useAppPath } from "@/components/AppLink";
 import { api, type Channel } from "@/lib/api";
 import { QueryBoundary } from "@/components/States";
 
+type FitMode = "fit" | "fill" | "zoom";
+
 export function WatchChannel() {
   const id = useAppPath().split("/").filter(Boolean).at(-1) || "";
   const [selectedQualityId, setSelectedQualityId] = useState(id);
@@ -15,10 +17,7 @@ export function WatchChannel() {
   }, [id]);
 
   return (
-    <div>
-      <AppLink href="/live" className="btn btn-ghost btn-sm" style={{ marginBottom: 16 }}>
-        ← البث المباشر
-      </AppLink>
+    <div className="watch-channel-page">
       <QueryBoundary query={state}>
         {(data) => {
           const channels = (((data.channels as Channel[]) || []).length
@@ -36,15 +35,24 @@ export function WatchChannel() {
           const activeQuality = qualityOptions.find((quality) => String(quality.id) === String(activeQualityId));
           return (
             <>
+              <div className="watch-channel-head">
+                <AppLink href="/live" className="btn btn-ghost btn-sm">
+                  ← البث المباشر
+                </AppLink>
+                <div>
+                  <span className="badge badge-dot badge-live">بث مباشر</span>
+                  <h1 className="page-title">{channel?.name || `القناة ${id}`}</h1>
+                </div>
+              </div>
               {isIptv ? (
                 <>
                   {qualityOptions.length > 1 ? (
-                    <div className="card" style={{ marginBottom: 12 }}>
-                      <div className="row-between" style={{ gap: 12 }}>
+                    <div className="quality-switcher">
+                      <div className="row-between quality-switcher-head">
                         <strong>جودة البث</strong>
                         <span className="muted">{activeQuality?.label || activeQuality?.name || "تلقائي"}</span>
                       </div>
-                      <div className="row" style={{ marginTop: 12 }}>
+                      <div className="row quality-switcher-options">
                         {qualityOptions.map((quality) => {
                           const qualityId = String(quality.id);
                           const active = String(activeQualityId) === qualityId;
@@ -67,12 +75,8 @@ export function WatchChannel() {
               ) : (
                 <BroadcastPlayer channelId={id} livePort={Number(agent.data?.ports?.live) || undefined} />
               )}
-              <div className="row-between">
-                <h1 className="page-title">{channel?.name || `القناة ${id}`}</h1>
-                <span className="badge badge-dot badge-live">بث مباشر</span>
-              </div>
               <p className="page-subtitle">
-                إذا لم يبدأ التشغيل تلقائيًا، جرّب إعادة فتح القناة أو تأكد أن مصدر البث يعمل من لوحة الإدارة.
+                بث محلي مباشر بجودة عالية. عند انقطاع المصدر سيحاول WIVA إعادة الاتصال تلقائيًا.
               </p>
             </>
           );
@@ -137,6 +141,7 @@ function HlsPlayer({ src }: { src: string }) {
   const [status, setStatus] = useState("جاري تجهيز البث...");
   const [error, setError] = useState("");
   const [retryKey, setRetryKey] = useState(0);
+  const [fitMode, setFitMode] = useState<FitMode>("fill");
 
   useEffect(() => {
     const video = videoRef.current;
@@ -219,12 +224,13 @@ function HlsPlayer({ src }: { src: string }) {
 
   return (
     <div className="live-player-card">
+      <PlayerFitToolbar fitMode={fitMode} setFitMode={setFitMode} />
       <video
         ref={videoRef}
         controls
         autoPlay
         playsInline
-        className="live-player-video"
+        className={`live-player-video live-player-video-${fitMode}`}
       />
       {status || error ? (
         <div className="live-player-overlay">
@@ -251,7 +257,8 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const [status, setStatus] = useState("جاري الاتصال بمصدر البث...");
   const [ready, setReady] = useState(false);
-  const [fitMode, setFitMode] = useState<"fit" | "fill" | "zoom">("zoom");
+  const [fitMode, setFitMode] = useState<FitMode>("fill");
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     let closed = false;
@@ -348,28 +355,11 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
       try { wsRef.current?.close(); } catch {}
       cleanupPeer();
     };
-  }, [channelId, livePort]);
+  }, [channelId, livePort, retryKey]);
 
   return (
     <div className="live-player-card">
-      {ready ? (
-        <div className="live-player-toolbar" aria-label="حجم صورة البث">
-          {([
-            ["fit", "كامل"],
-            ["fill", "ملء"],
-            ["zoom", "تقريب"],
-          ] as const).map(([mode, label]) => (
-            <button
-              key={mode}
-              type="button"
-              className={fitMode === mode ? "active" : ""}
-              onClick={() => setFitMode(mode)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      ) : null}
+      <PlayerFitToolbar fitMode={fitMode} setFitMode={setFitMode} />
       <video
         ref={videoRef}
         controls
@@ -382,9 +372,41 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
           <div>
             <div className="spinner" style={{ margin: "0 auto 12px" }} />
             <strong>{status}</strong>
+            <div style={{ marginTop: 14 }}>
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => setRetryKey((value) => value + 1)}>
+                إعادة الاتصال
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function PlayerFitToolbar({
+  fitMode,
+  setFitMode,
+}: {
+  fitMode: FitMode;
+  setFitMode: (mode: FitMode) => void;
+}) {
+  return (
+    <div className="live-player-toolbar" aria-label="حجم صورة البث">
+      {([
+        ["fit", "كامل"],
+        ["fill", "ملء"],
+        ["zoom", "تقريب"],
+      ] as const).map(([mode, label]) => (
+        <button
+          key={mode}
+          type="button"
+          className={fitMode === mode ? "active" : ""}
+          onClick={() => setFitMode(mode)}
+        >
+          {label}
+        </button>
+      ))}
     </div>
   );
 }

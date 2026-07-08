@@ -704,23 +704,55 @@ button.folder-card {
   font-size: 0.72rem;
   font-weight: 800;
 }
+.watch-channel-page {
+  display: grid;
+  gap: 14px;
+  margin-top: calc(clamp(20px, 4vw, 40px) * -0.35);
+}
+.watch-channel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.watch-channel-head .page-title {
+  margin: 8px 0 0;
+}
+.quality-switcher {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: rgba(8, 12, 27, 0.78);
+  box-shadow: var(--shadow-soft);
+}
+.quality-switcher-head,
+.quality-switcher-options {
+  gap: 8px;
+}
 .live-player-card {
   position: relative;
   overflow: hidden;
-  margin-bottom: 20px;
-  border-radius: var(--radius);
+  margin-bottom: 10px;
+  border-radius: 24px;
   border: 1px solid var(--border-strong);
   background: #000;
-  box-shadow: var(--shadow-lift);
+  box-shadow: 0 34px 90px rgba(0, 0, 0, 0.46), 0 0 0 1px rgba(255,255,255,0.04) inset;
 }
 .live-player-video {
   display: block;
   width: 100%;
   aspect-ratio: 16 / 9;
-  max-height: min(72vh, 720px);
-  min-height: 260px;
+  max-height: min(78vh, 840px);
+  min-height: min(48vw, 380px);
   background: #000;
   object-fit: contain;
+  object-position: center;
 }
 .live-player-video-fit {
   object-fit: contain;
@@ -732,7 +764,7 @@ button.folder-card {
 }
 .live-player-video-zoom {
   object-fit: cover;
-  transform: scale(1.16);
+  transform: scale(1.08);
   transform-origin: center center;
 }
 .live-player-overlay {
@@ -756,6 +788,7 @@ button.folder-card {
   border-radius: 999px;
   background: rgba(2, 6, 23, 0.72);
   backdrop-filter: blur(10px);
+  box-shadow: 0 16px 40px rgba(0,0,0,0.28);
 }
 .live-player-toolbar button {
   min-height: 30px;
@@ -1026,6 +1059,20 @@ button.folder-card {
   .live-player-video {
     min-height: 220px;
     max-height: 68vh;
+  }
+  .watch-channel-page {
+    margin-top: 0;
+  }
+  .watch-channel-head {
+    align-items: flex-start;
+  }
+  .quality-switcher {
+    align-items: stretch;
+  }
+  .quality-switcher,
+  .quality-switcher-head,
+  .quality-switcher-options {
+    width: 100%;
   }
   .capture-choice-grid,
   .capture-source-grid,

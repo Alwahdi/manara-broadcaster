@@ -1281,7 +1281,7 @@ function upsertBroadcastChannel(channel) {
     audioDeviceMatchName: channel.audioDeviceMatchName || channel.audioDeviceName || '',
     resolution: channel.resolution || '1920x1080',
     fps: channel.fps || 30,
-    bitrateKbps: channel.bitrateKbps || 6000,
+    bitrateKbps: channel.bitrateKbps || 8000,
     autoStart: !!channel.autoStart,
     enabled: channel.enabled !== false,
   };
@@ -1303,7 +1303,7 @@ function setBroadcastChannels(channels) {
     audioDeviceMatchName: c.audioDeviceMatchName || c.audioDeviceName || '',
     resolution: c.resolution || '1920x1080',
     fps: c.fps || 30,
-    bitrateKbps: c.bitrateKbps || 6000,
+    bitrateKbps: c.bitrateKbps || 8000,
     autoStart: !!c.autoStart,
     enabled: c.enabled !== false,
   }));
@@ -1327,7 +1327,7 @@ function replaceAllChannels({ broadcast, iptv } = {}) {
       audioDeviceMatchName: c.audioDeviceMatchName || c.audioDeviceName || '',
       resolution: c.resolution || '1920x1080',
       fps: c.fps || 30,
-      bitrateKbps: c.bitrateKbps || 6000,
+      bitrateKbps: c.bitrateKbps || 8000,
       autoStart: !!c.autoStart,
       enabled: c.enabled !== false,
     }));

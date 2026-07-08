@@ -36,7 +36,7 @@ export function AdminChannelNew() {
   const [name, setName] = useState("");
   const [resolution, setResolution] = useState("1920x1080");
   const [fps, setFps] = useState("30");
-  const [bitrateKbps, setBitrateKbps] = useState("6000");
+  const [bitrateKbps, setBitrateKbps] = useState("8000");
 
   const devices = useQuery({
     queryKey: ["capture-devices"],
@@ -55,13 +55,21 @@ export function AdminChannelNew() {
         name,
         kind: "capture",
         captureKind: kind,
+        source: {
+          type: kind,
+          id: source?.id,
+          name: source?.name,
+          matchName: source?.name,
+          deviceKey: (source as CaptureSource & { deviceKey?: string })?.deviceKey || source?.id,
+        },
         sourceId: source?.id,
         sourceName: source?.name,
         audioId: audio?.id || null,
         audioName: audio?.name || "",
+        audioDeviceMatchName: audio?.name || "",
         resolution,
         fps: Number(fps) || 30,
-        bitrateKbps: Number(bitrateKbps) || 6000,
+        bitrateKbps: Number(bitrateKbps) || 8000,
         enabled: true,
       }),
     onSuccess: async () => {
@@ -225,6 +233,7 @@ export function AdminChannelNew() {
                 <div className="field">
                   <label>معدل البث</label>
                   <select className="select mono" dir="ltr" value={bitrateKbps} onChange={(e) => setBitrateKbps(e.target.value)}>
+                    <option value="8000">8000 kbps</option>
                     <option value="6000">6000 kbps</option>
                     <option value="4500">4500 kbps</option>
                     <option value="2500">2500 kbps</option>

@@ -132,7 +132,7 @@ function ChannelEditor({
     audioDeviceName: channel.audioDeviceName || "",
     resolution: channel.resolution || "1920x1080",
     fps: String(channel.fps || 30),
-    bitrateKbps: String(channel.bitrateKbps || 6000),
+    bitrateKbps: String(channel.bitrateKbps || 8000),
   });
   const set = (key: keyof typeof form) => (event: ChangeEvent<HTMLInputElement>) =>
     setForm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -170,6 +170,7 @@ function ChannelEditor({
         <div className="field">
           <label>معدل البث</label>
           <select className="select mono" dir="ltr" value={form.bitrateKbps} onChange={(event) => setForm((prev) => ({ ...prev, bitrateKbps: event.target.value }))}>
+            <option value="8000">8000 kbps</option>
             <option value="6000">6000 kbps</option>
             <option value="4500">4500 kbps</option>
             <option value="2500">2500 kbps</option>
@@ -187,7 +188,7 @@ function ChannelEditor({
             audioDeviceName: form.audioDeviceName,
             resolution: form.resolution,
             fps: Number(form.fps) || 30,
-            bitrateKbps: Number(form.bitrateKbps) || 6000,
+            bitrateKbps: Number(form.bitrateKbps) || 8000,
           })}
         >
           حفظ التعديل

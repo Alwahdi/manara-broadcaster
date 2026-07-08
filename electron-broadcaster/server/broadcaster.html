@@ -36,7 +36,7 @@ function targetQuality() {
     width: positiveNumber(config.width, 1920, 320, 3840),
     height: positiveNumber(config.height, 1080, 240, 2160),
     fps: positiveNumber(config.fps, 30, 15, 60),
-    bitrateKbps: positiveNumber(config.bitrateKbps, 6000, 800, 25000),
+    bitrateKbps: positiveNumber(config.bitrateKbps, 8000, 800, 25000),
     audioBitrateKbps: positiveNumber(config.audioBitrateKbps, 192, 64, 320),
   };
 }
@@ -51,6 +51,16 @@ function directAudioConstraints(audioDevice) {
   };
   if (audioDevice) constraints.deviceId = { exact: audioDevice.deviceId };
   return constraints;
+}
+
+function relaxedAudioConstraints(audio) {
+  if (!audio || audio === true) return audio;
+  return {
+    ...(audio.deviceId ? { deviceId: audio.deviceId } : {}),
+    echoCancellation: false,
+    noiseSuppression: false,
+    autoGainControl: false,
+  };
 }
 
 function trackSummary(track) {
@@ -74,9 +84,21 @@ function findDevice(devices, kind, wantedId, wantedName) {
   if (direct) return direct;
   const byIdLabel = rows.find((device) => id && norm(device.label).includes(id));
   if (byIdLabel) return byIdLabel;
-  const byName = rows.find((device) => name && norm(device.label) === name)
-    || rows.find((device) => name && norm(device.label).includes(name))
-    || rows.find((device) => name && name.includes(norm(device.label)));
+  const nameTokens = name.split(' ').filter((part) => part.length >= 3);
+  const scored = rows
+    .map((device) => {
+      const label = norm(device.label);
+      let score = 0;
+      if (name && label === name) score += 100;
+      if (name && label.includes(name)) score += 80;
+      if (name && name.includes(label)) score += 60;
+      if (id && label.includes(id)) score += 40;
+      for (const token of nameTokens) if (label.includes(token)) score += 8;
+      return { device, score };
+    })
+    .filter((row) => row.score > 0)
+    .sort((a, b) => b.score - a.score);
+  const byName = scored[0]?.device;
   if (byName) return byName;
   if (wantedId || wantedName) return null;
   return rows[0] || null;
@@ -123,7 +145,13 @@ async function captureStream() {
       return await navigator.mediaDevices.getUserMedia({ video: strictVideo, audio });
     } catch (error) {
       log('strict capture constraints failed, retrying relaxed constraints:', error.message);
-      return navigator.mediaDevices.getUserMedia({ video: relaxedVideo, audio });
+      try {
+        return await navigator.mediaDevices.getUserMedia({ video: relaxedVideo, audio });
+      } catch (secondError) {
+        if (!audio || audio === true) throw secondError;
+        log('capture audio constraints failed, retrying same audio device with simple constraints:', secondError.message);
+        return navigator.mediaDevices.getUserMedia({ video: relaxedVideo, audio: relaxedAudioConstraints(audio) });
+      }
     }
   }
 
@@ -140,7 +168,13 @@ async function captureStream() {
     },
   };
   try {
-    return await navigator.mediaDevices.getUserMedia({ video: desktopVideo, audio });
+    try {
+      return await navigator.mediaDevices.getUserMedia({ video: desktopVideo, audio });
+    } catch (error) {
+      if (!audio || audio === true) throw error;
+      log('desktop audio constraints failed, retrying same audio device with simple constraints:', error.message);
+      return await navigator.mediaDevices.getUserMedia({ video: desktopVideo, audio: relaxedAudioConstraints(audio) });
+    }
   } catch (error) {
     log('desktop getUserMedia failed, trying getDisplayMedia:', error.message);
     if (navigator.mediaDevices.getDisplayMedia) {
@@ -158,14 +192,25 @@ async function captureStream() {
 }
 
 async function ensureStream() {
-  if (stream && stream.getTracks().some((track) => track.readyState === 'live')) return stream;
+  const needsAudio = !!String(config.audioDeviceId || '').trim() && String(config.audioDeviceId || '').trim() !== 'none';
+  const hasLiveVideo = stream?.getVideoTracks?.().some((track) => track.readyState === 'live');
+  const hasLiveAudio = !needsAudio || stream?.getAudioTracks?.().some((track) => track.readyState === 'live');
+  if (stream && hasLiveVideo && hasLiveAudio) return stream;
+  try { stream?.getTracks?.().forEach((track) => track.stop()); } catch {}
+  stream = null;
   stream = await captureStream();
   const preview = document.getElementById('preview');
   preview.srcObject = stream;
   try { await preview.play(); } catch {}
   for (const track of stream.getTracks()) {
+    try {
+      if (track.kind === 'video') track.contentHint = 'motion';
+      if (track.kind === 'audio') track.contentHint = 'music';
+    } catch {}
     track.onended = () => {
       log('track ended, restarting capture');
+      try { stream?.getTracks?.().forEach((item) => item.stop()); } catch {}
+      stream = null;
       try { ws && ws.close(); } catch {}
       restartSoon();
     };

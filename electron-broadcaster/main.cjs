@@ -442,7 +442,7 @@ function windowsAvDevices() {
       const cls = String(row.PNPClass || '').toLowerCase();
       const id = String(row.DeviceID || name || '').trim();
       if (!name) continue;
-      const item = { id, name, type: cls || 'device' };
+      const item = { id, name, type: cls || 'device', matchName: name, deviceKey: id };
       if (cls === 'audioendpoint' || /audio|sound|microphone|speaker/i.test(name)) audioDevices.push(item);
       else if (cls === 'camera' || cls === 'image' || /camera|capture|usb|hdmi|video/i.test(name)) videoDevices.push(item);
     }
@@ -680,7 +680,7 @@ function channelBroadcasterSignature(channel = {}) {
     audioDeviceMatchName: channel.audioDeviceMatchName || channel.audioDeviceName || '',
     resolution: channel.resolution || '1920x1080',
     fps: Number(channel.fps) || 30,
-    bitrateKbps: Number(channel.bitrateKbps) || 6000,
+    bitrateKbps: Number(channel.bitrateKbps) || 8000,
     port: serverInfo?.port || settings.port || DEFAULT_AGENT_PORT,
   });
 }
@@ -718,7 +718,7 @@ function startChannelBroadcaster(channel = {}) {
     width: width || 1280,
     height: height || 720,
     fps: Number(channel.fps) || 30,
-    bitrateKbps: Number(channel.bitrateKbps) || 6000,
+    bitrateKbps: Number(channel.bitrateKbps) || 8000,
     audioBitrateKbps: Number(channel.audioBitrateKbps) || 192,
     wsUrl: liveWsUrl(),
   };
