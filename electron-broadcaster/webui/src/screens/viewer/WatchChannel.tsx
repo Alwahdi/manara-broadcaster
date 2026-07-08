@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AppLink, useAppPath } from "@/components/AppLink";
 import { api, type Channel } from "@/lib/api";
 import { QueryBoundary } from "@/components/States";
+import { ChannelTile, ContentSection } from "@/components/common";
 
 type FitMode = "fit" | "fill" | "zoom";
 
@@ -33,9 +34,10 @@ export function WatchChannel() {
             : `/iptv/${encodeURIComponent(activeQualityId)}/index.m3u8`;
           const isIptv = channel?.type === "iptv" || String(id).startsWith("cloud-") || src.startsWith("/iptv/");
           const activeQuality = qualityOptions.find((quality) => String(quality.id) === String(activeQualityId));
+          const related = channels.filter((item) => String(item.id) !== String(channel?.id)).slice(0, 8);
           return (
             <>
-              <div className="watch-channel-head">
+              <div className="watch-channel-head player-page-head">
                 <AppLink href="/live" className="btn btn-ghost btn-sm">
                   ← البث المباشر
                 </AppLink>
@@ -43,7 +45,12 @@ export function WatchChannel() {
                   <span className="badge badge-dot badge-live">بث مباشر</span>
                   <h1 className="page-title">{channel?.name || `القناة ${id}`}</h1>
                 </div>
+                <div className="row">
+                  <button type="button" className="btn btn-ghost btn-sm">حفظ</button>
+                  <button type="button" className="btn btn-ghost btn-sm">مشاركة</button>
+                </div>
               </div>
+              <section className="player-stage">
               {isIptv ? (
                 <>
                   {qualityOptions.length > 1 ? (
@@ -75,9 +82,33 @@ export function WatchChannel() {
               ) : (
                 <BroadcastPlayer channelId={id} livePort={Number(agent.data?.ports?.live) || undefined} />
               )}
-              <p className="page-subtitle">
-                بث محلي مباشر بجودة عالية. عند انقطاع المصدر سيحاول WIVA إعادة الاتصال تلقائيًا.
-              </p>
+              </section>
+              <div className="player-info-grid">
+                <div className="player-info-card">
+                  <span>الحالة</span>
+                  <strong>يبث الآن</strong>
+                  <small>عند انقطاع المصدر سيحاول WIVA إعادة الاتصال تلقائيًا.</small>
+                </div>
+                <div className="player-info-card">
+                  <span>النوع</span>
+                  <strong>{isIptv ? "IPTV" : "بث من جهاز التقاط"}</strong>
+                  <small>{activeQuality?.label || activeQuality?.name || channel?.resolution || "جودة تلقائية"}</small>
+                </div>
+                <div className="player-info-card">
+                  <span>الشبكة</span>
+                  <strong>بث محلي</strong>
+                  <small>مصمم للمشاهدة داخل الشبكة المحلية.</small>
+                </div>
+              </div>
+              {related.length ? (
+                <ContentSection title="قنوات أخرى" subtitle="انتقل بسرعة إلى بث آخر">
+                  <div className="live-channel-grid horizontal-rail">
+                    {related.map((item) => (
+                      <ChannelTile key={String(item.id)} channel={item} href="/watch/channel/$id" />
+                    ))}
+                  </div>
+                </ContentSection>
+              ) : null}
             </>
           );
         }}
@@ -224,6 +255,10 @@ function HlsPlayer({ src }: { src: string }) {
 
   return (
     <div className="live-player-card">
+      <div className="player-chrome-top">
+        <span className="badge badge-dot badge-live">LIVE</span>
+        <span>مشغل WIVA</span>
+      </div>
       <PlayerFitToolbar fitMode={fitMode} setFitMode={setFitMode} />
       <video
         ref={videoRef}
@@ -235,10 +270,10 @@ function HlsPlayer({ src }: { src: string }) {
       {status || error ? (
         <div className="live-player-overlay">
           <div>
-            {status && !error ? <div className="spinner" style={{ margin: "0 auto 12px" }} /> : null}
+            {status && !error ? <div className="spinner overlay-spinner" /> : null}
             <strong>{error || status}</strong>
             {error ? (
-              <div style={{ marginTop: 14 }}>
+              <div className="overlay-action">
                 <button type="button" className="btn btn-primary btn-sm" onClick={() => setRetryKey((value) => value + 1)}>
                   إعادة المحاولة
                 </button>
@@ -359,6 +394,10 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
 
   return (
     <div className="live-player-card">
+      <div className="player-chrome-top">
+        <span className="badge badge-dot badge-live">LIVE</span>
+        <span>مشغل WIVA</span>
+      </div>
       <PlayerFitToolbar fitMode={fitMode} setFitMode={setFitMode} />
       <video
         ref={videoRef}
@@ -370,9 +409,9 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
       {!ready ? (
         <div className="live-player-overlay">
           <div>
-            <div className="spinner" style={{ margin: "0 auto 12px" }} />
+            <div className="spinner overlay-spinner" />
             <strong>{status}</strong>
-            <div style={{ marginTop: 14 }}>
+            <div className="overlay-action">
               <button type="button" className="btn btn-primary btn-sm" onClick={() => setRetryKey((value) => value + 1)}>
                 إعادة الاتصال
               </button>

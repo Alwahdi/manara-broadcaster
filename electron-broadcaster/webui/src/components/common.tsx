@@ -32,6 +32,68 @@ export function StatTile({ value, label }: { value: ReactNode; label: string }) 
   );
 }
 
+export function ContentSection({
+  eyebrow,
+  title,
+  subtitle,
+  action,
+  children,
+  className = "",
+}: {
+  eyebrow?: string;
+  title: string;
+  subtitle?: string;
+  action?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={`content-section ${className}`} aria-label={title}>
+      <div className="section-head">
+        <div>
+          {eyebrow ? <span className="section-eyebrow">{eyebrow}</span> : null}
+          <h2 className="section-title">{title}</h2>
+          {subtitle ? <p className="section-subtitle">{subtitle}</p> : null}
+        </div>
+        {action ? <div className="section-action">{action}</div> : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+export function CategoryChips({
+  items,
+  value,
+  onChange,
+}: {
+  items: { value: string; label: string }[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="category-chips" role="tablist" aria-label="تصفية المحتوى">
+      {items.map((item) => (
+        <button
+          key={item.value}
+          type="button"
+          role="tab"
+          aria-selected={value === item.value}
+          className={`chip ${value === item.value ? "active" : ""}`}
+          onClick={() => onChange(item.value)}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function initials(value?: string) {
+  const parts = String(value || "WIVA").trim().split(/\s+/).filter(Boolean);
+  return parts.slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "W";
+}
+
 export function MediaTile({ item }: { item: MediaItem }) {
   const title = item.title || item.name || "بدون عنوان";
   const online = item.online !== false;
@@ -39,15 +101,16 @@ export function MediaTile({ item }: { item: MediaItem }) {
     <AppLink
       href="/watch/media/$id"
       params={{ id: String(item.id) }}
-      className="card-hover"
-      style={{ display: "block" }}
+      className="media-card card-hover"
     >
       <div className="poster">
         {item.poster ? (
           <img src={item.poster} alt="" loading="lazy" />
         ) : (
-          <div className="poster-fallback" aria-hidden>🎬</div>
+          <div className="poster-fallback" aria-hidden>{initials(title)}</div>
         )}
+        <span className="poster-shade" aria-hidden />
+        <span className="media-kind">{item.category || item.kind || "فيديو"}</span>
         {!online ? <span className="offline-ribbon">غير متصل</span> : null}
       </div>
       <div className="tile-title truncate">{title}</div>
@@ -62,6 +125,10 @@ export function MediaTile({ item }: { item: MediaItem }) {
 export function ChannelTile({ channel, href }: { channel: Channel; href?: string }) {
   const enabled = channel.enabled !== false && channel.enabled !== 0;
   const kind = channel.type === "iptv" || channel.kind === "iptv" ? "IPTV" : "بث مباشر";
+  const qualities = Array.isArray(channel.qualities) ? channel.qualities : [];
+  const qualityLabel = qualities.length
+    ? qualities.slice(0, 2).map((q) => q.label || q.name || String(q.id)).join(" / ")
+    : channel.resolution || "HD";
   const inner = (
     <div className="channel-card card-hover">
       <div className="channel-card-glow" aria-hidden />
@@ -70,20 +137,24 @@ export function ChannelTile({ channel, href }: { channel: Channel; href?: string
           {channel.logo ? (
             <img src={channel.logo} alt="" />
           ) : (
-            <span aria-hidden>📺</span>
+            <span aria-hidden>{initials(channel.name)}</span>
           )}
         </div>
-        <span className={`badge badge-dot ${enabled ? "badge-on" : "badge-off"}`}>
-          {enabled ? "مفعّلة" : "متوقفة"}
-        </span>
+        <div className="channel-status-stack">
+          <span className={`badge badge-dot ${enabled ? "badge-live" : "badge-off"}`}>
+            {enabled ? "LIVE" : "متوقف"}
+          </span>
+          <span className="quality-badge">{qualityLabel}</span>
+        </div>
       </div>
       <div className="channel-card-body">
         <strong>{channel.name}</strong>
         <span>{channel.group || channel.category || kind}</span>
+        {channel.description ? <small>{channel.description}</small> : null}
       </div>
-      {channel.qualities?.length ? (
+      {qualities.length ? (
         <div className="channel-quality-row">
-          {channel.qualities.slice(0, 3).map((q) => (
+          {qualities.slice(0, 3).map((q) => (
             <span key={String(q.id)}>{q.label || q.name || String(q.id)}</span>
           ))}
         </div>

@@ -5,12 +5,11 @@ import { LiveIndicator } from "@/components/LiveIndicator";
 import { OfflineBanner } from "@/components/OfflineBanner";
 
 const NAV = [
-  { to: "/", label: "الرئيسية", exact: true },
-  { to: "/live", label: "البث المباشر" },
-  { to: "/library", label: "المكتبة" },
-  { to: "/search", label: "بحث" },
-  { to: "/favorites", label: "المفضلة" },
-  { to: "/account", label: "حسابي" },
+  { to: "/", label: "الرئيسية", short: "الرئيسية", glyph: "H", exact: true },
+  { to: "/live", label: "البث المباشر", short: "مباشر", glyph: "L" },
+  { to: "/library", label: "المكتبة", short: "المكتبة", glyph: "M" },
+  { to: "/search", label: "البحث", short: "بحث", glyph: "S" },
+  { to: "/account", label: "الحساب والإعدادات", short: "حسابي", glyph: "P" },
 ];
 
 function isActive(path: string, href: string, exact?: boolean) {
@@ -53,13 +52,32 @@ export function ViewerLayout({ children }: { children: ReactNode }) {
           ))}
         </nav>
         <div className="row hide-sm">
+          <AppLink href={portAwareHref("/search", state)} className="top-search-link">
+            ابحث في القنوات والمكتبة
+          </AppLink>
           <LiveIndicator />
         </div>
       </header>
       <main id="main" className="container page grow">
         {children}
       </main>
-      <footer className="container" style={{ padding: "24px 0", color: "var(--text-dim)", fontSize: "0.82rem" }}>
+      <nav className="mobile-bottom-nav" aria-label="التنقل الرئيسي للجوال">
+        {NAV.map((item) => {
+          const active = isActive(path, item.to, item.exact);
+          return (
+            <AppLink
+              key={item.to}
+              href={portAwareHref(item.to, state)}
+              className={`mobile-nav-item ${active ? "active" : ""}`}
+              aria-current={active ? "page" : undefined}
+            >
+              <span className="mobile-nav-glyph" aria-hidden>{item.glyph}</span>
+              <span>{item.short}</span>
+            </AppLink>
+          );
+        })}
+      </nav>
+      <footer className="viewer-footer container">
         {brand} — شبكة محلية
       </footer>
     </div>

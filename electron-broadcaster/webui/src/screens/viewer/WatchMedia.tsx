@@ -9,28 +9,43 @@ export function WatchMedia() {
   const media = useQuery({ queryKey: ["media", id], queryFn: () => api.media(id) });
 
   return (
-    <div>
-      <AppLink href="/library" className="btn btn-ghost btn-sm" style={{ marginBottom: 16 }}>
-        ← المكتبة
-      </AppLink>
+    <div className="watch-media-page">
       <QueryBoundary query={media}>
         {(item) => (
           <div>
-            <div className="card" style={{ overflow: "hidden", marginBottom: 20 }}>
+            <div className="watch-channel-head player-page-head">
+              <AppLink href="/library" className="btn btn-ghost btn-sm">
+                ← المكتبة
+              </AppLink>
+              <div>
+                <span className="badge">المكتبة</span>
+                <h1 className="page-title">{item.title || item.name}</h1>
+              </div>
+            </div>
+            <div className="media-player-shell">
+              <div className="player-chrome-top">
+                <span>مشغل WIVA</span>
+                {item.durationSec ? <span>{formatDuration(item.durationSec)}</span> : null}
+              </div>
               <video
                 controls
                 autoPlay
                 playsInline
                 poster={item.poster}
-                style={{ width: "100%", aspectRatio: "16/9", background: "#000", display: "block" }}
+                className="media-player-video"
                 src={`/media/${item.id}`}
               />
             </div>
-            <h1 className="page-title">{item.title || item.name}</h1>
-            <div className="row" style={{ marginTop: 8 }}>
-              {item.category ? <span className="badge">{item.category}</span> : null}
-              {item.durationSec ? <span className="badge">{formatDuration(item.durationSec)}</span> : null}
-              {item.online === false ? <span className="badge badge-warn">المصدر غير متصل</span> : null}
+            <div className="detail-panel">
+              <div>
+                <h2>{item.title || item.name}</h2>
+                <p>{String(item.description || item.folder || "محتوى من المكتبة المحلية جاهز للتشغيل داخل الشبكة.")}</p>
+              </div>
+              <div className="row">
+                {item.category ? <span className="badge">{item.category}</span> : null}
+                {item.durationSec ? <span className="badge">{formatDuration(item.durationSec)}</span> : null}
+                {item.online === false ? <span className="badge badge-warn">المصدر غير متصل</span> : null}
+              </div>
             </div>
           </div>
         )}

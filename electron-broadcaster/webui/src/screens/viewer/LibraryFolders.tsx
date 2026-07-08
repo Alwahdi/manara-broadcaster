@@ -3,12 +3,20 @@ import { useQuery } from "@tanstack/react-query";
 import { AppLink } from "@/components/AppLink";
 import { api, type LibraryBrowseEntry } from "@/lib/api";
 import { QueryBoundary, EmptyState } from "@/components/States";
-import { PageHeader } from "@/components/common";
+import { CategoryChips, ContentSection } from "@/components/common";
+
+const LIBRARY_FILTERS = [
+  { value: "all", label: "الكل" },
+  { value: "folder", label: "مجلدات" },
+  { value: "media", label: "ملفات" },
+];
 
 /** File-explorer style library view based on real source paths and relative paths. */
 export function LibraryFolders() {
   const [sourceId, setSourceId] = useState<string>("");
   const [path, setPath] = useState<string>("");
+  const [term, setTerm] = useState("");
+  const [filter, setFilter] = useState("all");
   const params = useMemo(() => {
     const next: Record<string, string> = {};
     if (sourceId) next.sourceId = sourceId;
@@ -35,50 +43,79 @@ export function LibraryFolders() {
   };
 
   return (
-    <div>
-      <PageHeader
-        title="المكتبة"
-        subtitle="تصفّح المحتوى بنفس ترتيب المجلدات والملفات على جهاز السيرفر"
-      />
+    <div className="library-page">
+      <section className="library-hero">
+        <span className="badge">المكتبة المحلية</span>
+        <h1>تصفّح ملفاتك كما هي على جهاز السيرفر</h1>
+        <p>مجلدات، أقسام، أفلام، مسلسلات، وإعادات مرتبة بصريًا بدون إخفاء بنية الملفات الحقيقية.</p>
+      </section>
       <QueryBoundary
         query={browse}
         isEmpty={(d) => !d.entries || d.entries.length === 0}
         empty={<EmptyState icon="📂" title="لا يوجد محتوى" text="أضف مسارًا من لوحة الإدارة ثم شغّل الفحص." />}
       >
-        {(data) => (
-          <section className="folder-browser" aria-label="تصفح المكتبة">
-            <nav className="folder-breadcrumbs" aria-label="مسار المكتبة">
-              <button type="button" onClick={openRoot}>المصادر</button>
-              {data.source ? (
-                <>
-                  <span>/</span>
-                  <button type="button" onClick={() => openSource(data.source!.id)}>
-                    {data.source.name || data.source.label || "مصدر"}
-                  </button>
-                </>
-              ) : null}
-              {data.breadcrumbs.map((crumb) => (
-                <span key={crumb.path} className="folder-crumb">
-                  <span>/</span>
-                  <button type="button" onClick={() => setPath(crumb.path)}>{crumb.name}</button>
-                </span>
-              ))}
-            </nav>
-            <div className="folder-grid">
-              {data.entries.map((entry) =>
-                entry.type === "folder" ? (
-                  <FolderCard
-                    key={`${entry.sourceId || "root"}-${entry.path || entry.name}`}
-                    entry={entry}
-                    onOpen={() => (sourceId ? openFolder(entry) : openSource(entry.sourceId || ""))}
-                  />
+        {(data) => {
+          const q = term.trim().toLowerCase();
+          const entries = data.entries.filter((entry) => {
+            const matchesTerm = !q || `${entry.name} ${entry.path || ""} ${entry.media?.title || ""}`.toLowerCase().includes(q);
+            const matchesFilter = filter === "all" || entry.type === filter;
+            return matchesTerm && matchesFilter;
+          });
+          const folderCount = data.entries.filter((entry) => entry.type === "folder").length;
+          const mediaCount = data.entries.filter((entry) => entry.type === "media").length;
+          return (
+            <section className="folder-browser" aria-label="تصفح المكتبة">
+              <div className="viewer-filter-bar">
+                <label className="search-shell">
+                  <span>بحث</span>
+                  <input value={term} onChange={(event) => setTerm(event.target.value)} placeholder="ابحث داخل هذا المجلد" />
+                </label>
+                <CategoryChips items={LIBRARY_FILTERS} value={filter} onChange={setFilter} />
+              </div>
+              <nav className="folder-breadcrumbs" aria-label="مسار المكتبة">
+                <button type="button" onClick={openRoot}>المصادر</button>
+                {data.source ? (
+                  <>
+                    <span>/</span>
+                    <button type="button" onClick={() => openSource(data.source!.id)}>
+                      {data.source.name || data.source.label || "مصدر"}
+                    </button>
+                  </>
+                ) : null}
+                {data.breadcrumbs.map((crumb) => (
+                  <span key={crumb.path} className="folder-crumb">
+                    <span>/</span>
+                    <button type="button" onClick={() => setPath(crumb.path)}>{crumb.name}</button>
+                  </span>
+                ))}
+              </nav>
+              <div className="library-stats">
+                <div><strong>{folderCount}</strong><span>مجلد</span></div>
+                <div><strong>{mediaCount}</strong><span>ملف</span></div>
+                <div><strong>{entries.length}</strong><span>نتيجة معروضة</span></div>
+              </div>
+              <ContentSection title={data.source ? "محتوى المجلد" : "مصادر المكتبة"} subtitle="نفس بنية المجلدات الموجودة على جهاز السيرفر">
+                {entries.length ? (
+                  <div className="folder-grid">
+                    {entries.map((entry) =>
+                      entry.type === "folder" ? (
+                        <FolderCard
+                          key={`${entry.sourceId || "root"}-${entry.path || entry.name}`}
+                          entry={entry}
+                          onOpen={() => (sourceId ? openFolder(entry) : openSource(entry.sourceId || ""))}
+                        />
+                      ) : (
+                        <MediaFileCard key={`${entry.media?.id || entry.path}`} entry={entry} />
+                      ),
+                    )}
+                  </div>
                 ) : (
-                  <MediaFileCard key={`${entry.media?.id || entry.path}`} entry={entry} />
-                ),
-              )}
-            </div>
-          </section>
-        )}
+                  <EmptyState icon="•" title="لا توجد نتائج" text="جرّب إزالة البحث أو تغيير الفلتر." />
+                )}
+              </ContentSection>
+            </section>
+          );
+        }}
       </QueryBoundary>
     </div>
   );
@@ -88,7 +125,7 @@ function FolderCard({ entry, onOpen }: { entry: LibraryBrowseEntry; onOpen: () =
   return (
     <button type="button" className="folder-card" onClick={onOpen}>
       <div className="folder-card-art">
-        {entry.cover ? <img src={entry.cover} alt="" loading="lazy" /> : <span aria-hidden>📁</span>}
+        {entry.cover ? <img src={entry.cover} alt="" loading="lazy" /> : <span aria-hidden>ملف</span>}
         {!entry.online ? <span className="offline-ribbon">غير متصل</span> : null}
       </div>
       <div className="folder-card-body">
@@ -107,7 +144,7 @@ function MediaFileCard({ entry }: { entry: LibraryBrowseEntry }) {
     return (
       <div className="folder-card folder-file-card" aria-disabled="true">
         <div className="folder-card-art">
-          {entry.cover ? <img src={entry.cover} alt="" loading="lazy" /> : <span aria-hidden>🎬</span>}
+          {entry.cover ? <img src={entry.cover} alt="" loading="lazy" /> : <span aria-hidden>فيديو</span>}
           <span className="offline-ribbon">غير جاهز</span>
         </div>
         <div className="folder-card-body">
@@ -124,7 +161,7 @@ function MediaFileCard({ entry }: { entry: LibraryBrowseEntry }) {
       className="folder-card folder-file-card"
     >
       <div className="folder-card-art">
-        {entry.cover ? <img src={entry.cover} alt="" loading="lazy" /> : <span aria-hidden>🎬</span>}
+        {entry.cover ? <img src={entry.cover} alt="" loading="lazy" /> : <span aria-hidden>فيديو</span>}
         {!entry.online ? <span className="offline-ribbon">غير متصل</span> : null}
       </div>
       <div className="folder-card-body">
