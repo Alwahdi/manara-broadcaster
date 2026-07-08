@@ -383,11 +383,21 @@ async function main() {
     assert.equal(created.resolution, '1920x1080', 'capture channels default to Full HD for clearer device input');
     assert.equal(Number(created.fps), 30, 'capture channels default to 30fps');
     assert.equal(Number(created.bitrateKbps), 8000, 'capture channels default to a clear 8Mbps WebRTC bitrate');
+    assert.equal(Number(created.audioBitrateKbps), 256, 'capture channels default to clearer 256kbps audio');
+    assert.equal(created.audioMode, 'cinema', 'capture channels default to the balanced audio profile');
+    assert.equal(Number(created.audioGain), 1.05, 'capture channels default to gentle audio gain');
 
     res = await request(base, `/api/admin/broadcast/${encodeURIComponent(created.id)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...auth },
-      body: JSON.stringify({ name: 'كاميرا القاعة HD', audioDeviceName: 'USB Audio Updated', enabled: true }),
+      body: JSON.stringify({
+        name: 'كاميرا القاعة HD',
+        audioDeviceName: 'USB Audio Updated',
+        audioMode: 'voice',
+        audioGain: 1.15,
+        audioBitrateKbps: 320,
+        enabled: true,
+      }),
     });
     assert.equal(res.status, 200);
     const updatedBroadcast = await res.json();
@@ -395,6 +405,9 @@ async function main() {
     assert.equal(updatedBroadcast.audioDeviceName, 'USB Audio Updated');
     assert.equal(updatedBroadcast.resolution, '1920x1080', 'partial channel edits keep the HD capture resolution');
     assert.equal(Number(updatedBroadcast.bitrateKbps), 8000, 'partial channel edits keep the HD WebRTC bitrate');
+    assert.equal(updatedBroadcast.audioMode, 'voice', 'channel edits persist audio clarity profile');
+    assert.equal(Number(updatedBroadcast.audioGain), 1.15, 'channel edits persist audio gain');
+    assert.equal(Number(updatedBroadcast.audioBitrateKbps), 320, 'channel edits persist audio bitrate');
 
     // A name is required.
     res = await request(base, '/api/admin/broadcast', {

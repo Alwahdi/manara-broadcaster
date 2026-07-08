@@ -23,6 +23,8 @@ const config = readConfig();
 const peers = new Map();
 let ws = null;
 let stream = null;
+let captureSourceStream = null;
+let audioContext = null;
 let reconnectTimer = null;
 
 function positiveNumber(value, fallback, min, max) {
@@ -31,13 +33,29 @@ function positiveNumber(value, fallback, min, max) {
   return Math.max(min, Math.min(max, Math.round(next)));
 }
 
+function positiveFloat(value, fallback, min, max) {
+  const next = Number(value);
+  if (!Number.isFinite(next) || next <= 0) return fallback;
+  return Math.max(min, Math.min(max, next));
+}
+
+function audioProfile() {
+  const mode = ['direct', 'voice', 'cinema'].includes(String(config.audioMode || '').trim())
+    ? String(config.audioMode).trim()
+    : 'cinema';
+  return {
+    mode,
+    gain: positiveFloat(config.audioGain, 1.05, 0.5, 2),
+  };
+}
+
 function targetQuality() {
   return {
     width: positiveNumber(config.width, 1920, 320, 3840),
     height: positiveNumber(config.height, 1080, 240, 2160),
     fps: positiveNumber(config.fps, 30, 15, 60),
     bitrateKbps: positiveNumber(config.bitrateKbps, 8000, 800, 25000),
-    audioBitrateKbps: positiveNumber(config.audioBitrateKbps, 192, 64, 320),
+    audioBitrateKbps: positiveNumber(config.audioBitrateKbps, 256, 64, 320),
   };
 }
 
@@ -70,6 +88,17 @@ function trackSummary(track) {
     return `video:${track.label || 'source'} ${settings.width || '?'}x${settings.height || '?'} ${settings.frameRate || '?'}fps`;
   }
   return `audio:${track.label || 'source'} ${settings.sampleRate || '?'}Hz ${settings.channelCount || '?'}ch`;
+}
+
+function stopCurrentStream() {
+  try { stream?.getTracks?.().forEach((track) => track.stop()); } catch {}
+  if (captureSourceStream && captureSourceStream !== stream) {
+    try { captureSourceStream.getTracks().forEach((track) => track.stop()); } catch {}
+  }
+  try { audioContext?.close?.(); } catch {}
+  stream = null;
+  captureSourceStream = null;
+  audioContext = null;
 }
 
 function norm(value) {
@@ -191,26 +220,78 @@ async function captureStream() {
   }
 }
 
+async function prepareAudio(rawStream) {
+  const audioTracks = rawStream?.getAudioTracks?.() || [];
+  if (!audioTracks.length) return rawStream;
+  const profile = audioProfile();
+  if (profile.mode === 'direct' && Math.abs(profile.gain - 1) < 0.01) return rawStream;
+  try {
+    audioContext = new AudioContext({ sampleRate: 48000 });
+    if (audioContext.state === 'suspended') {
+      try { await audioContext.resume(); } catch {}
+    }
+    const sourceNode = audioContext.createMediaStreamSource(rawStream);
+    const destination = audioContext.createMediaStreamDestination();
+    let tail = sourceNode;
+    const chain = (node) => {
+      tail.connect(node);
+      tail = node;
+      return node;
+    };
+
+    if (profile.mode === 'voice' || profile.mode === 'cinema') {
+      const highpass = audioContext.createBiquadFilter();
+      highpass.type = 'highpass';
+      highpass.frequency.value = profile.mode === 'voice' ? 95 : 65;
+      highpass.Q.value = 0.7;
+      chain(highpass);
+
+      const compressor = audioContext.createDynamicsCompressor();
+      compressor.threshold.value = profile.mode === 'voice' ? -24 : -18;
+      compressor.knee.value = profile.mode === 'voice' ? 18 : 24;
+      compressor.ratio.value = profile.mode === 'voice' ? 3.2 : 2.2;
+      compressor.attack.value = 0.004;
+      compressor.release.value = profile.mode === 'voice' ? 0.28 : 0.22;
+      chain(compressor);
+    }
+
+    const gain = audioContext.createGain();
+    gain.gain.value = profile.gain;
+    chain(gain);
+    tail.connect(destination);
+    const output = new MediaStream([
+      ...rawStream.getVideoTracks(),
+      ...destination.stream.getAudioTracks(),
+    ]);
+    log('audio profile enabled:', profile.mode, `${profile.gain.toFixed(2)}x`);
+    return output;
+  } catch (error) {
+    log('audio profile skipped, using direct capture audio:', error.message);
+    try { audioContext?.close?.(); } catch {}
+    audioContext = null;
+    return rawStream;
+  }
+}
+
 async function ensureStream() {
   const needsAudio = !!String(config.audioDeviceId || '').trim() && String(config.audioDeviceId || '').trim() !== 'none';
   const hasLiveVideo = stream?.getVideoTracks?.().some((track) => track.readyState === 'live');
   const hasLiveAudio = !needsAudio || stream?.getAudioTracks?.().some((track) => track.readyState === 'live');
   if (stream && hasLiveVideo && hasLiveAudio) return stream;
-  try { stream?.getTracks?.().forEach((track) => track.stop()); } catch {}
-  stream = null;
-  stream = await captureStream();
+  stopCurrentStream();
+  captureSourceStream = await captureStream();
+  stream = await prepareAudio(captureSourceStream);
   const preview = document.getElementById('preview');
   preview.srcObject = stream;
   try { await preview.play(); } catch {}
   for (const track of stream.getTracks()) {
     try {
       if (track.kind === 'video') track.contentHint = 'motion';
-      if (track.kind === 'audio') track.contentHint = 'music';
+      if (track.kind === 'audio') track.contentHint = audioProfile().mode === 'voice' ? 'speech' : 'music';
     } catch {}
     track.onended = () => {
       log('track ended, restarting capture');
-      try { stream?.getTracks?.().forEach((item) => item.stop()); } catch {}
-      stream = null;
+      stopCurrentStream();
       try { ws && ws.close(); } catch {}
       restartSoon();
     };

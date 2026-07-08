@@ -133,6 +133,9 @@ function ChannelEditor({
     resolution: channel.resolution || "1920x1080",
     fps: String(channel.fps || 30),
     bitrateKbps: String(channel.bitrateKbps || 8000),
+    audioBitrateKbps: String(channel.audioBitrateKbps || 256),
+    audioMode: String(channel.audioMode || "cinema"),
+    audioGain: String(channel.audioGain || 1.05),
   });
   const set = (key: keyof typeof form) => (event: ChangeEvent<HTMLInputElement>) =>
     setForm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -176,6 +179,32 @@ function ChannelEditor({
             <option value="2500">2500 kbps</option>
           </select>
         </div>
+        <div className="field">
+          <label>جودة الصوت</label>
+          <select className="select mono" dir="ltr" value={form.audioBitrateKbps} onChange={(event) => setForm((prev) => ({ ...prev, audioBitrateKbps: event.target.value }))}>
+            <option value="256">256 kbps</option>
+            <option value="320">320 kbps</option>
+            <option value="192">192 kbps</option>
+            <option value="128">128 kbps</option>
+          </select>
+        </div>
+        <div className="field">
+          <label>وضع الصوت</label>
+          <select className="select" value={form.audioMode} onChange={(event) => setForm((prev) => ({ ...prev, audioMode: event.target.value }))}>
+            <option value="cinema">متوازن وواضح</option>
+            <option value="direct">مباشر من الجهاز</option>
+            <option value="voice">وضوح الكلام</option>
+          </select>
+        </div>
+        <div className="field">
+          <label>رفع الصوت</label>
+          <select className="select mono" dir="ltr" value={form.audioGain} onChange={(event) => setForm((prev) => ({ ...prev, audioGain: event.target.value }))}>
+            <option value="1">1.00x</option>
+            <option value="1.05">1.05x</option>
+            <option value="1.15">1.15x</option>
+            <option value="1.3">1.30x</option>
+          </select>
+        </div>
       </div>
       <div className="row" style={{ marginTop: 14 }}>
         <button
@@ -189,6 +218,9 @@ function ChannelEditor({
             resolution: form.resolution,
             fps: Number(form.fps) || 30,
             bitrateKbps: Number(form.bitrateKbps) || 8000,
+            audioBitrateKbps: Number(form.audioBitrateKbps) || 256,
+            audioMode: form.audioMode,
+            audioGain: Number(form.audioGain) || 1.05,
           })}
         >
           حفظ التعديل

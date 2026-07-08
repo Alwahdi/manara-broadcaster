@@ -37,6 +37,9 @@ export function AdminChannelNew() {
   const [resolution, setResolution] = useState("1920x1080");
   const [fps, setFps] = useState("30");
   const [bitrateKbps, setBitrateKbps] = useState("8000");
+  const [audioBitrateKbps, setAudioBitrateKbps] = useState("256");
+  const [audioMode, setAudioMode] = useState("cinema");
+  const [audioGain, setAudioGain] = useState("1.05");
 
   const devices = useQuery({
     queryKey: ["capture-devices"],
@@ -70,6 +73,9 @@ export function AdminChannelNew() {
         resolution,
         fps: Number(fps) || 30,
         bitrateKbps: Number(bitrateKbps) || 8000,
+        audioBitrateKbps: Number(audioBitrateKbps) || 256,
+        audioMode,
+        audioGain: Number(audioGain) || 1.05,
         enabled: true,
       }),
     onSuccess: async () => {
@@ -135,6 +141,7 @@ export function AdminChannelNew() {
               <div><span>الإطارات</span><strong dir="ltr">{fps} fps</strong></div>
               <div><span>المعدل</span><strong dir="ltr">{bitrateKbps} kbps</strong></div>
               <div><span>الصوت</span><strong>{audio?.name || "بدون"}</strong></div>
+              <div><span>معالجة الصوت</span><strong>{audioMode === "voice" ? "وضوح الكلام" : audioMode === "direct" ? "مباشر" : "متوازن"}</strong></div>
             </div>
           </div>
         </aside>
@@ -239,6 +246,32 @@ export function AdminChannelNew() {
                     <option value="2500">2500 kbps</option>
                   </select>
                 </div>
+                <div className="field">
+                  <label>جودة الصوت</label>
+                  <select className="select mono" dir="ltr" value={audioBitrateKbps} onChange={(e) => setAudioBitrateKbps(e.target.value)}>
+                    <option value="256">256 kbps</option>
+                    <option value="320">320 kbps</option>
+                    <option value="192">192 kbps</option>
+                    <option value="128">128 kbps</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label>وضع الصوت</label>
+                  <select className="select" value={audioMode} onChange={(e) => setAudioMode(e.target.value)}>
+                    <option value="cinema">متوازن وواضح</option>
+                    <option value="direct">مباشر من الجهاز</option>
+                    <option value="voice">وضوح الكلام</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label>رفع الصوت</label>
+                  <select className="select mono" dir="ltr" value={audioGain} onChange={(e) => setAudioGain(e.target.value)}>
+                    <option value="1">1.00x</option>
+                    <option value="1.05">1.05x</option>
+                    <option value="1.15">1.15x</option>
+                    <option value="1.3">1.30x</option>
+                  </select>
+                </div>
               </div>
               <div className="capture-audio-grid" style={{ marginTop: 12 }}>
                 <button
@@ -274,6 +307,8 @@ export function AdminChannelNew() {
                 <div><span>المصدر</span><strong>{source?.name || "—"}</strong></div>
                 <div><span>الصوت</span><strong>{audio?.name || "بدون"}</strong></div>
                 <div><span>الجودة</span><strong dir="ltr">{resolution} · {fps}fps</strong></div>
+                <div><span>معالجة الصوت</span><strong>{audioMode === "voice" ? "وضوح الكلام" : audioMode === "direct" ? "مباشر" : "متوازن وواضح"}</strong></div>
+                <div><span>ترميز الصوت</span><strong dir="ltr">{audioBitrateKbps} kbps · {audioGain}x</strong></div>
               </div>
               <div className="row" style={{ marginTop: 14 }}>
                 <button className="btn btn-ghost" onClick={() => probe.mutate()} disabled={probe.isPending || !source}>

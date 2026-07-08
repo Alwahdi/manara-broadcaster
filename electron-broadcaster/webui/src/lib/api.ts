@@ -142,6 +142,9 @@ export interface Channel {
   resolution?: string;
   fps?: number;
   bitrateKbps?: number;
+  audioBitrateKbps?: number;
+  audioMode?: string;
+  audioGain?: number;
   transferLimitBytes?: number;
   qualities?: { id: string | number; label?: string; name?: string }[];
   [k: string]: unknown;

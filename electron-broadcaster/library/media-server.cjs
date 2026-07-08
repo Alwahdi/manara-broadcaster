@@ -1599,6 +1599,9 @@ function createHandler(options = {}) {
           resolution: body.resolution || '1920x1080',
           fps: body.fps || 30,
           bitrateKbps: body.bitrateKbps || 8000,
+          audioBitrateKbps: body.audioBitrateKbps || 256,
+          audioMode: body.audioMode || 'cinema',
+          audioGain: body.audioGain || 1.05,
           autoStart: !!body.autoStart,
           enabled: body.enabled !== false,
         });

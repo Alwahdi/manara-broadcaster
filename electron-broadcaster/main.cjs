@@ -681,6 +681,9 @@ function channelBroadcasterSignature(channel = {}) {
     resolution: channel.resolution || '1920x1080',
     fps: Number(channel.fps) || 30,
     bitrateKbps: Number(channel.bitrateKbps) || 8000,
+    audioBitrateKbps: Number(channel.audioBitrateKbps) || 256,
+    audioMode: channel.audioMode || 'cinema',
+    audioGain: Number(channel.audioGain) || 1.05,
     port: serverInfo?.port || settings.port || DEFAULT_AGENT_PORT,
   });
 }
@@ -719,7 +722,9 @@ function startChannelBroadcaster(channel = {}) {
     height: height || 720,
     fps: Number(channel.fps) || 30,
     bitrateKbps: Number(channel.bitrateKbps) || 8000,
-    audioBitrateKbps: Number(channel.audioBitrateKbps) || 192,
+    audioBitrateKbps: Number(channel.audioBitrateKbps) || 256,
+    audioMode: channel.audioMode || 'cinema',
+    audioGain: Number(channel.audioGain) || 1.05,
     wsUrl: liveWsUrl(),
   };
   const encoded = Buffer.from(JSON.stringify(config)).toString('base64url');
