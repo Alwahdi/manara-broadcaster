@@ -549,6 +549,36 @@ function sourceExcludeMatcher(source) {
   };
 }
 
+const LIBRARY_BROWSE_CACHE_LIMIT = 160;
+const LIBRARY_BROWSE_CACHE_TTL_MS = 2 * 60 * 1000;
+let libraryBrowseVersion = 1;
+const libraryBrowseCache = new Map();
+
+function invalidateLibraryBrowseCache() {
+  libraryBrowseVersion += 1;
+  libraryBrowseCache.clear();
+}
+
+function cachedLibraryBrowsePayload(query = {}) {
+  const key = JSON.stringify({
+    version: libraryBrowseVersion,
+    mediaRevision: typeof db.mediaRevision === 'function' ? db.mediaRevision() : 0,
+    sourceId: query.sourceId ? String(query.sourceId) : '',
+    path: normalizeRelativePath(query.path || ''),
+  });
+  const cached = libraryBrowseCache.get(key);
+  if (cached && Date.now() - cached.at < LIBRARY_BROWSE_CACHE_TTL_MS) {
+    return cached.payload;
+  }
+  const payload = libraryBrowsePayload(query);
+  libraryBrowseCache.set(key, { at: Date.now(), payload });
+  if (libraryBrowseCache.size > LIBRARY_BROWSE_CACHE_LIMIT) {
+    const firstKey = libraryBrowseCache.keys().next().value;
+    if (firstKey) libraryBrowseCache.delete(firstKey);
+  }
+  return payload;
+}
+
 function libraryBrowsePayload(query = {}) {
   const sources = db.listPaths().map((source) => {
     let online = source.status !== 'missing';
@@ -1178,7 +1208,8 @@ function createHandler(options = {}) {
     }
     if (u.pathname === '/api/library/browse') {
       if (!featureAllowed(options, 'media')) return denyFeature(req, res, options, 'media');
-      return sendJson(res, 200, libraryBrowsePayload(u.query));
+      res.setHeader('Cache-Control', 'private, max-age=15');
+      return sendJson(res, 200, cachedLibraryBrowsePayload(u.query));
     }
     // --- Modern web UI admin API: library sources ---
     if (u.pathname === '/api/admin/library/sources' && req.method === 'GET') {
@@ -1196,6 +1227,7 @@ function createHandler(options = {}) {
         });
         const cfg = typeof options.getLibraryConfig === 'function' ? options.getLibraryConfig() : {};
         const result = await scanner.scanAll({ tmdbKey: cfg.tmdbKey || '', tmdbLang: cfg.tmdbLang || 'ar', thumbnailDir: cfg.thumbnailDir || '' });
+        invalidateLibraryBrowseCache();
         webui.broadcast('library', { path: validation.path, scanned: true });
         return sendJson(res, 200, { ok: true, ...result, sources: librarySourcesPayload() });
       } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
@@ -1215,7 +1247,24 @@ function createHandler(options = {}) {
             ? normalizeExcludePaths(body.excludePaths || body.exclude_paths || [], current.path)
             : current.exclude_paths,
         });
+        invalidateLibraryBrowseCache();
+        webui.broadcast('library', { sourceId: id, updated: true });
         return sendJson(res, 200, { ok: true, source: updated, sources: librarySourcesPayload() });
+      } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
+    }
+    sourceMatch = /^\/api\/admin\/library\/sources\/(\d+)$/.exec(u.pathname);
+    if (sourceMatch && req.method === 'DELETE') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      try {
+        const id = parseInt(sourceMatch[1], 10);
+        const current = db.listPaths().find((row) => String(row.id) === String(id));
+        if (!current) return sendJson(res, 404, { error: 'not_found', message: 'مصدر المكتبة غير موجود.' });
+        if (Number(current.locked || 0)) return sendJson(res, 403, { error: 'locked_source', message: 'لا يمكن حذف هذا المصدر.' });
+        db.deleteMissingForSource(id, []);
+        db.removePath(id);
+        invalidateLibraryBrowseCache();
+        webui.broadcast('library', { sourceId: id, deleted: true });
+        return sendJson(res, 200, { ok: true, sources: librarySourcesPayload() });
       } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
     }
     sourceMatch = /^\/api\/admin\/library\/sources\/(\d+)\/excludes$/.exec(u.pathname);
@@ -1229,7 +1278,11 @@ function createHandler(options = {}) {
         const excludePath = normalizeExcludePaths([body.path || body.excludePath], current.path)[0];
         if (!excludePath) return sendJson(res, 400, { error: 'invalid_path', message: 'اختر مساراً لاستثنائه.' });
         const updated = db.addPathExclude(id, excludePath);
-        return sendJson(res, 200, { ok: true, source: updated, sources: librarySourcesPayload() });
+        const cfg = typeof options.getLibraryConfig === 'function' ? options.getLibraryConfig() : {};
+        const result = await scanner.scanAll({ tmdbKey: cfg.tmdbKey || '', tmdbLang: cfg.tmdbLang || 'ar', thumbnailDir: cfg.thumbnailDir || '' });
+        invalidateLibraryBrowseCache();
+        webui.broadcast('library', { sourceId: id, excluded: true });
+        return sendJson(res, 200, { ok: true, ...result, source: updated, sources: librarySourcesPayload() });
       } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
     }
     if (sourceMatch && req.method === 'DELETE') {
@@ -1241,7 +1294,11 @@ function createHandler(options = {}) {
         const excludePath = normalizeExcludePaths([u.query.path || ''], current.path)[0];
         if (!excludePath) return sendJson(res, 400, { error: 'invalid_path', message: 'اختر مساراً لحذف الاستثناء.' });
         const updated = db.removePathExclude(id, excludePath);
-        return sendJson(res, 200, { ok: true, source: updated, sources: librarySourcesPayload() });
+        const cfg = typeof options.getLibraryConfig === 'function' ? options.getLibraryConfig() : {};
+        const result = await scanner.scanAll({ tmdbKey: cfg.tmdbKey || '', tmdbLang: cfg.tmdbLang || 'ar', thumbnailDir: cfg.thumbnailDir || '' });
+        invalidateLibraryBrowseCache();
+        webui.broadcast('library', { sourceId: id, included: true });
+        return sendJson(res, 200, { ok: true, ...result, source: updated, sources: librarySourcesPayload() });
       } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
     }
     sourceMatch = /^\/api\/admin\/library\/sources\/(\d+)\/rescan$/.exec(u.pathname);
@@ -1250,6 +1307,7 @@ function createHandler(options = {}) {
       try {
         const cfg = typeof options.getLibraryConfig === 'function' ? options.getLibraryConfig() : {};
         const result = await scanner.scanAll({ tmdbKey: cfg.tmdbKey || '', tmdbLang: cfg.tmdbLang || 'ar', thumbnailDir: cfg.thumbnailDir || '' });
+        invalidateLibraryBrowseCache();
         webui.broadcast('library', { sourceId: Number(sourceMatch[1]) });
         return sendJson(res, 200, { ok: true, ...result, sources: librarySourcesPayload() });
       } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
@@ -1270,9 +1328,11 @@ function createHandler(options = {}) {
         } else {
           // Drive re-mounted at a new location: repoint without deleting media.
           const kind = existing ? existing.kind : 'movies';
+          db.deleteMissingForSource(id, []);
           db.removePath(id);
           db.addPath(body.path, kind || 'movies', 0);
         }
+        invalidateLibraryBrowseCache();
         webui.broadcast('library', { sourceId: id, relinked: true });
         return sendJson(res, 200, { ok: true, sources: librarySourcesPayload() });
       } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
@@ -1754,13 +1814,21 @@ function createHandler(options = {}) {
         const validation = validateLibraryPath(body.path);
         if (!validation.ok) return sendJson(res, 400, { error: 'invalid_path', message: validation.message });
         db.addPath(body.path, body.kind || 'movies', 0);
+        invalidateLibraryBrowseCache();
+        webui.broadcast('library', { path: validation.path, added: true });
         return sendJson(res, 200, { paths: db.listPaths() });
       } catch (e) { return sendJson(res, 500, { error: e.message }); }
     }
     adminMatch = /^\/api\/admin\/library-paths\/(\d+)$/.exec(u.pathname);
     if (adminMatch && req.method === 'DELETE') {
       if (!requireAdmin(req, res, options, adminBase)) return;
-      db.removePath(parseInt(adminMatch[1], 10));
+      const id = parseInt(adminMatch[1], 10);
+      const current = db.listPaths().find((row) => String(row.id) === String(id));
+      if (current && Number(current.locked || 0)) return sendJson(res, 403, { error: 'locked_source', message: 'لا يمكن حذف هذا المصدر.' });
+      db.deleteMissingForSource(id, []);
+      db.removePath(id);
+      invalidateLibraryBrowseCache();
+      webui.broadcast('library', { sourceId: id, deleted: true });
       return sendJson(res, 200, { paths: db.listPaths() });
     }
     if (u.pathname === '/api/admin/scan' && req.method === 'POST') {
@@ -1768,6 +1836,8 @@ function createHandler(options = {}) {
       try {
         const cfg = typeof options.getLibraryConfig === 'function' ? options.getLibraryConfig() : {};
         const result = await scanner.scanAll({ tmdbKey: cfg.tmdbKey || '', tmdbLang: cfg.tmdbLang || 'ar', thumbnailDir: cfg.thumbnailDir || '' });
+        invalidateLibraryBrowseCache();
+        webui.broadcast('library', { scanned: true });
         return sendJson(res, 200, { ok: true, ...result });
       } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
     }

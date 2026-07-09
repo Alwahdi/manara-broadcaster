@@ -310,6 +310,8 @@ export const api = {
       `/api/admin/library/sources/${id}`,
       body,
     ),
+  removeLibrarySource: (id: number | string) =>
+    http.del<{ ok: boolean; sources: LibrarySource[] }>(`/api/admin/library/sources/${id}`),
   addLibrarySourceExclude: (id: number | string, path: string) =>
     http.post<{ ok: boolean; source: LibrarySource; sources: LibrarySource[] }>(
       `/api/admin/library/sources/${id}/excludes`,

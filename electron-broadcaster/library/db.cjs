@@ -15,6 +15,15 @@ let Database;
 try { Database = require('better-sqlite3'); } catch (e) { Database = null; }
 
 let _db = null;
+let _mediaRevision = 1;
+
+function bumpMediaRevision() {
+  _mediaRevision += 1;
+}
+
+function mediaRevision() {
+  return _mediaRevision;
+}
 
 // ---------- Channel JSON store (independent of sqlite) ----------
 let _channelsPath = null;
@@ -316,20 +325,24 @@ function addPath(p, kind = 'movies', locked = 0, options = {}) {
         folder_count: 0,
       });
       saveMediaFallback();
+      bumpMediaRevision();
     }
     return;
   }
   const label = path.basename(String(p).replace(/[\\/]+$/, '')) || p;
   db().prepare('INSERT OR IGNORE INTO library_paths (path, kind, locked, added_at, label, status, exclude_paths) VALUES (?,?,?,?,?,?,?)')
     .run(p, kind, locked ? 1 : 0, Date.now(), label, 'connected', serializePathList(excludePaths));
+  bumpMediaRevision();
 }
 function removePath(id) {
   if (!_db) {
     _mediaFallback.library_paths = _mediaFallback.library_paths.filter((r) => r.id !== id || r.locked);
     saveMediaFallback();
+    bumpMediaRevision();
     return;
   }
   db().prepare('DELETE FROM library_paths WHERE id = ? AND locked = 0').run(id);
+  bumpMediaRevision();
 }
 function updatePathStatus(id, patch = {}) {
   const now = Date.now();
@@ -354,11 +367,13 @@ function updatePathStatus(id, patch = {}) {
       }
       : row);
     saveMediaFallback();
+    bumpMediaRevision();
     return listPaths().find((row) => String(row.id) === String(id)) || null;
   }
   db().prepare(`UPDATE library_paths
     SET status=?, last_scan_at=?, last_error=?, file_count=?, folder_count=?, label=COALESCE(?, label)
     WHERE id=?`).run(clean.status, clean.last_scan_at, clean.last_error, clean.file_count, clean.folder_count, clean.label, id);
+  bumpMediaRevision();
   return listPaths().find((row) => String(row.id) === String(id)) || null;
 }
 function updatePath(id, patch = {}) {
@@ -374,10 +389,12 @@ function updatePath(id, patch = {}) {
       ? { ...row, kind: clean.kind, label: clean.label || row.label, exclude_paths: clean.exclude_paths }
       : row);
     saveMediaFallback();
+    bumpMediaRevision();
     return listPaths().find((row) => String(row.id) === String(id)) || null;
   }
   db().prepare('UPDATE library_paths SET kind=?, label=COALESCE(?, label), exclude_paths=? WHERE id=?')
     .run(clean.kind, clean.label || null, serializePathList(clean.exclude_paths), id);
+  bumpMediaRevision();
   return listPaths().find((row) => String(row.id) === String(id)) || null;
 }
 function setPathExcludes(id, excludePaths = []) {
@@ -422,8 +439,9 @@ function upsertMedia(item) {
 	        source_label: item.source_label ?? existing.source_label ?? null,
 	        relative_path: item.relative_path ?? existing.relative_path ?? null,
 	        scanned_at: now,
-	      });
+      });
       saveMediaFallback();
+      bumpMediaRevision();
       return existing.id;
     }
     const id = (_mediaFallback.media_items.reduce((m, r) => Math.max(m, Number(r.id) || 0), 0)) + 1;
@@ -453,6 +471,7 @@ function upsertMedia(item) {
       scanned_at: now,
     });
     saveMediaFallback();
+    bumpMediaRevision();
     return id;
   }
   const now = Date.now();
@@ -467,6 +486,7 @@ function upsertMedia(item) {
 	      item.section ?? null, item.folder ?? null, item.remote_url ?? null,
 	      item.source_id ?? null, item.source_path ?? null, item.source_label ?? null, item.relative_path ?? null,
 	      now, existing.id);
+	    bumpMediaRevision();
 	    return existing.id;
 	  }
 	  const r = db().prepare(`INSERT INTO media_items
@@ -478,6 +498,7 @@ function upsertMedia(item) {
 	    item.section ?? null, item.folder ?? null, item.remote_url ?? null,
 	    item.source_id ?? null, item.source_path ?? null, item.source_label ?? null, item.relative_path ?? null,
 	    now, now);
+	  bumpMediaRevision();
 	  return r.lastInsertRowid;
 	}
 function listMedia({ kind, q, limit = 200 } = {}) {
@@ -533,12 +554,14 @@ function updateMedia(id, patch = {}) {
       ? { ...item, ...clean, scanned_at: Date.now() }
       : item);
     saveMediaFallback();
+    bumpMediaRevision();
     return getMedia(id);
   }
   db().prepare(`UPDATE media_items SET kind=?, title=?, year=?, season=?, episode=?,
     poster_url=?, backdrop_url=?, overview=?, rating=?, scanned_at=? WHERE id=?`).run(
     clean.kind, clean.title, clean.year, clean.season, clean.episode,
     clean.poster_url, clean.backdrop_url, clean.overview, clean.rating, Date.now(), id);
+  bumpMediaRevision();
   return getMedia(id);
 }
 function removeMedia(id, { deleteFile = false } = {}) {
@@ -552,11 +575,13 @@ function removeMedia(id, { deleteFile = false } = {}) {
     _mediaFallback.subtitles = _mediaFallback.subtitles.filter((sub) => String(sub.media_id) !== String(id));
     delete _mediaFallback.watch_progress[String(id)];
     saveMediaFallback();
+    bumpMediaRevision();
     return true;
   }
   db().prepare('DELETE FROM subtitles WHERE media_id = ?').run(id);
   db().prepare('DELETE FROM watch_progress WHERE media_id = ?').run(id);
   db().prepare('DELETE FROM media_items WHERE id = ?').run(id);
+  bumpMediaRevision();
   return true;
 }
 function mediaStats() {
@@ -625,11 +650,13 @@ function deleteMissing(existingPaths) {
       if (!mediaIds.has(String(key))) delete _mediaFallback.watch_progress[key];
     }
     saveMediaFallback();
+    bumpMediaRevision();
     return;
   }
   if (!existingPaths.length) return;
   const placeholders = existingPaths.map(() => '?').join(',');
 	  db().prepare(`DELETE FROM media_items WHERE path NOT IN (${placeholders})`).run(...existingPaths);
+  bumpMediaRevision();
 	}
 function deleteMissingForSource(sourceId, existingPaths = []) {
   if (!sourceId) return;
@@ -649,14 +676,24 @@ function deleteMissingForSource(sourceId, existingPaths = []) {
       }
     }
     saveMediaFallback();
+    bumpMediaRevision();
     return;
   }
   if (!existingPaths.length) {
+    db().prepare('DELETE FROM subtitles WHERE media_id IN (SELECT id FROM media_items WHERE source_id = ?)').run(sourceId);
+    db().prepare('DELETE FROM watch_progress WHERE media_id IN (SELECT id FROM media_items WHERE source_id = ?)').run(sourceId);
     db().prepare('DELETE FROM media_items WHERE source_id = ?').run(sourceId);
+    bumpMediaRevision();
     return;
   }
   const placeholders = existingPaths.map(() => '?').join(',');
-  db().prepare(`DELETE FROM media_items WHERE source_id = ? AND path NOT IN (${placeholders})`).run(sourceId, ...existingPaths);
+  const staleIds = db().prepare(`SELECT id FROM media_items WHERE source_id = ? AND path NOT IN (${placeholders})`).all(sourceId, ...existingPaths).map((row) => row.id);
+  if (!staleIds.length) return;
+  const stalePlaceholders = staleIds.map(() => '?').join(',');
+  db().prepare(`DELETE FROM subtitles WHERE media_id IN (${stalePlaceholders})`).run(...staleIds);
+  db().prepare(`DELETE FROM watch_progress WHERE media_id IN (${stalePlaceholders})`).run(...staleIds);
+  db().prepare(`DELETE FROM media_items WHERE id IN (${stalePlaceholders})`).run(...staleIds);
+  bumpMediaRevision();
 }
 function setProgress(mediaId, position, duration) {
   if (!_db) {
@@ -1392,6 +1429,7 @@ function diagnostics() {
 
 module.exports = {
   init, diagnostics, reloadChannelsFromDisk,
+  mediaRevision,
   listPaths, addPath, removePath, updatePathStatus, updatePath, setPathExcludes, addPathExclude, removePathExclude,
   upsertMedia, listMedia, getMedia, updateMedia, removeMedia, mediaStats, deleteMissing, deleteMissingForSource,
   setProgress, addSubtitle, listSubtitles, getSubtitle,

@@ -4,6 +4,7 @@ import { AppLink } from "@/components/AppLink";
 import { api, type LibraryBrowseEntry } from "@/lib/api";
 import { QueryBoundary, EmptyState, ViewerSkeleton } from "@/components/States";
 import { CategoryChips, ContentSection } from "@/components/common";
+import { useLiveStatus } from "@/hooks/useLiveStatus";
 
 const LIBRARY_FILTERS = [
   { value: "all", label: "الكل" },
@@ -28,7 +29,15 @@ export function LibraryFolders() {
     queryKey: ["library-browse", sourceId, path],
     queryFn: () => api.libraryBrowse(params),
     placeholderData: keepPreviousData,
-    staleTime: 60_000,
+    staleTime: 5 * 60_000,
+    gcTime: 20 * 60_000,
+  });
+
+  useLiveStatus({
+    onEvent: (event) => {
+      if (event.type !== "library") return;
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0] || "").startsWith("library") });
+    },
   });
 
   useEffect(() => {
@@ -47,7 +56,8 @@ export function LibraryFolders() {
     queryClient.prefetchQuery({
       queryKey: ["library-browse", nextSource, nextPath],
       queryFn: () => api.libraryBrowse({ sourceId: nextSource, ...(nextPath ? { path: nextPath } : {}) }),
-      staleTime: 60_000,
+      staleTime: 5 * 60_000,
+      gcTime: 20 * 60_000,
     });
   };
 

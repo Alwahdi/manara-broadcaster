@@ -18,26 +18,34 @@ export function AdminLibrarySources() {
     typeof navigator !== "undefined" && navigator.platform.toLowerCase().includes("win")
       ? "D:\\Movies"
       : "/Users/name/Movies";
+  const invalidateLibrary = () => {
+    qc.invalidateQueries({ queryKey: ["library-sources"] });
+    qc.invalidateQueries({ queryKey: ["admin-state"] });
+    qc.invalidateQueries({ predicate: (query) => String(query.queryKey[0] || "").startsWith("library") });
+  };
 
   const rescan = useMutation({
     mutationFn: (id: number | string) => api.librarySourceRescan(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["library-sources"] }),
+    onSuccess: invalidateLibrary,
   });
   const relink = useMutation({
     mutationFn: ({ id, path }: { id: number | string; path: string }) =>
       api.librarySourceRelink(id, path),
     onSuccess: () => {
       setRelinkFor(null);
-      qc.invalidateQueries({ queryKey: ["library-sources"] });
+      invalidateLibrary();
     },
   });
   const add = useMutation({
     mutationFn: (nextPath: string) => api.addLibrarySource({ path: nextPath, kind: "movies" }),
-    onSuccess: async () => {
+    onSuccess: () => {
       setPath("");
-      qc.invalidateQueries({ queryKey: ["library-sources"] });
-      qc.invalidateQueries({ queryKey: ["admin-state"] });
+      invalidateLibrary();
     },
+  });
+  const removeSource = useMutation({
+    mutationFn: (id: number | string) => api.removeLibrarySource(id),
+    onSuccess: invalidateLibrary,
   });
   const addExclude = useMutation({
     mutationFn: ({ id, excludePath }: { id: number | string; excludePath: string }) =>
@@ -45,13 +53,13 @@ export function AdminLibrarySources() {
     onSuccess: (_data, variables) => {
       setExcludeInputs((prev) => ({ ...prev, [String(variables.id)]: "" }));
       setExcludePickerFor(null);
-      qc.invalidateQueries({ queryKey: ["library-sources"] });
+      invalidateLibrary();
     },
   });
   const removeExclude = useMutation({
     mutationFn: ({ id, excludePath }: { id: number | string; excludePath: string }) =>
       api.removeLibrarySourceExclude(id, excludePath),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["library-sources"] }),
+    onSuccess: invalidateLibrary,
   });
 
   if (relinkFor) {
@@ -168,6 +176,16 @@ export function AdminLibrarySources() {
                   </button>
                   <button className="btn btn-sm btn-ghost" onClick={() => setRelinkFor(s)}>
                     إعادة الربط
+                  </button>
+                  <button
+                    className="btn btn-sm btn-danger"
+                    onClick={() => {
+                      const ok = window.confirm("سيتم حذف هذا المصدر وإخفاء محتواه من الاستراحة. هل تريد المتابعة؟");
+                      if (ok) removeSource.mutate(s.id);
+                    }}
+                    disabled={removeSource.isPending || Number(s.locked || 0) === 1}
+                  >
+                    حذف المصدر
                   </button>
                 </div>
                 <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
