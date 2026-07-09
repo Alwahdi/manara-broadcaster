@@ -351,13 +351,20 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
   useEffect(() => {
     let closed = false;
     let retry: ReturnType<typeof setTimeout> | null = null;
+    let remoteTrackTimer: ReturnType<typeof setTimeout> | null = null;
 
     function clearRetry() {
       if (retry) clearTimeout(retry);
       retry = null;
     }
 
+    function clearRemoteTrackTimer() {
+      if (remoteTrackTimer) clearTimeout(remoteTrackTimer);
+      remoteTrackTimer = null;
+    }
+
     function cleanupPeer() {
+      clearRemoteTrackTimer();
       try { pcRef.current?.close(); } catch {}
       pcRef.current = null;
       if (videoRef.current) videoRef.current.srcObject = null;
@@ -374,6 +381,23 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
         retry = null;
         connect();
       }, delay);
+    }
+
+    function watchRemoteStream(remoteStream: MediaStream) {
+      clearRemoteTrackTimer();
+      for (const track of remoteStream.getTracks()) {
+        track.onended = () => scheduleReconnect("انقطع الصوت أو الصورة مؤقتًا، نحاول إعادة التشغيل...", 1500);
+        if (track.kind === "audio") {
+          track.onmute = () => {
+            if (remoteTrackTimer) return;
+            remoteTrackTimer = setTimeout(() => {
+              remoteTrackTimer = null;
+              scheduleReconnect("انقطع الصوت مؤقتًا، نحاول إعادة التشغيل...", 1800);
+            }, 4500);
+          };
+          track.onunmute = () => clearRemoteTrackTimer();
+        }
+      }
     }
 
     function wsUrl() {
@@ -429,6 +453,7 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
           pc.ontrack = (ev) => {
             if (videoRef.current) {
               videoRef.current.srcObject = ev.streams[0];
+              watchRemoteStream(ev.streams[0]);
               setReady(true);
               setStatus("يبث الآن");
             }
@@ -471,6 +496,7 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
     return () => {
       closed = true;
       clearRetry();
+      clearRemoteTrackTimer();
       try { wsRef.current?.close(); } catch {}
       cleanupPeer();
     };

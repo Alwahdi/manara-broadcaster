@@ -26,6 +26,11 @@ let stream = null;
 let captureSourceStream = null;
 let audioContext = null;
 let reconnectTimer = null;
+let audioMuteTimer = null;
+let healthTimer = null;
+let restarting = false;
+const AUDIO_MUTE_RESTART_MS = 4500;
+const HEALTH_CHECK_MS = 2500;
 
 function positiveNumber(value, fallback, min, max) {
   const next = Number(value);
@@ -91,6 +96,8 @@ function trackSummary(track) {
 }
 
 function stopCurrentStream() {
+  if (audioMuteTimer) clearTimeout(audioMuteTimer);
+  audioMuteTimer = null;
   try { stream?.getTracks?.().forEach((track) => track.stop()); } catch {}
   if (captureSourceStream && captureSourceStream !== stream) {
     try { captureSourceStream.getTracks().forEach((track) => track.stop()); } catch {}
@@ -99,6 +106,63 @@ function stopCurrentStream() {
   stream = null;
   captureSourceStream = null;
   audioContext = null;
+}
+
+function needsConfiguredAudio() {
+  return !!String(config.audioDeviceId || '').trim() && String(config.audioDeviceId || '').trim() !== 'none';
+}
+
+function audioTracksHealthy(mediaStream) {
+  if (!needsConfiguredAudio()) return true;
+  const audioTracks = mediaStream?.getAudioTracks?.() || [];
+  return audioTracks.some((track) => track.readyState === 'live' && track.enabled !== false && !track.muted);
+}
+
+function restartCapture(reason) {
+  if (restarting) return;
+  restarting = true;
+  log('restarting capture:', reason);
+  for (const id of Array.from(peers.keys())) closePeer(id);
+  stopCurrentStream();
+  try { ws && ws.close(); } catch {}
+  setTimeout(() => { restarting = false; restartSoon(); }, 200);
+}
+
+function scheduleAudioRestart(reason) {
+  if (!needsConfiguredAudio() || audioMuteTimer || restarting) return;
+  audioMuteTimer = setTimeout(() => {
+    audioMuteTimer = null;
+    restartCapture(reason);
+  }, AUDIO_MUTE_RESTART_MS);
+}
+
+function clearAudioRestart() {
+  if (audioMuteTimer) clearTimeout(audioMuteTimer);
+  audioMuteTimer = null;
+}
+
+function watchTrackHealth(track, label = '') {
+  track.onended = () => restartCapture(`${track.kind} track ended ${label}`.trim());
+  if (track.kind === 'audio') {
+    track.onmute = () => scheduleAudioRestart(`audio track muted ${label}`.trim());
+    track.onunmute = () => clearAudioRestart();
+  }
+}
+
+function startHealthWatch() {
+  if (healthTimer) return;
+  healthTimer = setInterval(() => {
+    if (restarting) return;
+    if (audioContext?.state === 'suspended') {
+      audioContext.resume().catch(() => {});
+    }
+    if (needsConfiguredAudio() && stream && !audioTracksHealthy(stream)) {
+      scheduleAudioRestart('audio output is not healthy');
+    }
+    if (needsConfiguredAudio() && captureSourceStream && !audioTracksHealthy(captureSourceStream)) {
+      scheduleAudioRestart('audio source is not healthy');
+    }
+  }, HEALTH_CHECK_MS);
 }
 
 function norm(value) {
@@ -230,6 +294,11 @@ async function prepareAudio(rawStream) {
     if (audioContext.state === 'suspended') {
       try { await audioContext.resume(); } catch {}
     }
+    audioContext.onstatechange = () => {
+      if (audioContext?.state === 'suspended') {
+        audioContext.resume().catch(() => scheduleAudioRestart('audio engine suspended'));
+      }
+    };
     const sourceNode = audioContext.createMediaStreamSource(rawStream);
     const destination = audioContext.createMediaStreamDestination();
     let tail = sourceNode;
@@ -274,12 +343,13 @@ async function prepareAudio(rawStream) {
 }
 
 async function ensureStream() {
-  const needsAudio = !!String(config.audioDeviceId || '').trim() && String(config.audioDeviceId || '').trim() !== 'none';
+  const needsAudio = needsConfiguredAudio();
   const hasLiveVideo = stream?.getVideoTracks?.().some((track) => track.readyState === 'live');
-  const hasLiveAudio = !needsAudio || stream?.getAudioTracks?.().some((track) => track.readyState === 'live');
+  const hasLiveAudio = !needsAudio || audioTracksHealthy(stream);
   if (stream && hasLiveVideo && hasLiveAudio) return stream;
   stopCurrentStream();
   captureSourceStream = await captureStream();
+  for (const track of captureSourceStream.getTracks()) watchTrackHealth(track, 'source');
   stream = await prepareAudio(captureSourceStream);
   const preview = document.getElementById('preview');
   preview.srcObject = stream;
@@ -289,13 +359,10 @@ async function ensureStream() {
       if (track.kind === 'video') track.contentHint = 'motion';
       if (track.kind === 'audio') track.contentHint = audioProfile().mode === 'voice' ? 'speech' : 'music';
     } catch {}
-    track.onended = () => {
-      log('track ended, restarting capture');
-      stopCurrentStream();
-      try { ws && ws.close(); } catch {}
-      restartSoon();
-    };
+    watchTrackHealth(track, 'output');
   }
+  clearAudioRestart();
+  startHealthWatch();
   log('capture ready for', config.channelId, stream.getTracks().map(trackSummary).join(', '));
   return stream;
 }
