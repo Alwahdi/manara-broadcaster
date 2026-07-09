@@ -14,9 +14,15 @@ function close(server) {
 async function main() {
   let playlistHits = 0;
   let segmentHits = 0;
+  let upstreamBroken = false;
   const segmentBody = Buffer.alloc(256 * 1024, 7);
 
   const upstream = http.createServer((req, res) => {
+    if (upstreamBroken) {
+      res.writeHead(503, { 'Content-Type': 'text/plain' });
+      res.end('temporarily unavailable');
+      return;
+    }
     if (req.url === '/live/index.m3u8') {
       playlistHits += 1;
       const base = `http://${req.headers.host}`;
@@ -89,6 +95,14 @@ async function main() {
     assert.equal(cached.status, 200);
     await cached.arrayBuffer();
     assert.equal(segmentHits, 1, 'cached HLS segment must not refetch upstream');
+
+    await new Promise((resolve) => setTimeout(resolve, 1400));
+    upstreamBroken = true;
+    const stalePlaylistRes = await fetch(`${proxyBase}/iptv/test/index.m3u8`);
+    assert.equal(stalePlaylistRes.status, 200, 'playlist should fall back to the last good response during a brief upstream outage');
+    const stalePlaylist = await stalePlaylistRes.text();
+    assert.match(stalePlaylist, /\/iptv\/test\/seg\?t=/, 'stale playlist should still use opaque local segment tokens');
+    upstreamBroken = false;
 
     const status = iptv.status()[channel.id];
     assert.ok(status.cacheCoalesced >= 19, 'metrics record coalesced segment waiters');

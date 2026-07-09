@@ -31,6 +31,8 @@ const HLS_VIEWER_TTL_MS = 25000;
 const RATE_WINDOW_MS = 30000;
 const HLS_PLAYLIST_CACHE_MS = 1200;
 const HLS_SEGMENT_CACHE_MS = 2 * 60 * 1000;
+const HLS_PLAYLIST_STALE_MS = 12 * 1000;
+const HLS_SEGMENT_STALE_MS = 10 * 60 * 1000;
 const HLS_URI_TOKEN_TTL_MS = 10 * 60 * 1000;
 const HLS_CACHE_MAX = 900;
 const HLS_CACHE_MAX_BYTES = 192 * 1024 * 1024;
@@ -38,6 +40,7 @@ const HLS_CACHEABLE_MAX_BYTES = 32 * 1024 * 1024;
 const CLIENT_CHUNK_BYTES = 128 * 1024;
 const SLOW_CLIENT_MAX_BUFFER_BYTES = 4 * 1024 * 1024;
 const SLOW_CLIENT_DRAIN_MS = 8000;
+const UPSTREAM_TIMEOUT_MS = 25000;
 const MAX_REDIRECTS = 5;
 
 function libFor(u) { return u.startsWith('https') ? https : http; }
@@ -425,7 +428,7 @@ function fetchUpstream(targetUrl, headers = UA, redirects = 0) {
       resolve(up);
     });
     req.on('error', reject);
-    req.setTimeout(15000, () => req.destroy(new Error('timeout')));
+    req.setTimeout(UPSTREAM_TIMEOUT_MS, () => req.destroy(new Error('timeout')));
   });
 }
 
@@ -438,7 +441,8 @@ async function readAll(stream) {
 function pruneHlsCache() {
   const now = Date.now();
   for (const [key, entry] of HLS_RESOURCE_CACHE) {
-    if (!entry.promise && entry.expiresAt <= now) evictHlsCacheEntry(key);
+    const keepUntil = Number(entry.staleUntil || entry.expiresAt || 0);
+    if (!entry.promise && keepUntil <= now) evictHlsCacheEntry(key);
   }
   while (HLS_RESOURCE_CACHE.size > HLS_CACHE_MAX) {
     const first = HLS_RESOURCE_CACHE.keys().next().value;
@@ -521,7 +525,7 @@ function hlsTokenStatsFor(id) {
   return { entries };
 }
 
-async function fetchCachedHlsResource(channel, targetUrl, headers, ttlMs) {
+async function fetchCachedHlsResource(channel, targetUrl, headers, ttlMs, staleMs = ttlMs) {
   pruneHlsCache();
   const rangeKey = headers?.Range || headers?.range || '';
   const key = `${channel.id}|${rangeKey}|${targetUrl}`;
@@ -533,10 +537,20 @@ async function fetchCachedHlsResource(channel, targetUrl, headers, ttlMs) {
     HLS_RESOURCE_CACHE.set(key, existing);
     return { ...existing.value, fromCache: true };
   }
+  const staleValue = existing?.value && Number(existing.staleUntil || 0) > now ? existing.value : null;
   if (existing?.promise) {
     metrics(channel.id, 'hls').cacheCoalesced += 1;
-    const value = await existing.promise;
-    return { ...value, fromCache: true };
+    try {
+      const value = await existing.promise;
+      return { ...value, fromCache: true };
+    } catch (e) {
+      const pendingStale = existing.value && Number(existing.staleUntil || 0) > now ? existing.value : null;
+      if (pendingStale) {
+        metrics(channel.id, 'hls').cacheHits += 1;
+        return { ...pendingStale, fromCache: true, stale: true };
+      }
+      throw e;
+    }
   }
   const m = metrics(channel.id, 'hls');
   m.cacheMisses += 1;
@@ -554,10 +568,28 @@ async function fetchCachedHlsResource(channel, targetUrl, headers, ttlMs) {
       body,
     };
   })();
-  HLS_RESOURCE_CACHE.set(key, { expiresAt: now + ttlMs, promise, channelId: String(channel.id), bytes: 0 });
+  HLS_RESOURCE_CACHE.set(key, {
+    expiresAt: now + ttlMs,
+    staleUntil: now + ttlMs + staleMs,
+    promise,
+    value: staleValue || undefined,
+    channelId: String(channel.id),
+    bytes: staleValue && Buffer.isBuffer(staleValue.body) ? staleValue.body.length : 0,
+  });
   try {
     const value = await promise;
     if (value.statusCode >= 400) {
+      if (staleValue) {
+        m.cacheHits += 1;
+        HLS_RESOURCE_CACHE.set(key, {
+          expiresAt: Date.now() + Math.min(ttlMs, 1000),
+          staleUntil: Date.now() + staleMs,
+          value: staleValue,
+          channelId: String(channel.id),
+          bytes: Buffer.isBuffer(staleValue.body) ? staleValue.body.length : 0,
+        });
+        return { ...staleValue, fromCache: true, stale: true };
+      }
       HLS_RESOURCE_CACHE.delete(key);
       return { ...value, fromCache: false };
     }
@@ -566,10 +598,27 @@ async function fetchCachedHlsResource(channel, targetUrl, headers, ttlMs) {
       HLS_RESOURCE_CACHE.delete(key);
       return { ...value, fromCache: false };
     }
-    HLS_RESOURCE_CACHE.set(key, { expiresAt: Date.now() + ttlMs, value, channelId: String(channel.id), bytes });
+    HLS_RESOURCE_CACHE.set(key, {
+      expiresAt: Date.now() + ttlMs,
+      staleUntil: Date.now() + ttlMs + staleMs,
+      value,
+      channelId: String(channel.id),
+      bytes,
+    });
     pruneHlsCache();
     return { ...value, fromCache: false };
   } catch (e) {
+    if (staleValue) {
+      m.cacheHits += 1;
+      HLS_RESOURCE_CACHE.set(key, {
+        expiresAt: Date.now() + Math.min(ttlMs, 1000),
+        staleUntil: Date.now() + staleMs,
+        value: staleValue,
+        channelId: String(channel.id),
+        bytes: Buffer.isBuffer(staleValue.body) ? staleValue.body.length : 0,
+      });
+      return { ...staleValue, fromCache: true, stale: true };
+    }
     HLS_RESOURCE_CACHE.delete(key);
     throw e;
   }
@@ -625,7 +674,7 @@ async function serveHlsPlaylist(channel, playlistUrl, baseProxyUrl, req, res, po
     touchHlsViewer(channel, req);
     const m = metrics(channel.id, 'hls');
     m.playlistRequests += 1;
-    const up = await fetchCachedHlsResource(channel, playlistUrl, upstreamHeaders(channel), HLS_PLAYLIST_CACHE_MS);
+    const up = await fetchCachedHlsResource(channel, playlistUrl, upstreamHeaders(channel), HLS_PLAYLIST_CACHE_MS, HLS_PLAYLIST_STALE_MS);
     if (up.statusCode && up.statusCode >= 400) {
       const message = explainHttp(up.statusCode, playlistUrl);
       markError(channel.id, message, up.statusCode);
@@ -678,7 +727,8 @@ async function serveHlsSegment(channel, segUrl, baseProxyUrl, req, res, policy =
     m.segmentRequests += 1;
     const extra = req.headers.range ? { Range: req.headers.range } : {};
     const ttl = isHls(segUrl) ? HLS_PLAYLIST_CACHE_MS : HLS_SEGMENT_CACHE_MS;
-    const up = await fetchCachedHlsResource(channel, segUrl, upstreamHeaders(channel, extra), ttl);
+    const staleTtl = isHls(segUrl) ? HLS_PLAYLIST_STALE_MS : HLS_SEGMENT_STALE_MS;
+    const up = await fetchCachedHlsResource(channel, segUrl, upstreamHeaders(channel, extra), ttl, staleTtl);
     if (up.statusCode && up.statusCode >= 400) {
       const message = explainHttp(up.statusCode, segUrl);
       markError(channel.id, message, up.statusCode);

@@ -31,6 +31,9 @@ export function LibraryFolders() {
     placeholderData: keepPreviousData,
     staleTime: 5 * 60_000,
     gcTime: 20 * 60_000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   useLiveStatus({

@@ -176,8 +176,19 @@ function HlsPlayer({ src }: { src: string }) {
     if (!video) return undefined;
     const media = video;
     let closed = false;
+    let recoveryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function scheduleRestart(delay = 3500) {
+      if (closed || recoveryTimer) return;
+      recoveryTimer = setTimeout(() => {
+        recoveryTimer = null;
+        if (!closed) setRetryKey((value) => value + 1);
+      }, delay);
+    }
 
     function cleanup() {
+      if (recoveryTimer) clearTimeout(recoveryTimer);
+      recoveryTimer = null;
       try { hlsRef.current?.destroy(); } catch {}
       hlsRef.current = null;
       try {
@@ -186,6 +197,30 @@ function HlsPlayer({ src }: { src: string }) {
         media.load();
       } catch {}
     }
+
+    function markBuffering() {
+      if (!closed) setStatus("جاري تحسين الاتصال بالبث...");
+    }
+
+    function markPlaying() {
+      if (!closed) {
+        setError("");
+        setStatus("");
+      }
+    }
+
+    function markVideoError() {
+      if (closed) return;
+      setStatus("");
+      setError("تعذر تشغيل البث الآن. جرّب مرة أخرى.");
+      scheduleRestart(5000);
+    }
+
+    media.addEventListener("waiting", markBuffering);
+    media.addEventListener("stalled", markBuffering);
+    media.addEventListener("playing", markPlaying);
+    media.addEventListener("canplay", markPlaying);
+    media.addEventListener("error", markVideoError);
 
     async function start() {
       cleanup();
@@ -206,11 +241,24 @@ function HlsPlayer({ src }: { src: string }) {
         return;
       }
       const hls = new Hls({
-        lowLatencyMode: true,
-        backBufferLength: 30,
-        manifestLoadingTimeOut: 15000,
-        levelLoadingTimeOut: 15000,
-        fragLoadingTimeOut: 20000,
+        lowLatencyMode: false,
+        backBufferLength: 75,
+        maxBufferLength: 45,
+        maxMaxBufferLength: 90,
+        liveSyncDurationCount: 4,
+        liveMaxLatencyDurationCount: 12,
+        manifestLoadingTimeOut: 25000,
+        manifestLoadingMaxRetry: 8,
+        manifestLoadingRetryDelay: 1000,
+        manifestLoadingMaxRetryTimeout: 12000,
+        levelLoadingTimeOut: 25000,
+        levelLoadingMaxRetry: 8,
+        levelLoadingRetryDelay: 1000,
+        levelLoadingMaxRetryTimeout: 12000,
+        fragLoadingTimeOut: 30000,
+        fragLoadingMaxRetry: 10,
+        fragLoadingRetryDelay: 800,
+        fragLoadingMaxRetryTimeout: 12000,
       });
       hlsRef.current = hls;
       hls.loadSource(src);
@@ -226,15 +274,18 @@ function HlsPlayer({ src }: { src: string }) {
         if (data.type === Hls.ErrorTypes?.NETWORK_ERROR) {
           setStatus("انقطع الاتصال مؤقتًا، نحاول إعادة التشغيل...");
           try { hls.startLoad?.(); } catch {}
+          scheduleRestart(6000);
           return;
         }
         if (data.type === Hls.ErrorTypes?.MEDIA_ERROR) {
           setStatus("نعالج مشكلة في تشغيل الفيديو...");
           try { hls.recoverMediaError?.(); } catch {}
+          scheduleRestart(7000);
           return;
         }
         setStatus("");
         setError("تعذر تشغيل هذا البث الآن. جرّب جودة أخرى أو أعد المحاولة.");
+        scheduleRestart(8000);
       });
     }
 
@@ -246,6 +297,11 @@ function HlsPlayer({ src }: { src: string }) {
 
     return () => {
       closed = true;
+      media.removeEventListener("waiting", markBuffering);
+      media.removeEventListener("stalled", markBuffering);
+      media.removeEventListener("playing", markPlaying);
+      media.removeEventListener("canplay", markPlaying);
+      media.removeEventListener("error", markVideoError);
       cleanup();
     };
   }, [src, retryKey]);
@@ -296,11 +352,28 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
     let closed = false;
     let retry: ReturnType<typeof setTimeout> | null = null;
 
+    function clearRetry() {
+      if (retry) clearTimeout(retry);
+      retry = null;
+    }
+
     function cleanupPeer() {
       try { pcRef.current?.close(); } catch {}
       pcRef.current = null;
       if (videoRef.current) videoRef.current.srcObject = null;
       setReady(false);
+    }
+
+    function scheduleReconnect(message = "انقطع الاتصال. سنعيد المحاولة خلال لحظات.", delay = 2200) {
+      if (closed || retry) return;
+      setReady(false);
+      setStatus(message);
+      try { wsRef.current?.close(); } catch {}
+      cleanupPeer();
+      retry = setTimeout(() => {
+        retry = null;
+        connect();
+      }, delay);
     }
 
     function wsUrl() {
@@ -317,12 +390,12 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
       try {
         ws = new WebSocket(wsUrl());
       } catch {
-        setStatus("تعذر تشغيل البث الآن. سنحاول مرة أخرى...");
-        retry = setTimeout(connect, 2500);
+        scheduleReconnect("تعذر تشغيل البث الآن. سنحاول مرة أخرى...", 2500);
         return;
       }
       wsRef.current = ws;
       ws.onopen = () => {
+        clearRetry();
         setStatus("جاري تجهيز القناة...");
         ws.send(JSON.stringify({ type: "register-viewer", channelId }));
       };
@@ -332,9 +405,7 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
       };
       ws.onclose = () => {
         if (closed) return;
-        cleanupPeer();
-        setStatus("انقطع الاتصال. سنعيد المحاولة خلال لحظات.");
-        retry = setTimeout(connect, 2500);
+        scheduleReconnect();
       };
       ws.onmessage = async (event) => {
         let msg: Record<string, unknown>;
@@ -348,8 +419,7 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
           return;
         }
         if (msg.type === "broadcaster-left") {
-          cleanupPeer();
-          setStatus("انقطع الاتصال مؤقتًا، نحاول إعادة التشغيل...");
+          scheduleReconnect("انقطع الاتصال مؤقتًا، نحاول إعادة التشغيل...", 1800);
           return;
         }
         if (msg.type === "offer" && typeof msg.sdp === "string") {
@@ -368,6 +438,23 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
               ws.send(JSON.stringify({ type: "ice", candidate: ev.candidate }));
             }
           };
+          pc.onconnectionstatechange = () => {
+            if (closed) return;
+            if (pc.connectionState === "connected") {
+              setReady(true);
+              setStatus("يبث الآن");
+              return;
+            }
+            if (pc.connectionState === "failed" || pc.connectionState === "disconnected" || pc.connectionState === "closed") {
+              scheduleReconnect("انقطع الاتصال مؤقتًا، نحاول إعادة التشغيل...", 1800);
+            }
+          };
+          pc.oniceconnectionstatechange = () => {
+            if (closed) return;
+            if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
+              scheduleReconnect("انقطع الاتصال مؤقتًا، نحاول إعادة التشغيل...", 1800);
+            }
+          };
           await pc.setRemoteDescription({ type: "offer", sdp: msg.sdp });
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
@@ -383,7 +470,7 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
     connect();
     return () => {
       closed = true;
-      if (retry) clearTimeout(retry);
+      clearRetry();
       try { wsRef.current?.close(); } catch {}
       cleanupPeer();
     };
