@@ -19,6 +19,32 @@ function request(base, pathname, options = {}) {
 async function main() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wiva-smoke-'));
   db.init(path.join(dir, 'library.db'), { broadcast: [], iptv: [] });
+  let cloudPlaylistHits = 0;
+  const cloudUpstream = http.createServer((req, res) => {
+    if (req.url === '/cloud/index.m3u8') {
+      cloudPlaylistHits += 1;
+      const upstreamBase = `http://${req.headers.host}`;
+      res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
+      res.end([
+        '#EXTM3U',
+        '#EXT-X-VERSION:3',
+        '#EXT-X-TARGETDURATION:4',
+        '#EXTINF:4.000,',
+        `${upstreamBase}/cloud/seg-1.ts`,
+        '',
+      ].join('\n'));
+      return;
+    }
+    if (req.url === '/cloud/seg-1.ts') {
+      res.writeHead(200, { 'Content-Type': 'video/mp2t' });
+      res.end(Buffer.alloc(4096, 3));
+      return;
+    }
+    res.writeHead(404);
+    res.end('not found');
+  });
+  await new Promise((resolve) => cloudUpstream.listen(0, '127.0.0.1', resolve));
+  const cloudUpstreamBase = `http://127.0.0.1:${cloudUpstream.address().port}`;
 
   let setupState = {
     version: 'test',
@@ -40,7 +66,7 @@ async function main() {
   let platformState = { state: 'unregistered', features: {}, activationId: '' };
   let iptvPolicy = { iptvGlobalLimitBytes: 0, cloudIptvRefreshMinutes: 3 };
   let cloudIptvRows = [
-    { id: 'cloud-smoke', name: 'Cloud Smoke IPTV HD', url: 'https://example.com/cloud.m3u8', category: 'سحابي', enabled: false, source: 'cloud' },
+    { id: 'cloud-smoke', name: 'Cloud Smoke IPTV HD', url: `${cloudUpstreamBase}/cloud/index.m3u8`, category: 'سحابي', enabled: false, source: 'cloud' },
   ];
   const sessions = new Set();
   const handlerOptions = {
@@ -530,6 +556,14 @@ async function main() {
     viewerState = await res.json();
     assert.ok(viewerState.iptv.some((c) => c.name === 'Cloud Smoke IPTV HD'), 'viewer state exposes enabled cloud IPTV');
 
+    res = await request(base, '/iptv/cloud-smoke/index.m3u8');
+    assert.equal(res.status, 200, 'cloud IPTV proxy accepts the player /index.m3u8 route');
+    const cloudPlaylist = await res.text();
+    assert.equal(cloudPlaylistHits, 1, 'cloud IPTV playlist is fetched from upstream once');
+    assert.match(cloudPlaylist, /\/iptv\/cloud-smoke\/seg\?t=/, 'cloud IPTV playlist uses local segment proxy URLs');
+    assert.doesNotMatch(cloudPlaylist, /\/cloud\/seg-1\.ts/, 'cloud IPTV playlist must not expose the upstream segment path');
+    assert.doesNotMatch(cloudPlaylist, new RegExp(String(cloudUpstream.address().port)), 'cloud IPTV playlist must not expose the provider host or port');
+
     res = await request(base, '/api/admin/channels', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...auth },
@@ -582,6 +616,7 @@ async function main() {
   } finally {
     await signaling.close();
     await new Promise((resolve) => server.close(resolve));
+    await new Promise((resolve) => cloudUpstream.close(resolve));
   }
   console.log('WIVA smoke test passed');
 }

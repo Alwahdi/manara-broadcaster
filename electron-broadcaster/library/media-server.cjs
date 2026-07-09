@@ -841,6 +841,33 @@ function safeCloudIptvList(options = {}) {
   catch { return []; }
 }
 
+function normalizeCloudIptvId(id) {
+  return String(id || '').replace(/^cloud-/i, '');
+}
+
+function findCloudIptvChannel(rawId, options = {}) {
+  const id = String(rawId || '');
+  const normalized = normalizeCloudIptvId(id);
+  const candidates = [id, normalized, `cloud-${normalized}`].filter(Boolean);
+  if (typeof options.getCloudIptvChannel === 'function') {
+    for (const candidate of candidates) {
+      try {
+        const channel = options.getCloudIptvChannel(candidate);
+        if (channel) return channel;
+      } catch {}
+    }
+  }
+  for (const channel of safeCloudIptvList(options)) {
+    const channelId = String(channel?.id || '');
+    const channelNormalized = normalizeCloudIptvId(channelId);
+    if (candidates.includes(channelId) || candidates.includes(channelNormalized) || candidates.includes(`cloud-${channelNormalized}`)) {
+      return channel;
+    }
+  }
+  try { return cloudIptv.getById(normalized); }
+  catch { return null; }
+}
+
 function channelEnabled(ch) {
   const value = ch?.enabled;
   if (value === false || value === 0) return false;
@@ -1978,18 +2005,16 @@ function createHandler(options = {}) {
         return streamFile(req, res, sub.path);
       } catch (e) { res.writeHead(500); res.end(String(e.message)); return; }
     }
-    // IPTV proxy: /iptv/:id  (local numeric or cloud-<uuid>)
-    m = /^\/iptv\/(cloud-[^/]+|\d+)(?:\/([^?]+))?$/i.exec(u.pathname);
+    // IPTV proxy: /iptv/:id  (local numeric or cloud-safe id)
+    m = /^\/iptv\/([A-Za-z0-9._~-]+)(?:\/([^?]+))?$/i.exec(u.pathname);
     if (m) {
       if (!featureAllowed(options, 'iptv')) return denyFeature(req, res, options, 'iptv');
       try {
-        const rawId = m[1];
+        const rawId = decodeURIComponent(m[1]);
         const sub = (m[2] || '').replace(/^\/+|\/+$/g, '');
         let ch = null;
         if (rawId.startsWith('cloud-')) {
-          const cc = typeof options.getCloudIptvChannel === 'function'
-            ? options.getCloudIptvChannel(rawId)
-            : cloudIptv.getById(rawId.slice('cloud-'.length));
+          const cc = findCloudIptvChannel(rawId, options);
           if (cc) ch = { id: rawId, url: cc.url, name: cc.name, enabled: cc.enabled !== false && cc.enabled !== 0, headers: cc.headers || {}, transferLimitBytes: cc.transferLimitBytes || 0 };
         } else {
           ch = db.getIptv(parseInt(rawId, 10));
