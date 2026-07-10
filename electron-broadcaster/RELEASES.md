@@ -42,6 +42,14 @@ locked (antivirus, Search indexing, backup agents). This eliminates the
 intermittent "cannot save on Windows" failures that the old
 `writeFile` + `rename` pattern caused.
 
+## v2.6.47
+
+- Reworked the public library browser so the root shows the contents of each added path, not the added drive/folder itself. Adding `D:\` now shows the folders and files under `D:\` to subscribers.
+- Added a cached folder-browse index keyed by media revision, so moving between library folders no longer recalculates the entire media library on every click.
+- Increased public library browser cache lifetimes and removed automatic source-jump behavior that made navigation feel like it was reloading.
+- Kept local folder artwork as the preferred cover when both scanned media posters and local `cover/poster/fanart` files exist.
+- Tuned the IPTV web player to reduce false "improving connection" overlays: buffering is now delayed, cleared on progress/canplay events, and HLS buffering is more tolerant for unstable LAN/provider conditions.
+
 ## v2.6.46
 
 - Fixed the public IPTV player on the live port by forwarding the bundled HLS player asset through the signaling/front server, so browser playback no longer stays stuck on the connection-improvement loading state when HLS.js is required.

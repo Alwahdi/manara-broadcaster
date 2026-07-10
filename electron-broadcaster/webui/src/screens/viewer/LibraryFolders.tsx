@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppLink } from "@/components/AppLink";
 import { api, type LibraryBrowseEntry } from "@/lib/api";
@@ -29,8 +29,8 @@ export function LibraryFolders() {
     queryKey: ["library-browse", sourceId, path],
     queryFn: () => api.libraryBrowse(params),
     placeholderData: keepPreviousData,
-    staleTime: 5 * 60_000,
-    gcTime: 20 * 60_000,
+    staleTime: 30 * 60_000,
+    gcTime: 60 * 60_000,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
@@ -42,15 +42,6 @@ export function LibraryFolders() {
       queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0] || "").startsWith("library") });
     },
   });
-
-  useEffect(() => {
-    const entries = browse.data?.entries || [];
-    const sources = browse.data?.sources || [];
-    if (!sourceId && !path && sources.length === 1 && entries.length === 1 && entries[0]?.type === "folder") {
-      setSourceId(String(entries[0].sourceId || sources[0].id));
-      setPath("");
-    }
-  }, [browse.data, path, sourceId]);
 
   const prefetchFolder = (entry: LibraryBrowseEntry) => {
     if (!entry.sourceId) return;
@@ -145,7 +136,7 @@ export function LibraryFolders() {
                         <FolderCard
                           key={`${entry.sourceId || "root"}-${entry.path || entry.name}`}
                           entry={entry}
-                          onOpen={() => (sourceId ? openFolder(entry) : openSource(entry.sourceId || ""))}
+                          onOpen={() => openFolder(entry)}
                           onPrefetch={() => prefetchFolder(entry)}
                         />
                       ) : (

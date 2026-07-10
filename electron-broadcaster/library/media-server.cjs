@@ -632,13 +632,15 @@ function folderCoverUrl(source, relPath = '') {
 }
 
 const LIBRARY_BROWSE_CACHE_LIMIT = 160;
-const LIBRARY_BROWSE_CACHE_TTL_MS = 2 * 60 * 1000;
+const LIBRARY_BROWSE_CACHE_TTL_MS = 10 * 60 * 1000;
 let libraryBrowseVersion = 1;
 const libraryBrowseCache = new Map();
+let libraryBrowseIndexCache = null;
 
 function invalidateLibraryBrowseCache() {
   libraryBrowseVersion += 1;
   libraryBrowseCache.clear();
+  libraryBrowseIndexCache = null;
 }
 
 function cachedLibraryBrowsePayload(query = {}) {
@@ -661,8 +663,8 @@ function cachedLibraryBrowsePayload(query = {}) {
   return payload;
 }
 
-function libraryBrowsePayload(query = {}) {
-  const sources = db.listPaths().map((source) => {
+function libraryBrowseSources() {
+  return db.listPaths().map((source) => {
     let online = source.status !== 'missing';
     try { online = online && fs.existsSync(source.path) && fs.statSync(source.path).isDirectory(); } catch { online = false; }
     return {
@@ -673,35 +675,111 @@ function libraryBrowsePayload(query = {}) {
       excludePaths: Array.isArray(source.excludePaths) ? source.excludePaths : Array.isArray(source.exclude_paths) ? source.exclude_paths : [],
     };
   });
-  const media = listLibraryItems({ limit: 100000 });
-  const sourceId = query.sourceId ? String(query.sourceId) : '';
-  const currentPath = normalizeRelativePath(query.path || '');
+}
 
-  if (!sourceId) {
-    const entries = sources.map((source) => {
-      const children = media.filter((item) => String(item.source_id || '') === String(source.id));
-      const coverItem = children.find((item) => item.poster || item.backdrop) || children[0] || null;
-      const localCover = folderCoverUrl(source, '');
-      return {
-        type: 'folder',
-        sourceId: source.id,
-        name: source.name,
-        path: '',
-        fullPath: source.path,
-        count: children.length,
-        cover: localCover || coverItem?.backdrop || coverItem?.poster || '',
-        online: source.online,
-      };
-    }).filter((entry) => entry.count > 0 || entry.online !== false);
-    return { sourceId: '', path: '', breadcrumbs: [], entries, sources };
+function emptyBrowseBucket() {
+  return { folders: new Map(), files: [] };
+}
+
+function parentFolderPath(relPath = '') {
+  const parts = normalizeRelativePath(relPath).split('/').filter(Boolean);
+  parts.pop();
+  return parts.join('/');
+}
+
+function cloneBrowseEntry(entry) {
+  return {
+    ...entry,
+    media: entry.media ? { ...entry.media } : entry.media,
+  };
+}
+
+function buildLibraryBrowseIndex() {
+  const revision = typeof db.mediaRevision === 'function' ? db.mediaRevision() : 0;
+  const sources = libraryBrowseSources();
+  const sourceSignature = sources.map((source) => [
+    source.id,
+    source.path,
+    source.online,
+    (source.excludePaths || []).join('|'),
+  ].join(':')).join('||');
+  const key = `${revision}:${sourceSignature}`;
+  if (libraryBrowseIndexCache?.key === key) return libraryBrowseIndexCache.index;
+
+  const media = listLibraryItems({ limit: 100000 });
+  const bucketsBySource = new Map();
+  const itemsBySource = new Map();
+
+  function bucket(sourceId, parentPath = '') {
+    const sourceKey = String(sourceId);
+    if (!bucketsBySource.has(sourceKey)) bucketsBySource.set(sourceKey, new Map());
+    const sourceBuckets = bucketsBySource.get(sourceKey);
+    const parentKey = normalizeRelativePath(parentPath);
+    if (!sourceBuckets.has(parentKey)) sourceBuckets.set(parentKey, emptyBrowseBucket());
+    return sourceBuckets.get(parentKey);
   }
 
-  const source = sources.find((row) => String(row.id) === sourceId) || null;
+  function upsertFolder(sourceId, parentPath, folderName, folderPath, item) {
+    const b = bucket(sourceId, parentPath);
+    const keyPath = normalizeRelativePath(folderPath);
+    const current = b.folders.get(keyPath) || {
+      type: 'folder',
+      sourceId: String(sourceId),
+      name: folderName,
+      path: keyPath,
+      count: 0,
+      cover: '',
+      online: true,
+    };
+    current.count += 1;
+    if (!current.cover) current.cover = item?.backdrop || item?.poster || '';
+    if (item?.online === false) current.online = false;
+    b.folders.set(keyPath, current);
+  }
+
+  for (const item of media) {
+    const sourceId = String(item.source_id || '');
+    if (!sourceId) continue;
+    if (!itemsBySource.has(sourceId)) itemsBySource.set(sourceId, []);
+    itemsBySource.get(sourceId).push(item);
+
+    const rel = normalizeRelativePath(item.relative_path || path.basename(item.path || item.title || ''));
+    if (!rel) continue;
+    const parts = rel.split('/').filter(Boolean);
+    for (let index = 0; index < parts.length - 1; index += 1) {
+      const parent = parts.slice(0, index).join('/');
+      const folderPath = parts.slice(0, index + 1).join('/');
+      upsertFolder(sourceId, parent, parts[index], folderPath, item);
+    }
+    const fileParent = parentFolderPath(rel);
+    bucket(sourceId, fileParent).files.push({
+      type: 'media',
+      sourceId,
+      name: item.title || parts.at(-1) || path.basename(item.path || ''),
+      path: rel,
+      media: item,
+      cover: item.poster || item.backdrop || '',
+      online: item.online !== false,
+    });
+  }
+
+  const index = { sources, bucketsBySource, itemsBySource };
+  libraryBrowseIndexCache = { key, index };
+  return index;
+}
+
+function entriesForSource(source, currentPath = '', index = buildLibraryBrowseIndex()) {
   const folders = new Map();
   const files = [];
+  const sourceId = String(source.id);
+  const sourceBuckets = index.bucketsBySource.get(sourceId);
+  const indexed = sourceBuckets?.get(normalizeRelativePath(currentPath)) || emptyBrowseBucket();
+  for (const [key, value] of indexed.folders) folders.set(key, cloneBrowseEntry(value));
+  for (const value of indexed.files) files.push(cloneBrowseEntry(value));
+
   if (source?.online) {
     const root = path.resolve(String(source.path || ''));
-    const target = path.resolve(root, currentPath);
+    const target = path.resolve(root, normalizeRelativePath(currentPath));
     const excluded = sourceExcludeMatcher(source);
     if (isWithinPath(root, target) && !excluded(target)) {
       try {
@@ -710,7 +788,7 @@ function libraryBrowsePayload(query = {}) {
           const fullPath = path.join(target, entry.name);
           if (excluded(fullPath)) continue;
           const rel = normalizeRelativePath(path.relative(root, fullPath));
-          if (!rel) continue;
+          if (!rel || folders.has(rel)) continue;
           folders.set(rel, {
             type: 'folder',
             sourceId,
@@ -724,42 +802,46 @@ function libraryBrowsePayload(query = {}) {
       } catch {}
     }
   }
-  for (const item of media.filter((row) => String(row.source_id || '') === sourceId)) {
-    const rel = normalizeRelativePath(item.relative_path || path.basename(item.path || item.title || ''));
-    if (!rel) continue;
-    if (currentPath && rel !== currentPath && !rel.startsWith(currentPath + '/')) continue;
-    const rest = currentPath ? rel.slice(currentPath.length).replace(/^\/+/, '') : rel;
-    if (!rest) continue;
-    const parts = rest.split('/').filter(Boolean);
-    if (parts.length > 1) {
-      const folderName = parts[0];
-      const folderPath = normalizeRelativePath([currentPath, folderName].filter(Boolean).join('/'));
-      const current = folders.get(folderPath) || {
+
+  for (const folder of folders.values()) {
+    const localCover = folderCoverUrl(source, folder.path);
+    if (localCover) folder.cover = localCover;
+  }
+  return [
+    ...Array.from(folders.values()).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })),
+    ...files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })),
+  ];
+}
+
+function libraryBrowsePayload(query = {}) {
+  const index = buildLibraryBrowseIndex();
+  const sources = index.sources;
+  const sourceId = query.sourceId ? String(query.sourceId) : '';
+  const currentPath = normalizeRelativePath(query.path || '');
+
+  if (!sourceId) {
+    const entries = sources.flatMap((source) => {
+      const sourceItems = index.itemsBySource.get(String(source.id)) || [];
+      const directEntries = entriesForSource(source, '', index);
+      if (directEntries.length) return directEntries;
+      if (source.online !== false) return [];
+      const coverItem = sourceItems.find((item) => item.poster || item.backdrop) || sourceItems[0] || null;
+      const localCover = folderCoverUrl(source, '');
+      return [{
         type: 'folder',
-        sourceId,
-        name: folderName,
-        path: folderPath,
-        count: 0,
-        cover: folderCoverUrl(source, folderPath),
-        online: true,
-      };
-      current.count += 1;
-      if (!current.cover) current.cover = item.backdrop || item.poster || '';
-      if (item.online === false) current.online = false;
-      folders.set(folderPath, current);
-    } else {
-      files.push({
-        type: 'media',
-        sourceId,
-        name: item.title || parts[0] || path.basename(item.path || ''),
-        path: rel,
-        media: item,
-        cover: item.poster || item.backdrop || '',
-        online: item.online !== false,
-      });
-    }
+        sourceId: source.id,
+        name: source.name,
+        path: '',
+        fullPath: source.path,
+        count: sourceItems.length,
+        cover: localCover || coverItem?.backdrop || coverItem?.poster || '',
+        online: source.online,
+      }];
+    });
+    return { sourceId: '', path: '', breadcrumbs: [], entries, sources };
   }
 
+  const source = sources.find((row) => String(row.id) === sourceId) || null;
   const crumbs = [];
   const crumbParts = currentPath ? currentPath.split('/').filter(Boolean) : [];
   for (let i = 0; i < crumbParts.length; i += 1) {
@@ -770,7 +852,7 @@ function libraryBrowsePayload(query = {}) {
     source,
     path: currentPath,
     breadcrumbs: crumbs,
-    entries: [...Array.from(folders.values()).sort((a, b) => a.name.localeCompare(b.name)), ...files.sort((a, b) => a.name.localeCompare(b.name))],
+    entries: source ? entriesForSource(source, currentPath, index) : [],
     sources,
   };
 }

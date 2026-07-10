@@ -177,6 +177,13 @@ function HlsPlayer({ src }: { src: string }) {
     const media = video;
     let closed = false;
     let recoveryTimer: ReturnType<typeof setTimeout> | null = null;
+    let bufferingTimer: ReturnType<typeof setTimeout> | null = null;
+    let hasPlayed = false;
+
+    function clearBufferingTimer() {
+      if (bufferingTimer) clearTimeout(bufferingTimer);
+      bufferingTimer = null;
+    }
 
     function scheduleRestart(delay = 3500) {
       if (closed || recoveryTimer) return;
@@ -189,6 +196,7 @@ function HlsPlayer({ src }: { src: string }) {
     function cleanup() {
       if (recoveryTimer) clearTimeout(recoveryTimer);
       recoveryTimer = null;
+      clearBufferingTimer();
       try { hlsRef.current?.destroy(); } catch {}
       hlsRef.current = null;
       try {
@@ -199,10 +207,17 @@ function HlsPlayer({ src }: { src: string }) {
     }
 
     function markBuffering() {
-      if (!closed) setStatus("جاري تحسين الاتصال بالبث...");
+      if (closed || bufferingTimer) return;
+      bufferingTimer = setTimeout(() => {
+        bufferingTimer = null;
+        if (closed || error) return;
+        if (hasPlayed && media.readyState < 3) setStatus("جاري تحسين الاتصال بالبث...");
+      }, 1800);
     }
 
     function markPlaying() {
+      hasPlayed = true;
+      clearBufferingTimer();
       if (!closed) {
         setError("");
         setStatus("");
@@ -220,6 +235,8 @@ function HlsPlayer({ src }: { src: string }) {
     media.addEventListener("stalled", markBuffering);
     media.addEventListener("playing", markPlaying);
     media.addEventListener("canplay", markPlaying);
+    media.addEventListener("canplaythrough", markPlaying);
+    media.addEventListener("progress", markPlaying);
     media.addEventListener("error", markVideoError);
 
     async function start() {
@@ -242,11 +259,12 @@ function HlsPlayer({ src }: { src: string }) {
       }
       const hls = new Hls({
         lowLatencyMode: false,
+        progressive: true,
         backBufferLength: 75,
-        maxBufferLength: 45,
-        maxMaxBufferLength: 90,
-        liveSyncDurationCount: 4,
-        liveMaxLatencyDurationCount: 12,
+        maxBufferLength: 60,
+        maxMaxBufferLength: 120,
+        liveSyncDurationCount: 5,
+        liveMaxLatencyDurationCount: 16,
         manifestLoadingTimeOut: 25000,
         manifestLoadingMaxRetry: 8,
         manifestLoadingRetryDelay: 1000,
@@ -301,6 +319,8 @@ function HlsPlayer({ src }: { src: string }) {
       media.removeEventListener("stalled", markBuffering);
       media.removeEventListener("playing", markPlaying);
       media.removeEventListener("canplay", markPlaying);
+      media.removeEventListener("canplaythrough", markPlaying);
+      media.removeEventListener("progress", markPlaying);
       media.removeEventListener("error", markVideoError);
       cleanup();
     };
