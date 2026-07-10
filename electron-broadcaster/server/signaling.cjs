@@ -27,6 +27,8 @@ function startSignalingServer({
   getIptvChannels = null,
   getBroadcastChannels = null,
   getFeatureAllowed = null,
+  onBroadcastDemand = null,
+  onBroadcastIdle = null,
 } = {}) {
   let brand = {
     brandName: 'ويفا',
@@ -44,6 +46,15 @@ function startSignalingServer({
       return typeof getFeatureAllowed === 'function' ? getFeatureAllowed(feature) !== false : true;
     } catch {
       return true;
+    }
+  }
+
+  function savedBroadcastChannel(id) {
+    try {
+      const saved = typeof getBroadcastChannels === 'function' ? getBroadcastChannels() : [];
+      return (saved || []).find((row) => String(row?.id || '') === String(id) && row.enabled !== false && row.enabled !== 0) || null;
+    } catch {
+      return null;
     }
   }
 
@@ -184,14 +195,25 @@ function startSignalingServer({
           return;
         }
         const id = String(msg.channelId || '');
-        const ch = channels.get(id);
-        if (!ch) { ws.send(JSON.stringify({ type:'error', message:'channel-not-found' })); ws.close(); return; }
+        let ch = channels.get(id);
+        if (!ch) {
+          const saved = savedBroadcastChannel(id);
+          if (!saved) { ws.send(JSON.stringify({ type:'error', message:'channel-not-found' })); ws.close(); return; }
+          ch = {
+            meta: { id, name: saved.name || id, description: saved.description || '' },
+            broadcaster: null,
+            viewers: new Map(),
+          };
+          channels.set(id, ch);
+        }
         viewerId = String(nextViewerId++);
         ch.viewers.set(viewerId, ws);
         role = 'viewer'; myChannelId = id;
         ws.send(JSON.stringify({ type:'viewer-id', id: viewerId, hasBroadcaster: !!(ch.broadcaster && ch.broadcaster.readyState === 1) }));
         if (ch.broadcaster && ch.broadcaster.readyState === 1) {
           ch.broadcaster.send(JSON.stringify({ type:'viewer-joined', id: viewerId }));
+        } else if (typeof onBroadcastDemand === 'function') {
+          try { onBroadcastDemand(id); } catch {}
         }
         emitStats();
         return;
@@ -219,10 +241,16 @@ function startSignalingServer({
         for (const v of ch.viewers.values()) {
           if (v.readyState === 1) v.send(JSON.stringify({ type:'broadcaster-left' }));
         }
+        if (ch.viewers.size && typeof onBroadcastDemand === 'function') {
+          try { onBroadcastDemand(myChannelId); } catch {}
+        }
       } else if (role === 'viewer' && viewerId) {
         ch.viewers.delete(viewerId);
         if (ch.broadcaster && ch.broadcaster.readyState === 1) {
           ch.broadcaster.send(JSON.stringify({ type:'viewer-left', id: viewerId }));
+        }
+        if (!ch.viewers.size && typeof onBroadcastIdle === 'function') {
+          try { onBroadcastIdle(myChannelId); } catch {}
         }
       }
       emitStats();

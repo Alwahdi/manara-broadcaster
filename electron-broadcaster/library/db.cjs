@@ -1346,8 +1346,8 @@ function listBroadcastChannels() {
 }
 
 function cleanAudioMode(value) {
-  const next = String(value || 'cinema').trim();
-  return ['direct', 'voice', 'cinema'].includes(next) ? next : 'cinema';
+  const next = String(value || 'direct').trim();
+  return ['direct', 'voice', 'cinema'].includes(next) ? next : 'direct';
 }
 
 function cleanNumber(value, fallback, min, max) {
@@ -1371,7 +1371,7 @@ function upsertBroadcastChannel(channel) {
     bitrateKbps: channel.bitrateKbps || 8000,
     audioBitrateKbps: cleanNumber(channel.audioBitrateKbps, 256, 64, 320),
     audioMode: cleanAudioMode(channel.audioMode),
-    audioGain: cleanNumber(channel.audioGain, 1.05, 0.5, 2),
+    audioGain: cleanNumber(channel.audioGain, 1, 0.5, 2),
     autoStart: !!channel.autoStart,
     enabled: channel.enabled !== false,
   };
@@ -1396,7 +1396,7 @@ function setBroadcastChannels(channels) {
     bitrateKbps: c.bitrateKbps || 8000,
     audioBitrateKbps: cleanNumber(c.audioBitrateKbps, 256, 64, 320),
     audioMode: cleanAudioMode(c.audioMode),
-    audioGain: cleanNumber(c.audioGain, 1.05, 0.5, 2),
+    audioGain: cleanNumber(c.audioGain, 1, 0.5, 2),
     autoStart: !!c.autoStart,
     enabled: c.enabled !== false,
   }));
@@ -1423,7 +1423,7 @@ function replaceAllChannels({ broadcast, iptv } = {}) {
       bitrateKbps: c.bitrateKbps || 8000,
       audioBitrateKbps: cleanNumber(c.audioBitrateKbps, 256, 64, 320),
       audioMode: cleanAudioMode(c.audioMode),
-      audioGain: cleanNumber(c.audioGain, 1.05, 0.5, 2),
+      audioGain: cleanNumber(c.audioGain, 1, 0.5, 2),
       autoStart: !!c.autoStart,
       enabled: c.enabled !== false,
     }));

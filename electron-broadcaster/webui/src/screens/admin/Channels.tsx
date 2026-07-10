@@ -134,8 +134,8 @@ function ChannelEditor({
     fps: String(channel.fps || 30),
     bitrateKbps: String(channel.bitrateKbps || 8000),
     audioBitrateKbps: String(channel.audioBitrateKbps || 256),
-    audioMode: String(channel.audioMode || "cinema"),
-    audioGain: String(channel.audioGain || 1.05),
+    audioMode: String(channel.audioMode || "direct"),
+    audioGain: String(channel.audioGain || 1),
   });
   const set = (key: keyof typeof form) => (event: ChangeEvent<HTMLInputElement>) =>
     setForm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -191,8 +191,8 @@ function ChannelEditor({
         <div className="field">
           <label>وضع الصوت</label>
           <select className="select" value={form.audioMode} onChange={(event) => setForm((prev) => ({ ...prev, audioMode: event.target.value }))}>
-            <option value="cinema">متوازن وواضح</option>
             <option value="direct">مباشر من الجهاز</option>
+            <option value="cinema">متوازن وواضح</option>
             <option value="voice">وضوح الكلام</option>
           </select>
         </div>
@@ -220,7 +220,7 @@ function ChannelEditor({
             bitrateKbps: Number(form.bitrateKbps) || 8000,
             audioBitrateKbps: Number(form.audioBitrateKbps) || 256,
             audioMode: form.audioMode,
-            audioGain: Number(form.audioGain) || 1.05,
+            audioGain: Number(form.audioGain) || 1,
           })}
         >
           حفظ التعديل

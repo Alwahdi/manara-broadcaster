@@ -21,6 +21,7 @@ function readConfig() {
 
 const config = readConfig();
 const peers = new Map();
+const peerCloseTimers = new Map();
 let ws = null;
 let stream = null;
 let captureSourceStream = null;
@@ -47,10 +48,10 @@ function positiveFloat(value, fallback, min, max) {
 function audioProfile() {
   const mode = ['direct', 'voice', 'cinema'].includes(String(config.audioMode || '').trim())
     ? String(config.audioMode).trim()
-    : 'cinema';
+    : 'direct';
   return {
     mode,
-    gain: positiveFloat(config.audioGain, 1.05, 0.5, 2),
+    gain: positiveFloat(config.audioGain, 1, 0.5, 2),
   };
 }
 
@@ -288,7 +289,10 @@ async function prepareAudio(rawStream) {
   const audioTracks = rawStream?.getAudioTracks?.() || [];
   if (!audioTracks.length) return rawStream;
   const profile = audioProfile();
-  if (profile.mode === 'direct' && Math.abs(profile.gain - 1) < 0.01) return rawStream;
+  // HDMI audio is already a clean digital signal. Keep the historical
+  // "cinema" default as passthrough too, so existing channels stop being
+  // needlessly filtered after upgrading.
+  if ((profile.mode === 'direct' || profile.mode === 'cinema') && profile.gain <= 1.05) return rawStream;
   try {
     audioContext = new AudioContext({ sampleRate: 48000 });
     if (audioContext.state === 'suspended') {
@@ -390,11 +394,32 @@ async function tuneSender(sender, track) {
 }
 
 function closePeer(id) {
-  const pc = peers.get(String(id));
+  const key = String(id);
+  const closeTimer = peerCloseTimers.get(key);
+  if (closeTimer) clearTimeout(closeTimer);
+  peerCloseTimers.delete(key);
+  const pc = peers.get(key);
   if (pc) {
     try { pc.close(); } catch {}
-    peers.delete(String(id));
+    peers.delete(key);
   }
+}
+
+function clearPeerClose(id) {
+  const key = String(id);
+  const timer = peerCloseTimers.get(key);
+  if (timer) clearTimeout(timer);
+  peerCloseTimers.delete(key);
+}
+
+function closeDisconnectedPeerSoon(id, pc) {
+  const key = String(id);
+  if (peerCloseTimers.has(key)) return;
+  const timer = setTimeout(() => {
+    peerCloseTimers.delete(key);
+    if (peers.get(key) === pc && pc.connectionState === 'disconnected') closePeer(key);
+  }, 8000);
+  peerCloseTimers.set(key, timer);
 }
 
 async function offerToViewer(viewerId) {
@@ -414,7 +439,9 @@ async function offerToViewer(viewerId) {
     }
   };
   pc.onconnectionstatechange = () => {
-    if (['failed', 'closed', 'disconnected'].includes(pc.connectionState)) closePeer(id);
+    if (pc.connectionState === 'connected') clearPeerClose(id);
+    else if (pc.connectionState === 'disconnected') closeDisconnectedPeerSoon(id, pc);
+    else if (['failed', 'closed'].includes(pc.connectionState)) closePeer(id);
   };
   const offer = await pc.createOffer({ offerToReceiveAudio: false, offerToReceiveVideo: false });
   await pc.setLocalDescription(offer);

@@ -1,7 +1,7 @@
 {
   "name": "wiva-agent",
   "productName": "WIVA",
-  "version": "2.6.48",
+  "version": "2.6.49",
   "description": "WIVA — Local network live TV, IPTV, and media library agent for hotels, hospitals, cafes, and private networks.",
   "main": "main.cjs",
   "author": {

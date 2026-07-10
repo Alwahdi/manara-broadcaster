@@ -13,7 +13,10 @@ dist-out/
 node_modules
 dist
 dist-ssr
+.next
+out
 *.local
+*.tsbuildinfo
 .env
 .env.*
 !.env.example

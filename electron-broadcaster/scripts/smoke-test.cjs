@@ -4,6 +4,7 @@ const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { WebSocket } = require('ws');
 
 const db = require('../library/db.cjs');
 const mediaServer = require('../library/media-server.cjs');
@@ -178,6 +179,8 @@ async function main() {
     refreshPlatformStatus: async () => platformState,
   };
   const server = http.createServer(mediaServer.createHandler(handlerOptions));
+  const broadcastDemand = [];
+  const broadcastIdle = [];
 
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -187,6 +190,8 @@ async function main() {
     getIptvChannels: handlerOptions.getIptvChannels,
     getBroadcastChannels: handlerOptions.getBroadcastChannels,
     getFeatureAllowed: (feature) => platformState.state === 'active' && !!platformState.features?.[feature],
+    onBroadcastDemand: (id) => broadcastDemand.push(String(id)),
+    onBroadcastIdle: (id) => broadcastIdle.push(String(id)),
   });
   while (!signaling.address()) await new Promise((resolve) => setTimeout(resolve, 10));
   const signalingBase = `http://127.0.0.1:${signaling.address().port}`;
@@ -467,8 +472,8 @@ async function main() {
     assert.equal(Number(created.fps), 30, 'capture channels default to 30fps');
     assert.equal(Number(created.bitrateKbps), 8000, 'capture channels default to a clear 8Mbps WebRTC bitrate');
     assert.equal(Number(created.audioBitrateKbps), 256, 'capture channels default to clearer 256kbps audio');
-    assert.equal(created.audioMode, 'cinema', 'capture channels default to the balanced audio profile');
-    assert.equal(Number(created.audioGain), 1.05, 'capture channels default to gentle audio gain');
+    assert.equal(created.audioMode, 'direct', 'capture channels default to unprocessed HDMI audio');
+    assert.equal(Number(created.audioGain), 1, 'capture channels default to neutral audio gain');
 
     res = await request(base, `/api/admin/broadcast/${encodeURIComponent(created.id)}`, {
       method: 'PUT',
@@ -511,6 +516,30 @@ async function main() {
     let viewerState = await res.json();
     assert.ok(viewerState.broadcast.some((c) => c.name === 'كاميرا القاعة HD'), 'viewer state exposes enabled broadcast channels');
     assert.ok(viewerState.channels.some((c) => c.name === 'كاميرا القاعة HD'), 'viewer live channels include broadcast channels');
+
+    const demandViewer = new WebSocket(`ws://127.0.0.1:${signaling.address().port}/ws`);
+    await new Promise((resolve, reject) => {
+      demandViewer.once('open', resolve);
+      demandViewer.once('error', reject);
+    });
+    const viewerRegistered = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('viewer registration timed out')), 2000);
+      demandViewer.on('message', (raw) => {
+        const message = JSON.parse(raw.toString());
+        if (message.type === 'viewer-id') {
+          clearTimeout(timer);
+          resolve(message);
+        }
+      });
+    });
+    demandViewer.send(JSON.stringify({ type: 'register-viewer', channelId: created.id }));
+    await viewerRegistered;
+    assert.ok(broadcastDemand.includes(String(created.id)), 'joining a saved capture channel starts its broadcaster on demand');
+    const viewerClosed = new Promise((resolve) => demandViewer.once('close', resolve));
+    demandViewer.close();
+    await viewerClosed;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.ok(broadcastIdle.includes(String(created.id)), 'leaving the last capture viewer schedules broadcaster cleanup');
 
     const nestedDir = path.join(dir, 'قسم رئيسي', 'أفلام عربية');
     fs.mkdirSync(nestedDir, { recursive: true });

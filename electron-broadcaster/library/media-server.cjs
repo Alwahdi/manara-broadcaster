@@ -127,7 +127,7 @@ function getViewerContext(req, res) {
 function viewerAuthErrorMessage(code) {
   return {
     name_required: 'اكتب الاسم أولاً.',
-    phone_required: 'اكتب رقم الهاتف أو رقم الغرفة أولاً.',
+    phone_required: 'اكتب رقم الهاتف أولاً.',
     account_disabled: 'هذا الحساب غير متاح حالياً.',
     email_required: 'أدخل بريداً إلكترونياً صحيحاً.',
     password_too_short: 'كلمة المرور يجب أن تكون 4 أحرف على الأقل.',
@@ -1943,8 +1943,8 @@ function createHandler(options = {}) {
           fps: body.fps || 30,
           bitrateKbps: body.bitrateKbps || 8000,
           audioBitrateKbps: body.audioBitrateKbps || 256,
-          audioMode: body.audioMode || 'cinema',
-          audioGain: body.audioGain || 1.05,
+          audioMode: body.audioMode || 'direct',
+          audioGain: body.audioGain || 1,
           autoStart: !!body.autoStart,
           enabled: body.enabled !== false,
         });

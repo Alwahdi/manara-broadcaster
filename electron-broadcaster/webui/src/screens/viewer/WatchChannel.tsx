@@ -168,6 +168,7 @@ function HlsPlayer({ src }: { src: string }) {
   const hlsRef = useRef<HlsInstance | null>(null);
   const [status, setStatus] = useState("جاري تجهيز البث...");
   const [error, setError] = useState("");
+  const [started, setStarted] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
   const [fitMode, setFitMode] = useState<FitMode>("fill");
 
@@ -211,12 +212,13 @@ function HlsPlayer({ src }: { src: string }) {
       bufferingTimer = setTimeout(() => {
         bufferingTimer = null;
         if (closed || error) return;
-        if (hasPlayed && media.readyState < 3) setStatus("جاري تحسين الاتصال بالبث...");
-      }, 1800);
+        if (hasPlayed && media.readyState < 3) setStatus("الاتصال غير مستقر، نحاول استئناف البث...");
+      }, 5000);
     }
 
     function markPlaying() {
       hasPlayed = true;
+      setStarted(true);
       clearBufferingTimer();
       if (!closed) {
         setError("");
@@ -236,11 +238,11 @@ function HlsPlayer({ src }: { src: string }) {
     media.addEventListener("playing", markPlaying);
     media.addEventListener("canplay", markPlaying);
     media.addEventListener("canplaythrough", markPlaying);
-    media.addEventListener("progress", markPlaying);
     media.addEventListener("error", markVideoError);
 
     async function start() {
       cleanup();
+      setStarted(false);
       setError("");
       setStatus("جاري تشغيل البث...");
       if (media.canPlayType("application/vnd.apple.mpegurl")) {
@@ -258,13 +260,14 @@ function HlsPlayer({ src }: { src: string }) {
         return;
       }
       const hls = new Hls({
-        lowLatencyMode: false,
+        lowLatencyMode: true,
         progressive: true,
-        backBufferLength: 75,
-        maxBufferLength: 60,
-        maxMaxBufferLength: 120,
-        liveSyncDurationCount: 5,
-        liveMaxLatencyDurationCount: 16,
+        startFragPrefetch: true,
+        backBufferLength: 30,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
+        liveSyncDurationCount: 3,
+        liveMaxLatencyDurationCount: 10,
         manifestLoadingTimeOut: 25000,
         manifestLoadingMaxRetry: 8,
         manifestLoadingRetryDelay: 1000,
@@ -320,7 +323,6 @@ function HlsPlayer({ src }: { src: string }) {
       media.removeEventListener("playing", markPlaying);
       media.removeEventListener("canplay", markPlaying);
       media.removeEventListener("canplaythrough", markPlaying);
-      media.removeEventListener("progress", markPlaying);
       media.removeEventListener("error", markVideoError);
       cleanup();
     };
@@ -341,7 +343,7 @@ function HlsPlayer({ src }: { src: string }) {
         className={`live-player-video live-player-video-${fitMode}`}
       />
       {status || error ? (
-        <div className="live-player-overlay">
+        <div className={started && !error ? "live-player-recovery" : "live-player-overlay"}>
           <div>
             {status && !error ? <div className="spinner overlay-spinner" /> : null}
             <strong>{error || status}</strong>
@@ -372,6 +374,7 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
     let closed = false;
     let retry: ReturnType<typeof setTimeout> | null = null;
     let remoteTrackTimer: ReturnType<typeof setTimeout> | null = null;
+    let disconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
     function clearRetry() {
       if (retry) clearTimeout(retry);
@@ -383,8 +386,14 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
       remoteTrackTimer = null;
     }
 
+    function clearDisconnectTimer() {
+      if (disconnectTimer) clearTimeout(disconnectTimer);
+      disconnectTimer = null;
+    }
+
     function cleanupPeer() {
       clearRemoteTrackTimer();
+      clearDisconnectTimer();
       try { pcRef.current?.close(); } catch {}
       pcRef.current = null;
       if (videoRef.current) videoRef.current.srcObject = null;
@@ -455,7 +464,7 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
         let msg: Record<string, unknown>;
         try { msg = JSON.parse(String(event.data)); } catch { return; }
         if (msg.type === "viewer-id") {
-          if (!msg.hasBroadcaster) setStatus("القناة غير متاحة حاليًا. اختر قناة أخرى أو جرّب لاحقًا.");
+          if (!msg.hasBroadcaster) setStatus("جاري تجهيز القناة...");
           return;
         }
         if (msg.type === "broadcaster-online") {
@@ -486,17 +495,27 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
           pc.onconnectionstatechange = () => {
             if (closed) return;
             if (pc.connectionState === "connected") {
+              clearDisconnectTimer();
               setReady(true);
               setStatus("يبث الآن");
               return;
             }
-            if (pc.connectionState === "failed" || pc.connectionState === "disconnected" || pc.connectionState === "closed") {
+            if (pc.connectionState === "disconnected") {
+              if (!disconnectTimer) {
+                disconnectTimer = setTimeout(() => {
+                  disconnectTimer = null;
+                  if (pc.connectionState === "disconnected") scheduleReconnect("انقطع الاتصال مؤقتًا، نحاول إعادة التشغيل...", 1200);
+                }, 6000);
+              }
+              return;
+            }
+            if (pc.connectionState === "failed" || pc.connectionState === "closed") {
               scheduleReconnect("انقطع الاتصال مؤقتًا، نحاول إعادة التشغيل...", 1800);
             }
           };
           pc.oniceconnectionstatechange = () => {
             if (closed) return;
-            if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
+            if (pc.iceConnectionState === "failed") {
               scheduleReconnect("انقطع الاتصال مؤقتًا، نحاول إعادة التشغيل...", 1800);
             }
           };
@@ -517,6 +536,7 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
       closed = true;
       clearRetry();
       clearRemoteTrackTimer();
+      clearDisconnectTimer();
       try { wsRef.current?.close(); } catch {}
       cleanupPeer();
     };

@@ -38,8 +38,8 @@ export function AdminChannelNew() {
   const [fps, setFps] = useState("30");
   const [bitrateKbps, setBitrateKbps] = useState("8000");
   const [audioBitrateKbps, setAudioBitrateKbps] = useState("256");
-  const [audioMode, setAudioMode] = useState("cinema");
-  const [audioGain, setAudioGain] = useState("1.05");
+  const [audioMode, setAudioMode] = useState("direct");
+  const [audioGain, setAudioGain] = useState("1");
 
   const devices = useQuery({
     queryKey: ["capture-devices"],
@@ -75,7 +75,7 @@ export function AdminChannelNew() {
         bitrateKbps: Number(bitrateKbps) || 8000,
         audioBitrateKbps: Number(audioBitrateKbps) || 256,
         audioMode,
-        audioGain: Number(audioGain) || 1.05,
+        audioGain: Number(audioGain) || 1,
         enabled: true,
       }),
     onSuccess: async () => {
@@ -258,8 +258,8 @@ export function AdminChannelNew() {
                 <div className="field">
                   <label>وضع الصوت</label>
                   <select className="select" value={audioMode} onChange={(e) => setAudioMode(e.target.value)}>
-                    <option value="cinema">متوازن وواضح</option>
                     <option value="direct">مباشر من الجهاز</option>
+                    <option value="cinema">متوازن وواضح</option>
                     <option value="voice">وضوح الكلام</option>
                   </select>
                 </div>

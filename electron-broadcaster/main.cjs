@@ -621,6 +621,7 @@ let mainWindow = null;
 let tray = null;
 let libraryReady = false;
 const channelBroadcasters = new Map();
+const channelBroadcasterIdleTimers = new Map();
 let lastDeviceSync = { state: 'idle', at: null, error: '' };
 let lastAutoStartTaskStatus = null;
 let lastLoginItemStatus = null;
@@ -784,18 +785,55 @@ function channelBroadcasterSignature(channel = {}) {
     fps: Number(channel.fps) || 30,
     bitrateKbps: Number(channel.bitrateKbps) || 8000,
     audioBitrateKbps: Number(channel.audioBitrateKbps) || 256,
-    audioMode: channel.audioMode || 'cinema',
-    audioGain: Number(channel.audioGain) || 1.05,
+    audioMode: channel.audioMode || 'direct',
+    audioGain: Number(channel.audioGain) || 1,
     port: serverInfo?.port || settings.port || DEFAULT_AGENT_PORT,
   });
 }
 
 function stopChannelBroadcaster(id) {
   const key = String(id || '');
+  const idleTimer = channelBroadcasterIdleTimers.get(key);
+  if (idleTimer) clearTimeout(idleTimer);
+  channelBroadcasterIdleTimers.delete(key);
   const entry = channelBroadcasters.get(key);
   if (!entry) return;
   channelBroadcasters.delete(key);
   try { entry.window.close(); } catch {}
+}
+
+function broadcastChannelById(id) {
+  if (!libraryReady) return null;
+  try {
+    libraryDb.reloadChannelsFromDisk();
+    return libraryDb.listBroadcastChannels().find((channel) => String(channel.id) === String(id)) || null;
+  } catch {
+    return null;
+  }
+}
+
+function startChannelBroadcasterOnDemand(id) {
+  const key = String(id || '');
+  const idleTimer = channelBroadcasterIdleTimers.get(key);
+  if (idleTimer) clearTimeout(idleTimer);
+  channelBroadcasterIdleTimers.delete(key);
+  const channel = broadcastChannelById(key);
+  if (!channel || channel.enabled === false || channel.enabled === 0 || !platformFeatureAllowed('channels')) return;
+  startChannelBroadcaster(channel);
+}
+
+function stopChannelBroadcasterWhenIdle(id) {
+  const key = String(id || '');
+  const channel = broadcastChannelById(key);
+  if (channel?.autoStart) return;
+  const current = channelBroadcasterIdleTimers.get(key);
+  if (current) clearTimeout(current);
+  const timer = setTimeout(() => {
+    channelBroadcasterIdleTimers.delete(key);
+    stopChannelBroadcaster(key);
+  }, 15000);
+  if (typeof timer.unref === 'function') timer.unref();
+  channelBroadcasterIdleTimers.set(key, timer);
 }
 
 function stopAllChannelBroadcasters() {
@@ -825,8 +863,8 @@ function startChannelBroadcaster(channel = {}) {
     fps: Number(channel.fps) || 30,
     bitrateKbps: Number(channel.bitrateKbps) || 8000,
     audioBitrateKbps: Number(channel.audioBitrateKbps) || 256,
-    audioMode: channel.audioMode || 'cinema',
-    audioGain: Number(channel.audioGain) || 1.05,
+    audioMode: channel.audioMode || 'direct',
+    audioGain: Number(channel.audioGain) || 1,
     wsUrl: liveWsUrl(),
   };
   const encoded = Buffer.from(JSON.stringify(config)).toString('base64url');
@@ -858,19 +896,19 @@ function startChannelBroadcaster(channel = {}) {
 }
 
 function reconcileChannelBroadcasters(reason = 'sync') {
-  if (!serverInfo || settings.autoStartChannels === false || !platformFeatureAllowed('channels')) {
+  if (!serverInfo || !platformFeatureAllowed('channels')) {
     stopAllChannelBroadcasters();
     return;
   }
   const rows = libraryReady ? syncBroadcastChannelsFromDb({ persist: false }) : (settings.channels || []);
-  const wanted = new Set();
+  const enabled = new Set();
   for (const channel of rows || []) {
     if (!canAutoBroadcastChannel(channel)) continue;
-    wanted.add(String(channel.id));
-    startChannelBroadcaster(channel);
+    enabled.add(String(channel.id));
+    if (settings.autoStartChannels !== false && channel.autoStart) startChannelBroadcaster(channel);
   }
   for (const id of Array.from(channelBroadcasters.keys())) {
-    if (!wanted.has(id)) stopChannelBroadcaster(id);
+    if (!enabled.has(id)) stopChannelBroadcaster(id);
   }
   console.log('[WIVA] channel broadcasters reconciled:', channelBroadcasters.size, 'reason=' + reason);
 }
@@ -1198,6 +1236,8 @@ async function restartLiveServer(port) {
     getIptvChannels: publicIptvChannels,
     getBroadcastChannels: () => syncBroadcastChannelsFromDb({ persist: false }),
     getFeatureAllowed: platformFeatureAllowed,
+    onBroadcastDemand: startChannelBroadcasterOnDemand,
+    onBroadcastIdle: stopChannelBroadcasterWhenIdle,
   });
   serverInfo.setBrand({
     brandName: settings.brandName,
@@ -1848,6 +1888,8 @@ app.whenReady().then(async () => {
     getIptvChannels: publicIptvChannels,
     getBroadcastChannels: () => syncBroadcastChannelsFromDb({ persist: false }),
     getFeatureAllowed: platformFeatureAllowed,
+    onBroadcastDemand: startChannelBroadcasterOnDemand,
+    onBroadcastIdle: stopChannelBroadcasterWhenIdle,
   });
   serverInfo.setBrand({
     brandName: settings.brandName, brandTagline: settings.brandTagline,

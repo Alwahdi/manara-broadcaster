@@ -166,7 +166,7 @@ export function Account() {
           <div className="viewer-auth-intro">
             <span className="badge">خطوة واحدة</span>
             <h2>{mode === "signup" ? "إنشاء حساب جديد" : "تسجيل الدخول"}</h2>
-            <p>استخدم اسمك ورقم الهاتف أو رقم الغرفة. البريد الإلكتروني اختياري.</p>
+            <p>استخدم اسمك ورقم الهاتف. البريد الإلكتروني اختياري.</p>
             <div className="viewer-auth-benefits">
               <span>حفظ المفضلة</span><span>متابعة المشاهدة</span><span>مراسلة الشبكة</span>
             </div>
@@ -177,7 +177,7 @@ export function Account() {
               <button type="button" role="tab" aria-selected={mode === "signup"} className={mode === "signup" ? "active" : ""} onClick={() => { setMode("signup"); setAuthError(""); }}>حساب جديد</button>
             </div>
             <label className="field"><span>الاسم</span><input className="input" value={name} onChange={(event) => setName(event.target.value)} maxLength={80} autoComplete="name" required /></label>
-            <label className="field"><span>رقم الهاتف أو الغرفة</span><input className="input" value={phone} onChange={(event) => setPhone(event.target.value)} maxLength={40} inputMode="tel" autoComplete="tel" required /></label>
+            <label className="field"><span>رقم الهاتف</span><input className="input" value={phone} onChange={(event) => setPhone(event.target.value)} maxLength={40} inputMode="tel" autoComplete="tel" required /></label>
             {mode === "signup" ? <label className="field"><span>البريد الإلكتروني <small>اختياري</small></span><input className="input" value={email} onChange={(event) => setEmail(event.target.value)} type="email" maxLength={180} autoComplete="email" /></label> : null}
             {authError ? <p className="form-error" role="alert">{authError}</p> : null}
             <button className="btn btn-primary btn-block" type="submit" disabled={auth.isPending}>

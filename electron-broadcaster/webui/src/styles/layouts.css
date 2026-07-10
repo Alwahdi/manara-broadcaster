@@ -1271,6 +1271,34 @@ button.folder-card {
   text-align: center;
   background: rgba(2, 6, 23, 0.72);
 }
+.live-player-recovery {
+  position: absolute;
+  z-index: 5;
+  inset-inline: 16px;
+  bottom: 58px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.live-player-recovery > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(92%, 560px);
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  color: #fff;
+  background: rgba(2, 6, 23, 0.82);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(14px);
+}
+.live-player-recovery .overlay-spinner {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  flex: 0 0 auto;
+}
 .overlay-spinner {
   margin: 0 auto 12px;
 }

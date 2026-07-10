@@ -42,6 +42,16 @@ locked (antivirus, Search indexing, backup agents). This eliminates the
 intermittent "cannot save on Windows" failures that the old
 `writeFile` + `rename` pattern caused.
 
+## v2.6.49
+
+- Changed capture channels to start on demand and stop shortly after the last viewer leaves, reducing idle CPU, memory, and capture-device usage. Channels explicitly configured for automatic start remain active.
+- Added signaling regression coverage for on-demand capture startup and idle cleanup.
+- Preserved brief WebRTC disconnects for several seconds before reconnecting, avoiding unnecessary HDMI playback interruptions caused by transient LAN state changes.
+- Changed new HDMI/capture channels to clean direct audio with neutral gain, and made the historical balanced default pass clean digital audio through without unnecessary filtering.
+- Tuned HLS playback for faster live startup, a smaller bounded browser buffer, and less intrusive recovery messaging after playback has started.
+- Removed room-number wording from subscriber registration; the simple account flow now asks for name and phone number, with optional email.
+- Ignored generated Next.js and TypeScript build artifacts so local production builds do not dirty the repository.
+
 ## v2.6.48
 
 - Fixed capture-device discovery so a screen-capture error no longer hides USB video, camera, or audio devices from the web admin.
