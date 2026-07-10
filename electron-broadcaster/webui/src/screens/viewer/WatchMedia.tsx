@@ -1,8 +1,9 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AppLink, useAppPath } from "@/components/AppLink";
 import { api } from "@/lib/api";
 import { QueryBoundary } from "@/components/States";
+import { FavoriteButton } from "@/components/common";
 import { formatDuration } from "@/lib/format";
 
 type FitMode = "fit" | "fill" | "zoom";
@@ -10,10 +11,31 @@ type FitMode = "fit" | "fill" | "zoom";
 export function WatchMedia() {
   const id = useAppPath().split("/").filter(Boolean).at(-1) || "";
   const media = useQuery({ queryKey: ["media", id], queryFn: () => api.media(id) });
+  const viewer = useQuery({ queryKey: ["viewer-state"], queryFn: api.viewerState, staleTime: 30_000 });
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const lastSavedAt = useRef(0);
+  const restoredProgress = useRef(false);
   const [fitMode, setFitMode] = useState<FitMode>("fit");
   const [status, setStatus] = useState("جاري تجهيز المحتوى...");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    restoredProgress.current = false;
+    lastSavedAt.current = 0;
+  }, [id]);
+
+  const restoreSavedProgress = (video: HTMLVideoElement, mediaId: string | number) => {
+    if (restoredProgress.current || !viewer.data) return;
+    restoredProgress.current = true;
+    const saved = viewer.data.history?.find((row) => String(row.mediaId) === String(mediaId));
+    const position = Number(saved?.position || 0);
+    if (position > 5 && position < video.duration * 0.9) video.currentTime = position;
+  };
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (video && media.data?.id && video.readyState >= 1) restoreSavedProgress(video, media.data.id);
+  }, [viewer.data, media.data?.id]);
 
   const retryPlayback = () => {
     const video = videoRef.current;
@@ -64,6 +86,18 @@ export function WatchMedia() {
                   setError("");
                   setStatus("");
                 }}
+                onLoadedMetadata={(event) => {
+                  restoreSavedProgress(event.currentTarget, item.id);
+                }}
+                onTimeUpdate={(event) => {
+                  const now = Date.now();
+                  if (now - lastSavedAt.current < 10_000) return;
+                  lastSavedAt.current = now;
+                  api.mediaProgress(item.id, { position: event.currentTarget.currentTime, duration: event.currentTarget.duration || 0 }).catch(() => {});
+                }}
+                onEnded={(event) => {
+                  api.mediaProgress(item.id, { position: event.currentTarget.duration || 0, duration: event.currentTarget.duration || 0, completed: true }).catch(() => {});
+                }}
                 onPlaying={() => {
                   setError("");
                   setStatus("");
@@ -97,6 +131,7 @@ export function WatchMedia() {
                 <p>{String(item.description || "محتوى متاح للمشاهدة داخل الشبكة.")}</p>
               </div>
               <div className="row">
+                <FavoriteButton mediaId={item.id} compact={false} />
                 {item.category ? <span className="badge">{item.category}</span> : null}
                 {item.durationSec ? <span className="badge">{formatDuration(item.durationSec)}</span> : null}
                 {item.online === false ? <span className="badge badge-warn">غير متاح حاليًا</span> : null}

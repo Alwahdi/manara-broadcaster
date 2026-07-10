@@ -27,7 +27,7 @@ export function ViewerHome() {
   const featuredMedia = media.find((item) => item.poster) || media[0];
   const heroPoster = String(featuredMedia?.poster || "");
   const favorites = ((viewer.data?.favorites as MediaItem[]) || []).slice(0, 10);
-  const continueItems = (((viewer.data?.history as MediaItem[] | undefined) || (viewer.data?.continueWatching as MediaItem[] | undefined) || [])).slice(0, 10);
+  const continueItems = (viewer.data?.history || []).map((row) => row.media).filter((item): item is MediaItem => !!item).slice(0, 10);
   const folderPreview = folderResults(folders.data?.entries).filter((entry) => entry.type === "folder").slice(0, 8);
   const showFavoritesShortcut = favorites.length > 0;
 
@@ -111,7 +111,7 @@ export function ViewerHome() {
             {folderPreview.map((entry) => (
               <AppLink
                 key={`${entry.sourceId || "root"}-${entry.path || entry.name}`}
-                href="/library"
+                href={`/library/folders?sourceId=${encodeURIComponent(String(entry.sourceId || ""))}&path=${encodeURIComponent(entry.path || "")}`}
                 className="folder-card folder-card-cinematic"
               >
                 <div className="folder-card-art">

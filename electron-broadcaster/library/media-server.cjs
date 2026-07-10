@@ -4,7 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
-const { Readable } = require('stream');
+const { Readable, Transform } = require('stream');
+const { pipeline } = require('stream/promises');
 const db = require('./db.cjs');
 const iptv = require('./iptv.cjs');
 const cloudIptv = require('./cloud-iptv.cjs');
@@ -130,8 +131,9 @@ function viewerAuthErrorMessage(code) {
     account_disabled: 'هذا الحساب غير متاح حالياً.',
     email_required: 'أدخل بريداً إلكترونياً صحيحاً.',
     password_too_short: 'كلمة المرور يجب أن تكون 4 أحرف على الأقل.',
-    account_exists: 'يوجد حساب بهذا البريد بالفعل.',
-    invalid_credentials: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.',
+    account_exists: 'يوجد حساب بهذا الرقم بالفعل. اختر تسجيل الدخول.',
+    invalid_credentials: 'الاسم أو رقم الهاتف غير صحيح.',
+    signin_required: 'سجّل الدخول أولاً.',
     message_required: 'اكتب الرسالة أولاً.',
   }[code] || 'تعذر تنفيذ الطلب حالياً.';
 }
@@ -178,15 +180,7 @@ function verifyAdminCredentials(options, username, password) {
 }
 
 function requireAdmin(req, res, options = {}, basePath = '/admin') {
-  const header = req.headers.authorization || '';
-  const token = header.startsWith('Basic ') ? header.slice(6) : '';
-  const cookieToken = parseCookies(req).manara_admin || '';
-  let provided = '';
-  try { provided = Buffer.from(token, 'base64').toString('utf8'); } catch {}
-  const sep = provided.indexOf(':');
-  const basicOk = sep > -1 && verifyAdminCredentials(options, provided.slice(0, sep), provided.slice(sep + 1));
-  const sessionOk = cookieToken && typeof options.verifyAdminSession === 'function' && options.verifyAdminSession(cookieToken);
-  if (basicOk || sessionOk) return true;
+  if (isAdminRequest(req, options)) return true;
   if (String(req.headers.accept || '').includes('text/html')) {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end(adminLoginPage('', basePath));
@@ -198,6 +192,18 @@ function requireAdmin(req, res, options = {}, basePath = '/admin') {
   });
   res.end('تسجيل الدخول مطلوب');
   return false;
+}
+
+function isAdminRequest(req, options = {}) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Basic ') ? header.slice(6) : '';
+  const cookieToken = parseCookies(req).manara_admin || '';
+  let provided = '';
+  try { provided = Buffer.from(token, 'base64').toString('utf8'); } catch {}
+  const sep = provided.indexOf(':');
+  const basicOk = sep > -1 && verifyAdminCredentials(options, provided.slice(0, sep), provided.slice(sep + 1));
+  const sessionOk = cookieToken && typeof options.verifyAdminSession === 'function' && options.verifyAdminSession(cookieToken);
+  return !!(basicOk || sessionOk);
 }
 
 function adminLoginPage(error = '', basePath = '/admin') {
@@ -601,6 +607,54 @@ function isWithinPath(rootPath, targetPath) {
   const root = path.resolve(String(rootPath || ''));
   const target = path.resolve(String(targetPath || ''));
   return target === root || target.startsWith(root + path.sep);
+}
+
+const UPLOAD_KIND_BY_EXT = new Map([
+  ['.mp4', 'movie'], ['.m4v', 'movie'], ['.mkv', 'movie'], ['.webm', 'movie'],
+  ['.mov', 'movie'], ['.avi', 'movie'], ['.ts', 'movie'],
+  ['.mp3', 'audio'], ['.m4a', 'audio'], ['.wav', 'audio'], ['.flac', 'audio'],
+  ['.ogg', 'audio'], ['.aac', 'audio'], ['.opus', 'audio'],
+]);
+const UPLOAD_COMPANION_EXT = new Set([...ARTWORK_EXT, '.srt', '.vtt']);
+const MAX_LIBRARY_UPLOAD_BYTES = 20 * 1024 * 1024 * 1024;
+
+function safeUploadName(value = '') {
+  const base = path.basename(String(value || '')).replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim();
+  if (!base || base === '.' || base === '..' || base.startsWith('.')) return '';
+  return base.slice(0, 240);
+}
+
+function sameOriginMutation(req) {
+  const fetchSite = String(req.headers['sec-fetch-site'] || '').toLowerCase();
+  if (fetchSite === 'cross-site') return false;
+  const origin = String(req.headers.origin || '').trim();
+  if (!origin) return true;
+  try { return new URL(origin).host === String(req.headers.host || ''); }
+  catch { return false; }
+}
+
+async function receiveLibraryUpload(req, targetPath) {
+  const declared = Number(req.headers['content-length'] || 0);
+  if (declared > MAX_LIBRARY_UPLOAD_BYTES) throw new Error('upload_too_large');
+  const tempPath = `${targetPath}.wiva-upload-${crypto.randomBytes(6).toString('hex')}`;
+  let received = 0;
+  const limiter = new Transform({
+    transform(chunk, _encoding, callback) {
+      received += chunk.length;
+      if (received > MAX_LIBRARY_UPLOAD_BYTES) return callback(new Error('upload_too_large'));
+      callback(null, chunk);
+    },
+  });
+  try {
+    await pipeline(req, limiter, fs.createWriteStream(tempPath, { flags: 'wx' }));
+    if (!received) throw new Error('empty_upload');
+    if (fs.existsSync(targetPath)) throw new Error('file_exists');
+    fs.renameSync(tempPath, targetPath);
+    return received;
+  } catch (error) {
+    try { fs.rmSync(tempPath, { force: true }); } catch {}
+    throw error;
+  }
 }
 
 function sourceExcludeMatcher(source) {
@@ -1072,6 +1126,32 @@ function liveChannelsPayload(options = {}) {
       playUrl: `/iptv/${encodeURIComponent(String(ch.id))}/index.m3u8`,
     }));
   return { broadcast: safeBroadcast, iptv: safeIptv, channels: [...safeBroadcast, ...safeIptv] };
+}
+
+function viewerStatePayload(req, res, options = {}) {
+  const ctx = getViewerContext(req, res);
+  const state = db.viewerState(ctx.viewerId);
+  const favoriteIds = (Array.isArray(state.favorites) ? state.favorites : []).map(String);
+  const watchLaterIds = (Array.isArray(state.watchLater) ? state.watchLater : []).map(String);
+  const mediaForIds = (ids) => ids
+    .map((id) => mediaPayload(db.getMedia(parseInt(id, 10))))
+    .filter(Boolean);
+  const history = (Array.isArray(state.history) ? state.history : []).map((row) => ({
+    ...row,
+    media: mediaPayload(db.getMedia(parseInt(row.mediaId, 10))),
+  })).filter((row) => row.media);
+  return {
+    ...state,
+    favorites: mediaForIds(favoriteIds),
+    favoriteIds,
+    watchLater: mediaForIds(watchLaterIds),
+    watchLaterIds,
+    history,
+    account: ctx.account,
+    signedIn: ctx.signedIn,
+    permissions: { manageLibrary: isAdminRequest(req, options) },
+    ...liveChannelsPayload(options),
+  };
 }
 
 function platformStatus(options = {}) {
@@ -2044,6 +2124,74 @@ function createHandler(options = {}) {
         return sendJson(res, 200, { ok: true, ...result });
       } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
     }
+    if (u.pathname === '/api/admin/library/upload' && req.method === 'POST') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      if (!sameOriginMutation(req)) return sendJson(res, 403, { ok: false, error: 'invalid_origin', message: 'تعذر التحقق من مصدر الطلب.' });
+      try {
+        const sourceId = String(u.query.sourceId || '');
+        const source = db.listPaths().find((row) => String(row.id) === sourceId);
+        if (!source) return sendJson(res, 404, { ok: false, error: 'source_not_found', message: 'القسم المحدد غير متاح.' });
+        const relativeFolder = normalizeRelativePath(u.query.path || '');
+        const root = path.resolve(String(source.path || ''));
+        const targetDir = path.resolve(root, relativeFolder);
+        const excluded = sourceExcludeMatcher(source);
+        if (!isWithinPath(root, targetDir) || excluded(targetDir)) {
+          return sendJson(res, 403, { ok: false, error: 'folder_not_allowed', message: 'لا يمكن الرفع إلى هذا المجلد.' });
+        }
+        if (!fs.existsSync(targetDir) || !fs.statSync(targetDir).isDirectory()) {
+          return sendJson(res, 404, { ok: false, error: 'folder_not_found', message: 'المجلد المحدد غير موجود.' });
+        }
+        const fileName = safeUploadName(u.query.name || req.headers['x-wiva-file-name'] || '');
+        const ext = path.extname(fileName).toLowerCase();
+        if (!fileName || (!UPLOAD_KIND_BY_EXT.has(ext) && !UPLOAD_COMPANION_EXT.has(ext))) {
+          return sendJson(res, 400, { ok: false, error: 'unsupported_file', message: 'صيغة الملف غير مدعومة.' });
+        }
+        const target = path.join(targetDir, fileName);
+        if (!isWithinPath(targetDir, target)) return sendJson(res, 400, { ok: false, error: 'invalid_name', message: 'اسم الملف غير صالح.' });
+        if (fs.existsSync(target)) return sendJson(res, 409, { ok: false, error: 'file_exists', message: 'يوجد ملف بالاسم نفسه داخل هذا المجلد.' });
+        const bytes = await receiveLibraryUpload(req, target);
+        let media = null;
+        const kind = UPLOAD_KIND_BY_EXT.get(ext);
+        if (kind) {
+          const relativePath = normalizeRelativePath(path.relative(root, target));
+          const mediaId = db.upsertMedia({
+            path: target,
+            kind,
+            title: path.basename(fileName, ext).replace(/[._]+/g, ' ').trim(),
+            size: bytes,
+            section: source.label || path.basename(root),
+            folder: relativeFolder,
+            source_id: source.id,
+            source_path: source.path,
+            source_label: source.label || path.basename(root),
+            relative_path: relativePath,
+          });
+          media = mediaPayload(db.getMedia(Number(mediaId)));
+        }
+        invalidateLibraryBrowseCache();
+        db.addAccessLog({
+          ip: clientIp(req),
+          userAgent: req.headers['user-agent'] || '',
+          action: 'library_upload',
+          targetType: kind ? 'media' : 'library_file',
+          targetId: media?.id || fileName,
+          targetName: fileName,
+          bytes,
+          status: 200,
+          message: normalizeRelativePath(path.relative(root, target)),
+        });
+        webui.broadcast('library', { sourceId: source.id, path: relativeFolder, uploaded: fileName });
+        return sendJson(res, 200, { ok: true, name: fileName, bytes, media });
+      } catch (e) {
+        const status = e.message === 'file_exists' ? 409 : e.message === 'upload_too_large' ? 413 : 500;
+        const message = e.message === 'file_exists'
+          ? 'يوجد ملف بالاسم نفسه داخل هذا المجلد.'
+          : e.message === 'upload_too_large'
+            ? 'حجم الملف أكبر من الحد المسموح.'
+            : e.message === 'empty_upload' ? 'الملف فارغ.' : 'تعذر رفع الملف الآن.';
+        return sendJson(res, status, { ok: false, error: e.message, message });
+      }
+    }
     if (u.pathname === '/api/admin/upload' && req.method === 'POST') {
       if (!requireAdmin(req, res, options, adminBase)) return;
       try {
@@ -2067,14 +2215,13 @@ function createHandler(options = {}) {
       } catch (e) { return sendJson(res, 500, { error: e.message }); }
     }
     if (u.pathname === '/api/viewer/state') {
-      const ctx = getViewerContext(req, res);
-      return sendJson(res, 200, { ...db.viewerState(ctx.viewerId), ...liveChannelsPayload(options), account: ctx.account });
+      return sendJson(res, 200, viewerStatePayload(req, res, options));
     }
     if (u.pathname === '/api/viewer/signup' && req.method === 'POST') {
       try {
         const anonymousViewerId = getViewerId(req, res);
         const body = await parseJsonBody(req);
-        const session = db.authenticateViewerProfile({ ...body, fromViewerId: anonymousViewerId });
+        const session = db.createViewerProfile({ ...body, fromViewerId: anonymousViewerId });
         setViewerAccountCookies(res, session.token, session.account.viewerId);
         return sendJson(res, 200, { ok: true, account: session.account, viewer: db.viewerState(session.account.viewerId) });
       } catch (e) {
@@ -2096,6 +2243,7 @@ function createHandler(options = {}) {
       const cookies = parseCookies(req);
       db.clearViewerAccountSession(cookies.manara_user || '');
       appendCookie(res, 'manara_user=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
+      appendCookie(res, `manara_viewer=${encodeURIComponent(randomId('viewer'))}; Path=/; SameSite=Lax; Max-Age=31536000`);
       return sendJson(res, 200, { ok: true });
     }
     if (u.pathname === '/api/viewer/message' && req.method === 'POST') {
@@ -2113,12 +2261,18 @@ function createHandler(options = {}) {
         return sendJson(res, 400, { ok: false, error: e.message, message: viewerAuthErrorMessage(e.message) });
       }
     }
+    if (u.pathname === '/api/viewer/messages' && req.method === 'GET') {
+      const ctx = getViewerContext(req, res);
+      if (!ctx.signedIn) return sendJson(res, 401, { ok: false, error: 'signin_required', message: 'سجّل الدخول لعرض رسائلك.' });
+      return sendJson(res, 200, { messages: db.listViewerMessagesForViewer(ctx.viewerId) });
+    }
     if (u.pathname === '/api/viewer/list' && req.method === 'POST') {
       try {
         const viewerId = getViewerContext(req, res).viewerId;
         const body = await parseJsonBody(req);
         const list = body.list === 'watchLater' ? 'watchLater' : 'favorites';
-        return sendJson(res, 200, db.updateViewerList(viewerId, list, body.mediaId, !!body.active));
+        db.updateViewerList(viewerId, list, body.mediaId, !!body.active);
+        return sendJson(res, 200, viewerStatePayload(req, res, options));
       } catch (e) { return sendJson(res, 500, { error: e.message }); }
     }
     m = /^\/api\/media\/(\d+)\/progress$/.exec(u.pathname);

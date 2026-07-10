@@ -16,6 +16,17 @@ function request(base, pathname, options = {}) {
   });
 }
 
+function responseCookies(response, names = []) {
+  const values = typeof response.headers.getSetCookie === 'function'
+    ? response.headers.getSetCookie()
+    : [response.headers.get('set-cookie') || ''];
+  const joined = values.join(',');
+  return names.map((name) => {
+    const match = joined.match(new RegExp(`(?:^|[,;]\\s*)(${name}=[^;,]+)`));
+    return match ? match[1] : '';
+  }).filter(Boolean).join('; ');
+}
+
 async function main() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wiva-smoke-'));
   db.init(path.join(dir, 'library.db'), { broadcast: [], iptv: [] });
@@ -115,6 +126,12 @@ async function main() {
     },
     verifyAdminSession: (token) => sessions.has(token),
     clearAdminSession: (token) => sessions.delete(token),
+    listCaptureSources: async () => ({
+      screens: [{ id: 'screen:0:0', name: 'الشاشة الرئيسية', type: 'screen', thumbnail: 'data:image/png;base64,AA==' }],
+      windows: [{ id: 'window:1:0', name: 'نافذة الاختبار', type: 'window' }],
+      videoDevices: [{ id: 'camera-device-id', name: 'USB Video Capture', type: 'videoinput', matchName: 'USB Video Capture' }],
+      audioDevices: [{ id: 'audio-device-id', name: 'USB Digital Audio', type: 'audioinput', matchName: 'USB Digital Audio' }],
+    }),
     getPlatformStatus: () => platformState,
     getBroadcastChannels: () => db.listBroadcastChannels(),
     getIptvChannels: () => [
@@ -276,6 +293,15 @@ async function main() {
       assert.match(signalingWatchBody, /data-wiva-app="next"|\/_next\/static\//, 'signaling watch path serves the modern Next SPA shell');
     }
 
+    for (const publicRoute of ['/account', '/favorites', '/search']) {
+      res = await request(signalingBase, publicRoute);
+      const publicRouteBody = await res.text();
+      if (spaBuilt) {
+        assert.equal(res.status, 200, `signaling ${publicRoute} serves the modern SPA`);
+        assert.match(publicRouteBody, /data-wiva-app="next"|\/_next\/static\//, `${publicRoute} supports direct opening and refresh`);
+      }
+    }
+
     res = await request(signalingBase, '/hls.min.js');
     assert.equal(res.status, 200, 'signaling server forwards the bundled HLS player asset');
     assert.match(res.headers.get('content-type') || '', /javascript/, 'HLS player asset is served as JavaScript');
@@ -319,6 +345,17 @@ async function main() {
     assert.ok(Array.isArray(state.broadcast));
 
     const auth = { Cookie: cookie.split(';')[0] };
+
+    res = await request(base, '/api/admin/capture/devices', { headers: auth });
+    assert.equal(res.status, 200);
+    const captureDevices = await res.json();
+    assert.equal(captureDevices.screens[0].id, 'screen:0:0', 'capture API exposes available screens');
+    assert.equal(captureDevices.windows[0].id, 'window:1:0', 'capture API exposes available windows');
+    assert.equal(captureDevices.videoDevices[0].id, 'camera-device-id', 'capture API exposes browser-compatible video device ids');
+    assert.equal(captureDevices.audioDevices[0].id, 'audio-device-id', 'capture API exposes browser-compatible audio device ids');
+
+    res = await request(base, '/api/admin/capture/devices');
+    assert.equal(res.status, 401, 'capture device discovery remains admin-only');
 
     // Storage roots: the in-app file browser lists the Agent's own disks.
     res = await request(base, '/api/admin/storage/roots', { headers: auth });
@@ -518,6 +555,88 @@ async function main() {
     assert.equal(res.status, 200);
     const mediaDetails = await res.json();
     assert.equal(mediaDetails.id, mediaId, 'media details API returns the media item directly for the web player');
+
+    // Viewer accounts are persistent LAN profiles with server-side favorites and messages.
+    res = await request(base, '/api/viewer/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'مشاهد الاختبار', phone: '777000111', email: 'viewer@example.test' }),
+    });
+    assert.equal(res.status, 200, 'viewer can create a simple profile');
+    const viewerCookies = responseCookies(res, ['manara_user', 'manara_viewer']);
+    assert.match(viewerCookies, /manara_user=/, 'signup creates a persistent account session');
+
+    res = await request(base, '/api/viewer/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'مشاهد الاختبار', phone: '777000111' }),
+    });
+    assert.equal(res.status, 400, 'duplicate profile registration is rejected');
+
+    res = await request(base, '/api/viewer/signin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'اسم غير صحيح', phone: '777000111' }),
+    });
+    assert.equal(res.status, 401, 'viewer sign-in verifies both name and phone');
+
+    res = await request(base, '/api/viewer/state', { headers: { Cookie: viewerCookies } });
+    assert.equal(res.status, 200);
+    let accountState = await res.json();
+    assert.equal(accountState.account.name, 'مشاهد الاختبار', 'viewer state exposes the signed-in profile');
+    assert.equal(accountState.permissions.manageLibrary, false, 'normal viewers never receive library management permission');
+
+    res = await request(base, '/api/viewer/list', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: viewerCookies },
+      body: JSON.stringify({ list: 'favorites', mediaId, active: true }),
+    });
+    assert.equal(res.status, 200);
+    accountState = await res.json();
+    assert.ok(accountState.favoriteIds.includes(String(mediaId)), 'favorite id is stored server-side');
+    assert.ok(accountState.favorites.some((item) => String(item.id) === String(mediaId)), 'favorite response contains playable media details');
+
+    res = await request(base, '/api/viewer/message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: viewerCookies },
+      body: JSON.stringify({ message: 'أرجو إضافة محتوى جديد', context: 'smoke test' }),
+    });
+    assert.equal(res.status, 200, 'signed-in viewer can message the network owner');
+    res = await request(base, '/api/viewer/messages', { headers: { Cookie: viewerCookies } });
+    assert.equal(res.status, 200);
+    const ownMessages = await res.json();
+    assert.equal(ownMessages.messages.length, 1, 'viewer can see their own message history');
+    assert.equal(ownMessages.messages[0].message, 'أرجو إضافة محتوى جديد');
+    res = await request(base, '/api/viewer/messages');
+    assert.equal(res.status, 401, 'message history is private to signed-in viewers');
+
+    res = await request(base, '/api/viewer/state', { headers: { Cookie: `${viewerCookies}; ${auth.Cookie}` } });
+    assert.equal(res.status, 200);
+    const adminViewerState = await res.json();
+    assert.equal(adminViewerState.permissions.manageLibrary, true, 'an authenticated admin gets contextual upload permission in the viewer library');
+
+    const uploadName = 'uploaded-smoke.mp4';
+    res = await request(base, '/api/admin/library/upload?' + new URLSearchParams({
+      sourceId: String(sourceRow.id),
+      path: 'قسم رئيسي/أفلام عربية',
+      name: uploadName,
+    }), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream', ...auth },
+      body: Buffer.from('uploaded smoke video'),
+    });
+    assert.equal(res.status, 200, 'admin can upload directly into the currently browsed folder');
+    assert.ok(fs.existsSync(path.join(nestedDir, uploadName)), 'uploaded file is written inside the selected library folder');
+    res = await request(base, '/api/library/browse?sourceId=' + encodeURIComponent(sourceRow.id) + '&path=' + encodeURIComponent('قسم رئيسي/أفلام عربية'));
+    const browseAfterUpload = await res.json();
+    assert.ok(browseAfterUpload.entries.some((entry) => entry.type === 'media' && entry.media?.title === 'uploaded-smoke'), 'uploaded media appears immediately in folder browsing');
+
+    res = await request(base, '/api/admin/library/upload?' + new URLSearchParams({ sourceId: String(sourceRow.id), path: '', name: 'blocked.mp4' }), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: Buffer.from('no auth'),
+    });
+    assert.equal(res.status, 401, 'library upload requires an authenticated admin session');
     assert.ok(Array.isArray(mediaDetails.subtitles), 'media details include subtitles array');
 
     res = await request(base, '/api/admin/iptv', {

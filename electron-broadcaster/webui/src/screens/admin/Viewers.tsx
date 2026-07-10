@@ -27,13 +27,16 @@ export function AdminViewers() {
               <tbody>
                 {(d.viewers as ViewerAccount[]).map((v) => (
                   <tr key={String(v.id)}>
-                    <td data-label="الاسم">{v.name || v.username || `#${v.id}`}</td>
+                    <td data-label="الاسم">
+                      <strong>{v.name || v.username || `#${v.id}`}</strong>
+                      <small className="dim" style={{ display: "block" }}>{v.phone || v.email || ""}</small>
+                    </td>
                     <td data-label="الحالة">
                       <span className={`badge badge-dot ${v.online ? "badge-on" : "badge-off"}`}>
                         {v.online ? "متصل" : "غير متصل"}
                       </span>
                     </td>
-                    <td data-label="آخر ظهور" className="dim">{formatDateTime(v.lastSeen)}</td>
+                    <td data-label="آخر ظهور" className="dim">{formatDateTime(v.lastSeenAt || v.lastSeen)}</td>
                   </tr>
                 ))}
               </tbody>

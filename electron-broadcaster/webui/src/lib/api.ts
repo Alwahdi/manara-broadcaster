@@ -42,6 +42,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (!res.ok) {
     const msg =
+      (data && typeof data === "object" && "message" in data
+        ? String((data as { message: unknown }).message)
+        : "") ||
       (data && typeof data === "object" && "error" in data
         ? String((data as { error: unknown }).error)
         : "") || `فشل الطلب (${res.status})`;
@@ -221,19 +224,43 @@ export interface LibraryBrowsePayload {
 
 export interface ViewerAccount {
   id: number | string;
+  viewerId?: string;
   name?: string;
   username?: string;
+  phone?: string;
+  email?: string;
   online?: boolean;
   lastSeen?: string | number | null;
+  lastSeenAt?: string | number | null;
   [k: string]: unknown;
 }
 
 export interface ViewerMessage {
   id: number | string;
   from?: string;
+  name?: string;
+  phone?: string;
+  email?: string;
   body?: string;
+  message?: string;
+  context?: string;
   status?: string;
   createdAt?: string | number;
+  [k: string]: unknown;
+}
+
+export interface ViewerState {
+  account?: ViewerAccount | null;
+  signedIn?: boolean;
+  favorites?: MediaItem[];
+  favoriteIds?: string[];
+  watchLater?: MediaItem[];
+  watchLaterIds?: string[];
+  history?: Array<{ mediaId: string; media?: MediaItem; position?: number; duration?: number; completed?: boolean }>;
+  permissions?: { manageLibrary?: boolean };
+  broadcast?: Channel[];
+  iptv?: Channel[];
+  channels?: Channel[];
   [k: string]: unknown;
 }
 
@@ -265,7 +292,17 @@ export const api = {
   // Agent + viewer
   agentState: () => http.get<AgentState>("/api/agent/state"),
   adminState: () => http.get<AdminState>("/api/admin/state"),
-  viewerState: () => http.get<Record<string, unknown>>("/api/viewer/state"),
+  viewerState: () => http.get<ViewerState>("/api/viewer/state"),
+  viewerSignup: (body: { name: string; phone: string; email?: string }) =>
+    http.post<{ ok: boolean; account: ViewerAccount; viewer: ViewerState }>("/api/viewer/signup", body),
+  viewerSignin: (body: { name: string; phone: string; email?: string }) =>
+    http.post<{ ok: boolean; account: ViewerAccount; viewer: ViewerState }>("/api/viewer/signin", body),
+  viewerLogout: () => http.post<{ ok: boolean }>("/api/viewer/logout"),
+  viewerMessages: () => http.get<{ messages: ViewerMessage[] }>("/api/viewer/messages"),
+  sendViewerMessage: (body: { message: string; context?: string }) =>
+    http.post<{ ok: boolean; message: ViewerMessage }>("/api/viewer/message", body),
+  updateViewerList: (body: { list: "favorites" | "watchLater"; mediaId: string | number; active: boolean }) =>
+    http.post<ViewerState>("/api/viewer/list", body),
   requestActivation: (body: Record<string, unknown>) =>
     http.post<{ ok: boolean; subscription?: PlatformStatus }>("/api/platform/activation", body),
   refreshPlatform: () =>
@@ -281,6 +318,8 @@ export const api = {
       "/api/library/browse" + (params ? "?" + new URLSearchParams(params).toString() : ""),
     ),
   media: (id: number | string) => http.get<MediaItem>(`/api/media/${id}`),
+  mediaProgress: (id: number | string, body: { position: number; duration: number; completed?: boolean }) =>
+    http.post<{ ok: boolean }>(`/api/media/${id}/progress`, body),
 
   // Capture wizard
   captureDevices: () => http.get<CaptureSources>("/api/admin/capture/devices"),
@@ -325,6 +364,32 @@ export const api = {
     http.post<{ ok: boolean }>(`/api/admin/library/sources/${id}/rescan`),
   librarySourceRelink: (id: number | string, path: string) =>
     http.post<{ ok: boolean }>(`/api/admin/library/sources/${id}/relink`, { path }),
+  uploadLibraryFile: (
+    sourceId: number | string,
+    folderPath: string,
+    file: File,
+    onProgress?: (percent: number) => void,
+  ) => new Promise<{ ok: boolean; name: string; bytes: number; media?: MediaItem | null }>((resolve, reject) => {
+    const params = new URLSearchParams({ sourceId: String(sourceId), path: folderPath, name: file.name });
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `/api/admin/library/upload?${params.toString()}`);
+    xhr.withCredentials = true;
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress) onProgress(Math.round((event.loaded / event.total) * 100));
+    };
+    xhr.onerror = () => reject(new ApiError("تعذر الاتصال أثناء رفع الملف.", 0));
+    xhr.onload = () => {
+      let payload: unknown = undefined;
+      try { payload = xhr.responseText ? JSON.parse(xhr.responseText) : undefined; } catch { payload = xhr.responseText; }
+      if (xhr.status >= 200 && xhr.status < 300) return resolve(payload as { ok: boolean; name: string; bytes: number; media?: MediaItem | null });
+      const message = payload && typeof payload === "object" && "message" in payload
+        ? String((payload as { message: unknown }).message)
+        : `تعذر رفع الملف (${xhr.status})`;
+      reject(new ApiError(message, xhr.status, payload));
+    };
+    xhr.send(file);
+  }),
 
   // IPTV
   iptv: () => http.get<{ channels: Channel[] }>("/api/admin/iptv"),
@@ -349,6 +414,8 @@ export const api = {
   // People & messaging
   viewers: () => http.get<{ viewers: ViewerAccount[] }>("/api/admin/viewers"),
   messages: () => http.get<{ messages: ViewerMessage[] }>("/api/admin/messages"),
+  updateMessageStatus: (id: number | string, status: "new" | "read" | "done") =>
+    http.post<{ message: ViewerMessage }>(`/api/admin/viewer-messages/${id}/status`, { status }),
 
   // Reports & diagnostics
   reports: () => http.get<Record<string, unknown>>("/api/admin/reports"),

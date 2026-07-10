@@ -42,6 +42,16 @@ locked (antivirus, Search indexing, backup agents). This eliminates the
 intermittent "cannot save on Windows" failures that the old
 `writeFile` + `rename` pattern caused.
 
+## v2.6.48
+
+- Fixed capture-device discovery so a screen-capture error no longer hides USB video, camera, or audio devices from the web admin.
+- Switched Windows PnP discovery to the reliable PowerShell execution path with a realistic timeout and broader USB/HDMI capture-device matching.
+- Combined browser media-device IDs with Windows device names so saved capture channels use playable IDs while remaining easy to identify.
+- Added screen/window thumbnails, explicit device refresh controls, clearer permission guidance, and regression coverage for all capture source groups.
+- Added simple subscriber registration and sign-in, persistent sessions, account-backed favorites, watch progress, private message history, and network-owner message workflow.
+- Added authenticated in-folder media uploads with streaming writes, source/exclusion boundary checks, immediate library updates, and admin audit logging.
+- Fixed direct opening and refresh for account, favorites, search, and nested library routes on the unified live port.
+
 ## v2.6.47
 
 - Reworked the public library browser so the root shows the contents of each added path, not the added drive/folder itself. Adding `D:\` now shows the folders and files under `D:\` to subscribers.

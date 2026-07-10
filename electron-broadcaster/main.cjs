@@ -431,8 +431,11 @@ function checkPortAvailability(port) {
 
 function windowsAvDevices() {
   if (process.platform !== 'win32') return { videoDevices: [], audioDevices: [] };
-  const script = "Get-CimInstance Win32_PnPEntity | Where-Object { $_.PNPClass -in @('Camera','Image','MEDIA','AudioEndpoint') } | Select-Object Name,PNPClass,DeviceID | ConvertTo-Json -Compress";
-  const raw = runShell(`powershell -NoProfile -Command "${script.replace(/"/g, '\\"')}"`).trim();
+  const script = [
+    "$ErrorActionPreference='SilentlyContinue'",
+    "@(Get-CimInstance Win32_PnPEntity | Where-Object { $_.PNPClass -in @('Camera','Image','MEDIA','AudioEndpoint') } | ForEach-Object { [pscustomobject]@{ Name=$_.Name; PNPClass=$_.PNPClass; DeviceID=$_.DeviceID; Service=$_.Service; Status=$_.Status } }) | ConvertTo-Json -Compress -Depth 3",
+  ].join('; ');
+  const raw = runPowerShell(script, 12000).trim();
   if (!raw) return { videoDevices: [], audioDevices: [] };
   try {
     const rows = JSON.parse(raw);
@@ -443,10 +446,14 @@ function windowsAvDevices() {
       const name = String(row.Name || '').trim();
       const cls = String(row.PNPClass || '').toLowerCase();
       const id = String(row.DeviceID || name || '').trim();
+      const service = String(row.Service || '').toLowerCase();
       if (!name) continue;
-      const item = { id, name, type: cls || 'device', matchName: name, deviceKey: id };
-      if (cls === 'audioendpoint' || /audio|sound|microphone|speaker/i.test(name)) audioDevices.push(item);
-      else if (cls === 'camera' || cls === 'image' || /camera|capture|usb|hdmi|video/i.test(name)) videoDevices.push(item);
+      const item = { id, name, type: cls || 'device', matchName: name, deviceKey: id, status: row.Status || '' };
+      if (cls === 'camera' || cls === 'image' || /camera|capture|webcam|hdmi|usb\s*video|av\s*to\s*usb|cam\s*link|elgato|obs\s*virtual/i.test(name) || /usbvideo|ksthunk/i.test(service)) {
+        videoDevices.push(item);
+      } else if (cls === 'audioendpoint' || /audio|sound|microphone|mic\b|digital interface|line\s*in/i.test(name)) {
+        audioDevices.push(item);
+      }
     }
     return { videoDevices, audioDevices };
   } catch {
@@ -454,21 +461,102 @@ function windowsAvDevices() {
   }
 }
 
+function captureDeviceKey(item = {}) {
+  const name = String(item.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  return name || String(item.id || '').trim().toLowerCase();
+}
+
+function mergeCaptureDevices(primary = [], fallback = []) {
+  const result = [];
+  const seen = new Set();
+  for (const item of [...primary, ...fallback]) {
+    if (!item?.id && !item?.name) continue;
+    const key = captureDeviceKey(item);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+  }
+  return result;
+}
+
+function reconcileBrowserDevices(browserDevices = [], platformDevices = []) {
+  const enriched = browserDevices.map((item, index) => {
+    if (String(item.matchName || '').trim() || !platformDevices[index]) return item;
+    const platformItem = platformDevices[index];
+    return {
+      ...item,
+      name: platformItem.name || item.name,
+      matchName: platformItem.name || '',
+      pnpDeviceKey: platformItem.deviceKey || platformItem.id || '',
+    };
+  });
+  return mergeCaptureDevices(enriched, platformDevices);
+}
+
+async function browserAvDevices() {
+  const candidates = BrowserWindow.getAllWindows().filter((win) => win && !win.isDestroyed() && !win.webContents.isDestroyed());
+  for (const win of candidates) {
+    try {
+      const devices = await win.webContents.executeJavaScript(`(async () => {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return [];
+        const rows = await navigator.mediaDevices.enumerateDevices();
+        return rows.filter((item) => item.kind === 'videoinput' || item.kind === 'audioinput').map((item, index) => ({
+          id: item.deviceId || item.groupId || (item.kind + ':' + index),
+          name: item.label || (item.kind === 'videoinput' ? 'جهاز فيديو ' + (index + 1) : 'جهاز صوت ' + (index + 1)),
+          type: item.kind,
+          matchName: item.label || '',
+          deviceKey: item.deviceId || item.groupId || '',
+          groupId: item.groupId || ''
+        }));
+      })()`, true);
+      const rows = Array.isArray(devices) ? devices : [];
+      return {
+        videoDevices: rows.filter((item) => item.type === 'videoinput'),
+        audioDevices: rows.filter((item) => item.type === 'audioinput'),
+      };
+    } catch {}
+  }
+  return { videoDevices: [], audioDevices: [] };
+}
+
 async function listCaptureSourcesForAdmin() {
-  const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 0, height: 0 } });
+  let sources = [];
+  let desktopError = '';
+  try {
+    sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 320, height: 180 }, fetchWindowIcons: true });
+  } catch (error) {
+    desktopError = String(error?.message || error || '');
+  }
   const screens = sources
     .filter((source) => String(source.id || '').startsWith('screen:'))
-    .map((source, index) => ({ id: source.id, name: source.name || `شاشة ${index + 1}`, type: 'screen' }));
+    .map((source, index) => ({
+      id: source.id,
+      name: source.name || `شاشة ${index + 1}`,
+      type: 'screen',
+      thumbnail: source.thumbnail && !source.thumbnail.isEmpty() ? source.thumbnail.toDataURL() : '',
+    }));
   const windows = sources
     .filter((source) => String(source.id || '').startsWith('window:'))
     .slice(0, 80)
-    .map((source) => ({ id: source.id, name: source.name || source.id, type: 'window' }));
+    .map((source) => ({
+      id: source.id,
+      name: source.name || source.id,
+      type: 'window',
+      thumbnail: source.thumbnail && !source.thumbnail.isEmpty() ? source.thumbnail.toDataURL() : '',
+    }));
   const platformDevices = windowsAvDevices();
+  const mediaDevices = await browserAvDevices();
+  const videoDevices = reconcileBrowserDevices(mediaDevices.videoDevices, platformDevices.videoDevices);
+  const audioDevices = reconcileBrowserDevices(mediaDevices.audioDevices, platformDevices.audioDevices);
+  const total = screens.length + windows.length + videoDevices.length + audioDevices.length;
   return {
     screens,
     windows,
-    videoDevices: platformDevices.videoDevices,
-    audioDevices: platformDevices.audioDevices,
+    videoDevices,
+    audioDevices,
+    message: total
+      ? ''
+      : desktopError || 'لم يتم العثور على أجهزة متاحة. تأكد من توصيل الجهاز ومنح WIVA صلاحية الوصول للكاميرا والصوت.',
   };
 }
 

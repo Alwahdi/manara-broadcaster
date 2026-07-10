@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppLink } from "@/components/AppLink";
-import type { MediaItem, Channel } from "@/lib/api";
+import { api, type MediaItem, type Channel, type ViewerState } from "@/lib/api";
 import { formatDuration } from "@/lib/format";
 import { getChannelQualityLabel } from "@/screens/viewer/viewer-utils";
 
@@ -99,32 +100,61 @@ export function MediaTile({ item }: { item: MediaItem }) {
   const title = item.title || item.name || "بدون عنوان";
   const online = item.online !== false;
   return (
-    <AppLink
-      href="/watch/media/$id"
-      params={{ id: String(item.id) }}
-      className="media-card card-hover"
+    <div className="media-card-wrap">
+      <AppLink
+        href="/watch/media/$id"
+        params={{ id: String(item.id) }}
+        className="media-card card-hover"
+      >
+        <div className="poster media-poster-premium">
+          {item.poster ? (
+            <img src={item.poster} alt="" loading="lazy" />
+          ) : (
+            <div className="poster-fallback" aria-hidden>{initials(title)}</div>
+          )}
+          <span className="poster-shade" aria-hidden />
+          <span className="media-kind">{item.category || item.kind || "فيديو"}</span>
+          {!online ? <span className="offline-ribbon">غير متاح حاليًا</span> : null}
+          <span className="poster-play" aria-hidden>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+              <path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor" />
+            </svg>
+          </span>
+        </div>
+        <div className="tile-title truncate">{title}</div>
+        <div className="tile-sub">
+          {item.category || item.kind || "فيديو"}
+          {item.durationSec ? ` · ${formatDuration(item.durationSec)}` : ""}
+        </div>
+      </AppLink>
+      <FavoriteButton mediaId={item.id} />
+    </div>
+  );
+}
+
+export function FavoriteButton({ mediaId, compact = true }: { mediaId: string | number; compact?: boolean }) {
+  const queryClient = useQueryClient();
+  const viewer = useQuery({ queryKey: ["viewer-state"], queryFn: api.viewerState, staleTime: 30_000 });
+  const active = (viewer.data?.favoriteIds || []).includes(String(mediaId));
+  const mutation = useMutation({
+    mutationFn: () => api.updateViewerList({ list: "favorites", mediaId, active: !active }),
+    onSuccess: (next) => queryClient.setQueryData<ViewerState>(["viewer-state"], next),
+  });
+  return (
+    <button
+      type="button"
+      className={`favorite-button ${compact ? "favorite-button-compact" : ""} ${active ? "active" : ""}`}
+      aria-pressed={active}
+      aria-label={active ? "إزالة من المفضلة" : "إضافة إلى المفضلة"}
+      title={active ? "إزالة من المفضلة" : "إضافة إلى المفضلة"}
+      disabled={mutation.isPending}
+      onClick={() => mutation.mutate()}
     >
-      <div className="poster media-poster-premium">
-        {item.poster ? (
-          <img src={item.poster} alt="" loading="lazy" />
-        ) : (
-          <div className="poster-fallback" aria-hidden>{initials(title)}</div>
-        )}
-        <span className="poster-shade" aria-hidden />
-        <span className="media-kind">{item.category || item.kind || "فيديو"}</span>
-        {!online ? <span className="offline-ribbon">غير متاح حاليًا</span> : null}
-        <span className="poster-play" aria-hidden>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-            <path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor" />
-          </svg>
-        </span>
-      </div>
-      <div className="tile-title truncate">{title}</div>
-      <div className="tile-sub">
-        {item.category || item.kind || "فيديو"}
-        {item.durationSec ? ` · ${formatDuration(item.durationSec)}` : ""}
-      </div>
-    </AppLink>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill={active ? "currentColor" : "none"} aria-hidden>
+        <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.7-7.5 1.1-1.1a5.5 5.5 0 0 0 0-7.8Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      {!compact ? <span>{active ? "في المفضلة" : "أضف إلى المفضلة"}</span> : null}
+    </button>
   );
 }
 

@@ -1023,6 +1023,15 @@ function createOrUpdateViewerProfile({ name, phone, email, fromViewerId } = {}) 
   return startViewerAccountSession(account.id);
 }
 
+function createViewerProfile({ name, phone, email, fromViewerId } = {}) {
+  const clean = cleanPhone(phone);
+  if (!clean) throw new Error('phone_required');
+  const displayName = cleanDisplayName(name, '');
+  if (!displayName) throw new Error('name_required');
+  if (findViewerAccountByPhone(clean)) throw new Error('account_exists');
+  return createOrUpdateViewerProfile({ name: displayName, phone: clean, email, fromViewerId });
+}
+
 function startViewerAccountSession(accountId) {
   const account = _adminState.viewerAccounts[String(accountId)];
   if (!account || account.disabled) return null;
@@ -1046,7 +1055,21 @@ function authenticateViewerAccount({ email, password, fromViewerId } = {}) {
 }
 
 function authenticateViewerProfile({ name, phone, email, fromViewerId } = {}) {
-  return createOrUpdateViewerProfile({ name, phone, email, fromViewerId });
+  const clean = cleanPhone(phone);
+  if (!clean) throw new Error('phone_required');
+  const displayName = cleanDisplayName(name, '');
+  if (!displayName) throw new Error('name_required');
+  const account = findViewerAccountByPhone(clean);
+  if (!account || account.disabled) throw new Error(account?.disabled ? 'account_disabled' : 'invalid_credentials');
+  const normalizedStoredName = cleanDisplayName(account.name, '').toLocaleLowerCase('ar');
+  const normalizedProvidedName = displayName.toLocaleLowerCase('ar');
+  if (!normalizedStoredName || normalizedStoredName !== normalizedProvidedName) throw new Error('invalid_credentials');
+  if (email) account.email = cleanEmail(email) || account.email || '';
+  account.lastSeenAt = Date.now();
+  account.updatedAt = Date.now();
+  if (fromViewerId) mergeViewerState(fromViewerId, account.viewerId);
+  saveAdminState();
+  return startViewerAccountSession(account.id);
 }
 
 function viewerAccountBySession(token) {
@@ -1105,6 +1128,21 @@ function addViewerMessage(viewerId, patch = {}) {
 
 function listViewerMessages(limit = 200) {
   return (_adminState.viewerMessages || []).slice(0, Math.max(1, Number(limit) || 200));
+}
+
+function listViewerMessagesForViewer(viewerId, limit = 100) {
+  const clean = cleanSessionKey(viewerId);
+  return (_adminState.viewerMessages || [])
+    .filter((row) => row.viewerId === clean)
+    .slice(0, Math.max(1, Math.min(200, Number(limit) || 100)))
+    .map((row) => ({
+      id: row.id,
+      message: row.message,
+      context: row.context || '',
+      status: row.status || 'new',
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt || null,
+    }));
 }
 
 function updateViewerMessageStatus(id, status = 'read') {
@@ -1438,8 +1476,8 @@ module.exports = {
   touchSession, addSessionBytes, addAccessLog, listSessions, listAccessLogs,
   viewerState, updateViewerList, recordViewerHistory, listViewers,
   createViewerAccount, authenticateViewerAccount, viewerAccountBySession, clearViewerAccountSession,
-  createOrUpdateViewerProfile, authenticateViewerProfile,
-  listViewerAccounts, addViewerMessage, listViewerMessages, updateViewerMessageStatus,
+  createViewerProfile, createOrUpdateViewerProfile, authenticateViewerProfile,
+  listViewerAccounts, addViewerMessage, listViewerMessages, listViewerMessagesForViewer, updateViewerMessageStatus,
   mediaTheme, setMediaTheme,
   listBlocks, addBlock, removeBlock, isBlocked, blockedMessage, setBlockedMessage,
   replaceAllChannels, exportChannels,

@@ -1,9 +1,9 @@
-import { useMemo, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppLink } from "@/components/AppLink";
 import { api, type LibraryBrowseEntry } from "@/lib/api";
 import { QueryBoundary, EmptyState, ViewerSkeleton } from "@/components/States";
-import { CategoryChips, ContentSection } from "@/components/common";
+import { CategoryChips, ContentSection, FavoriteButton } from "@/components/common";
 import { useLiveStatus } from "@/hooks/useLiveStatus";
 
 const LIBRARY_FILTERS = [
@@ -15,10 +15,15 @@ const LIBRARY_FILTERS = [
 /** Folder-first subscriber library view. */
 export function LibraryFolders() {
   const queryClient = useQueryClient();
-  const [sourceId, setSourceId] = useState<string>("");
-  const [path, setPath] = useState<string>("");
+  const [sourceId, setSourceId] = useState<string>(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("sourceId") || "");
+  const [path, setPath] = useState<string>(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("path") || "");
   const [term, setTerm] = useState("");
   const [filter, setFilter] = useState("all");
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadNotice, setUploadNotice] = useState("");
+  const fileInput = useRef<HTMLInputElement>(null);
+  const viewer = useQuery({ queryKey: ["viewer-state"], queryFn: api.viewerState, staleTime: 30_000 });
   const params = useMemo(() => {
     const next: Record<string, string> = {};
     if (sourceId) next.sourceId = sourceId;
@@ -35,6 +40,14 @@ export function LibraryFolders() {
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const next = new URL(window.location.href);
+    if (sourceId) next.searchParams.set("sourceId", sourceId); else next.searchParams.delete("sourceId");
+    if (path) next.searchParams.set("path", path); else next.searchParams.delete("path");
+    window.history.replaceState({}, "", `${next.pathname}${next.search}${next.hash}`);
+  }, [sourceId, path]);
 
   useLiveStatus({
     onEvent: (event) => {
@@ -67,6 +80,30 @@ export function LibraryFolders() {
     if (!entry.sourceId) return;
     setSourceId(String(entry.sourceId));
     setPath(entry.path || "");
+  };
+
+  const uploadFiles = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (!files.length || !sourceId) return;
+    setUploading(true);
+    setUploadNotice("");
+    try {
+      for (let index = 0; index < files.length; index += 1) {
+        const file = files[index];
+        await api.uploadLibraryFile(sourceId, path, file, (percent) => {
+          setUploadProgress(Math.round(((index + percent / 100) / files.length) * 100));
+        });
+      }
+      setUploadProgress(100);
+      setUploadNotice(files.length === 1 ? "تم رفع الملف وظهر في المجلد." : `تم رفع ${files.length} ملفات بنجاح.`);
+      await queryClient.invalidateQueries({ queryKey: ["library-browse", sourceId, path] });
+      await browse.refetch();
+    } catch (error) {
+      setUploadNotice(error instanceof Error ? error.message : "تعذر رفع الملفات الآن.");
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (
@@ -128,6 +165,29 @@ export function LibraryFolders() {
                 <div><strong>{mediaCount}</strong><span>ملفات</span></div>
                 <div><strong>{entries.length}</strong><span>نتائج</span></div>
               </div>
+              {viewer.data?.permissions?.manageLibrary && data.source ? (
+                <aside className="library-manager-bar" aria-label="إدارة المجلد الحالي">
+                  <div>
+                    <span>إدارة هذا المجلد</span>
+                    <strong>{data.breadcrumbs.at(-1)?.name || data.source.name || data.source.label || "القسم"}</strong>
+                    <small>{uploading ? `جاري الرفع ${uploadProgress}%` : uploadNotice || "يمكنك رفع فيديو أو ملف صوتي أو صورة غلاف هنا."}</small>
+                  </div>
+                  <div className="library-manager-actions">
+                    <input
+                      ref={fileInput}
+                      type="file"
+                      hidden
+                      multiple
+                      accept="video/*,audio/*,.mkv,.ts,.srt,.vtt,image/jpeg,image/png,image/webp,image/avif,image/gif,image/bmp"
+                      onChange={uploadFiles}
+                    />
+                    <button type="button" className="btn btn-primary" disabled={uploading} onClick={() => fileInput.current?.click()}>
+                      {uploading ? "جاري الرفع…" : "رفع محتوى"}
+                    </button>
+                  </div>
+                  {uploading ? <span className="library-upload-progress"><i style={{ width: `${uploadProgress}%` }} /></span> : null}
+                </aside>
+              ) : null}
               <ContentSection title={data.source ? "محتوى القسم" : "أقسام الاستراحة"} subtitle="تصفّح المحتوى المتاح داخل الشبكة">
                 {entries.length ? (
                   <div className="folder-grid">
@@ -191,19 +251,22 @@ function MediaFileCard({ entry }: { entry: LibraryBrowseEntry }) {
     );
   }
   return (
-    <AppLink
-      href="/watch/media/$id"
-      params={{ id: mediaId }}
-      className="folder-card folder-file-card"
-    >
-      <div className="folder-card-art">
-        {entry.cover ? <img src={entry.cover} alt="" loading="lazy" /> : <span aria-hidden>فيديو</span>}
-        {!entry.online ? <span className="offline-ribbon">غير متاح حاليًا</span> : null}
-      </div>
-      <div className="folder-card-body">
-        <span className="folder-card-title">{title}</span>
-        <span className="folder-card-sub">{item?.kind || item?.category || "فيديو"}</span>
-      </div>
-    </AppLink>
+    <div className="folder-card-wrap">
+      <AppLink
+        href="/watch/media/$id"
+        params={{ id: mediaId }}
+        className="folder-card folder-file-card"
+      >
+        <div className="folder-card-art">
+          {entry.cover ? <img src={entry.cover} alt="" loading="lazy" /> : <span aria-hidden>فيديو</span>}
+          {!entry.online ? <span className="offline-ribbon">غير متاح حاليًا</span> : null}
+        </div>
+        <div className="folder-card-body">
+          <span className="folder-card-title">{title}</span>
+          <span className="folder-card-sub">{item?.kind || item?.category || "فيديو"}</span>
+        </div>
+      </AppLink>
+      <FavoriteButton mediaId={mediaId} />
+    </div>
   );
 }
