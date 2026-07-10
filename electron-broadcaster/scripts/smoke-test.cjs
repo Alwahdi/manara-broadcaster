@@ -276,6 +276,10 @@ async function main() {
       assert.match(signalingWatchBody, /data-wiva-app="next"|\/_next\/static\//, 'signaling watch path serves the modern Next SPA shell');
     }
 
+    res = await request(signalingBase, '/hls.min.js');
+    assert.equal(res.status, 200, 'signaling server forwards the bundled HLS player asset');
+    assert.match(res.headers.get('content-type') || '', /javascript/, 'HLS player asset is served as JavaScript');
+
     res = await request(base, '/admin/channels/new', { headers: { Cookie: cookie.split(';')[0] } });
     if (spaBuilt) {
       assert.equal(res.status, 200);
@@ -349,12 +353,17 @@ async function main() {
     assert.ok(sourceRow?.id, 'added library source has an id for folder browsing');
 
     const scannedDir = path.join(dir, 'قسم للفحص');
+    const artworkVariantDir = path.join(dir, 'قسم بصيغة غلاف مختلفة');
     const emptyVisibleDir = path.join(dir, 'مجلد ظاهر بدون ملفات');
     const excludedDir = path.join(dir, 'قسم مستبعد');
     fs.mkdirSync(scannedDir, { recursive: true });
+    fs.mkdirSync(artworkVariantDir, { recursive: true });
     fs.mkdirSync(emptyVisibleDir, { recursive: true });
     fs.mkdirSync(excludedDir, { recursive: true });
+    fs.writeFileSync(path.join(scannedDir, 'cover.jpg'), Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+    fs.writeFileSync(path.join(artworkVariantDir, 'Fanart.WEBP'), Buffer.from('fake webp artwork'));
     fs.writeFileSync(path.join(scannedDir, 'included-video.mp4'), Buffer.from('fake video'));
+    fs.writeFileSync(path.join(artworkVariantDir, 'variant-video.mp4'), Buffer.from('fake video'));
     fs.writeFileSync(path.join(excludedDir, 'excluded-video.mp4'), Buffer.from('fake video'));
 
     res = await request(base, `/api/admin/library/sources/${encodeURIComponent(sourceRow.id)}/excludes`, {
@@ -382,7 +391,18 @@ async function main() {
     res = await request(base, '/api/library/browse?sourceId=' + encodeURIComponent(sourceRow.id));
     assert.equal(res.status, 200);
     let scannedBrowseSource = await res.json();
-    assert.ok(scannedBrowseSource.entries.some((entry) => entry.type === 'folder' && entry.name === 'قسم للفحص'), 'folder browser shows included source folders');
+    const scannedFolderEntry = scannedBrowseSource.entries.find((entry) => entry.type === 'folder' && entry.name === 'قسم للفحص');
+    assert.ok(scannedFolderEntry, 'folder browser shows included source folders');
+    assert.match(scannedFolderEntry.cover || '', /^\/folder-art\//, 'folder browser exposes local folder artwork when cover files exist');
+    res = await request(base, scannedFolderEntry.cover);
+    assert.equal(res.status, 200, 'folder artwork route serves local cover files safely');
+    assert.match(res.headers.get('content-type') || '', /image\/jpeg/, 'folder artwork route returns the image MIME type');
+    const variantFolderEntry = scannedBrowseSource.entries.find((entry) => entry.type === 'folder' && entry.name === 'قسم بصيغة غلاف مختلفة');
+    assert.ok(variantFolderEntry, 'folder browser shows folders with non-standard artwork names');
+    assert.match(variantFolderEntry.cover || '', /^\/folder-art\//, 'folder browser exposes fallback artwork names like fanart/backdrop');
+    res = await request(base, variantFolderEntry.cover);
+    assert.equal(res.status, 200, 'folder artwork route serves fallback artwork files');
+    assert.match(res.headers.get('content-type') || '', /image\/webp/, 'folder artwork route detects webp fallback artwork MIME');
     assert.ok(scannedBrowseSource.entries.some((entry) => entry.type === 'folder' && entry.name === 'مجلد ظاهر بدون ملفات'), 'folder browser shows real disk folders even before media is indexed');
     assert.ok(!scannedBrowseSource.entries.some((entry) => entry.name === 'قسم مستبعد'), 'folder browser hides excluded source folders');
 

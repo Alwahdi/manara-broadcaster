@@ -217,13 +217,24 @@ function mediaType(item) {
   return 'unsupported';
 }
 
-const ARTWORK_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
-const FOLDER_ARTWORK_NAMES = ['poster', 'cover', 'folder', 'thumbnail', 'thumb'];
+const ARTWORK_EXT = ['.jpg', '.jpeg', '.jpe', '.jfif', '.png', '.webp', '.avif', '.gif', '.bmp'];
+const FOLDER_ARTWORK_NAMES = [
+  'poster', 'cover', 'folder', 'thumbnail', 'thumb',
+  'fanart', 'backdrop', 'background', 'landscape', 'banner',
+  'art', 'artwork', 'preview', 'screenshot', 'screen',
+  'front', 'frontcover', 'front-cover', 'default', 'movie', 'movies',
+  'series', 'show', 'tv', 'season', 'season01', 'season 01',
+  'folder-poster', 'folder-cover', 'cover-front', 'poster-large',
+  'بوستر', 'غلاف', 'صورة', 'خلفية', 'ملصق',
+];
 
 function artworkMime(filePath) {
   const ext = path.extname(filePath || '').toLowerCase();
   if (ext === '.png') return 'image/png';
   if (ext === '.webp') return 'image/webp';
+  if (ext === '.avif') return 'image/avif';
+  if (ext === '.gif') return 'image/gif';
+  if (ext === '.bmp') return 'image/bmp';
   return 'image/jpeg';
 }
 
@@ -246,6 +257,51 @@ function findArtworkFile(item) {
   return candidates.find((candidate) => {
     try { return fs.existsSync(candidate) && fs.statSync(candidate).isFile(); } catch { return false; }
   }) || '';
+}
+
+function findFolderArtworkFile(folderPath) {
+  const dir = String(folderPath || '');
+  if (!dir) return '';
+  const candidates = [];
+  const folderBase = path.basename(dir.replace(/[\\/]+$/g, ''));
+  const names = [...FOLDER_ARTWORK_NAMES, folderBase].filter(Boolean);
+  for (const name of names) {
+    for (const variant of [name, `.${name}`, `_${name}`]) {
+      for (const ext of ARTWORK_EXT) candidates.push(path.join(dir, variant + ext));
+    }
+  }
+  const exact = candidates.find((candidate) => {
+    try { return fs.existsSync(candidate) && fs.statSync(candidate).isFile(); } catch { return false; }
+  }) || '';
+  if (exact) return exact;
+  try {
+    const images = fs.readdirSync(dir, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && ARTWORK_EXT.includes(path.extname(entry.name).toLowerCase()))
+      .slice(0, 300)
+      .map((entry) => path.join(dir, entry.name));
+    images.sort((a, b) => {
+      const scoreA = folderArtworkScore(a, folderBase);
+      const scoreB = folderArtworkScore(b, folderBase);
+      if (scoreA !== scoreB) return scoreB - scoreA;
+      return path.basename(a).localeCompare(path.basename(b), undefined, { numeric: true });
+    });
+    return images[0] || '';
+  } catch {
+    return '';
+  }
+}
+
+function folderArtworkScore(filePath, folderBase = '') {
+  const base = path.basename(filePath, path.extname(filePath)).toLowerCase().replace(/[_\-.]+/g, ' ').trim();
+  const folder = String(folderBase || '').toLowerCase().replace(/[_\-.]+/g, ' ').trim();
+  if (folder && base === folder) return 1000;
+  const exactIndex = FOLDER_ARTWORK_NAMES.findIndex((name) => base === String(name).toLowerCase().replace(/[_\-.]+/g, ' ').trim());
+  if (exactIndex >= 0) return 900 - exactIndex;
+  if (/poster|cover|folder|بوستر|غلاف|ملصق/i.test(base)) return 760;
+  if (/fanart|backdrop|background|landscape|خلفية/i.test(base)) return 650;
+  if (/thumb|thumbnail|preview|screenshot|screen|صورة/i.test(base)) return 520;
+  if (/logo|banner/i.test(base)) return 420;
+  return 100;
 }
 
 function mediaPosterUrl(item) {
@@ -341,11 +397,12 @@ function browseStoragePath(rawPath) {
       const fullPath = path.join(target, entry.name);
       let childStat = null;
       try { childStat = fs.statSync(fullPath); } catch {}
+      const isDirectory = entry.isDirectory() || (entry.isSymbolicLink() && !!childStat?.isDirectory?.());
       return {
         name: entry.name,
         path: fullPath,
         // 'dir' | 'file' — matches the web UI StorageEntry contract.
-        type: entry.isDirectory() ? 'dir' : 'file',
+        type: isDirectory ? 'dir' : 'file',
         readable: !!childStat,
         size: childStat?.size || 0,
         modifiedAt: childStat?.mtimeMs || 0,
@@ -532,6 +589,14 @@ function isHiddenOrSystemEntry(name = '') {
     lower === 'node_modules';
 }
 
+function isDirectoryLikeEntry(entry, parentPath) {
+  if (!entry) return false;
+  if (entry.isDirectory()) return true;
+  if (!entry.isSymbolicLink()) return false;
+  try { return fs.statSync(path.join(parentPath, entry.name)).isDirectory(); }
+  catch { return false; }
+}
+
 function isWithinPath(rootPath, targetPath) {
   const root = path.resolve(String(rootPath || ''));
   const target = path.resolve(String(targetPath || ''));
@@ -547,6 +612,23 @@ function sourceExcludeMatcher(source) {
     const target = path.resolve(String(targetPath || '')).replace(/[\\/]+$/g, '').toLowerCase();
     return excludes.some((entry) => target === entry || target.startsWith(entry + path.sep));
   };
+}
+
+function folderArtworkPathForSource(source, relPath = '') {
+  if (!source) return '';
+  const root = path.resolve(String(source.path || ''));
+  const rel = normalizeRelativePath(relPath || '');
+  const target = path.resolve(root, rel);
+  const excluded = sourceExcludeMatcher(source);
+  if (!isWithinPath(root, target) || excluded(target)) return '';
+  return findFolderArtworkFile(target);
+}
+
+function folderCoverUrl(source, relPath = '') {
+  const art = folderArtworkPathForSource(source, relPath);
+  if (!art) return '';
+  const query = relPath ? `?path=${encodeURIComponent(normalizeRelativePath(relPath))}` : '';
+  return `/folder-art/${encodeURIComponent(String(source.id))}${query}`;
 }
 
 const LIBRARY_BROWSE_CACHE_LIMIT = 160;
@@ -599,6 +681,7 @@ function libraryBrowsePayload(query = {}) {
     const entries = sources.map((source) => {
       const children = media.filter((item) => String(item.source_id || '') === String(source.id));
       const coverItem = children.find((item) => item.poster || item.backdrop) || children[0] || null;
+      const localCover = folderCoverUrl(source, '');
       return {
         type: 'folder',
         sourceId: source.id,
@@ -606,7 +689,7 @@ function libraryBrowsePayload(query = {}) {
         path: '',
         fullPath: source.path,
         count: children.length,
-        cover: coverItem?.backdrop || coverItem?.poster || '',
+        cover: localCover || coverItem?.backdrop || coverItem?.poster || '',
         online: source.online,
       };
     }).filter((entry) => entry.count > 0 || entry.online !== false);
@@ -623,7 +706,7 @@ function libraryBrowsePayload(query = {}) {
     if (isWithinPath(root, target) && !excluded(target)) {
       try {
         for (const entry of fs.readdirSync(target, { withFileTypes: true })) {
-          if (!entry.isDirectory() || isHiddenOrSystemEntry(entry.name)) continue;
+          if (!isDirectoryLikeEntry(entry, target) || isHiddenOrSystemEntry(entry.name)) continue;
           const fullPath = path.join(target, entry.name);
           if (excluded(fullPath)) continue;
           const rel = normalizeRelativePath(path.relative(root, fullPath));
@@ -634,7 +717,7 @@ function libraryBrowsePayload(query = {}) {
             name: entry.name,
             path: rel,
             count: 0,
-            cover: '',
+            cover: folderCoverUrl(source, rel),
             online: true,
           });
         }
@@ -657,7 +740,7 @@ function libraryBrowsePayload(query = {}) {
         name: folderName,
         path: folderPath,
         count: 0,
-        cover: '',
+        cover: folderCoverUrl(source, folderPath),
         online: true,
       };
       current.count += 1;
@@ -1490,6 +1573,17 @@ function createHandler(options = {}) {
       } catch (e) {
         return sendJson(res, 500, { error: e.message });
       }
+    }
+    m = /^\/folder-art\/(\d+)$/.exec(u.pathname);
+    if (m) {
+      if (!featureAllowed(options, 'media')) return denyFeature(req, res, options, 'media');
+      const source = db.listPaths().find((row) => String(row.id) === String(m[1]));
+      const art = folderArtworkPathForSource(source, u.query.path || '');
+      if (!art) return send(res, 404, 'Folder artwork not found', { 'Content-Type': 'text/plain; charset=utf-8' });
+      return send(res, 200, fs.readFileSync(art), {
+        'Content-Type': artworkMime(art),
+        'Cache-Control': 'public, max-age=86400',
+      });
     }
     m = /^\/player\/(\d+)$/.exec(u.pathname);
     if (m) {

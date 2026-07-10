@@ -42,6 +42,16 @@ locked (antivirus, Search indexing, backup agents). This eliminates the
 intermittent "cannot save on Windows" failures that the old
 `writeFile` + `rename` pattern caused.
 
+## v2.6.46
+
+- Fixed the public IPTV player on the live port by forwarding the bundled HLS player asset through the signaling/front server, so browser playback no longer stays stuck on the connection-improvement loading state when HLS.js is required.
+- Added smoke coverage to ensure `/hls.min.js` keeps working through the live port.
+- Expanded media-library folder artwork detection with more common local media naming patterns, Arabic artwork names, additional image formats, and fallback image selection inside each folder.
+- Added safe `/folder-art/:sourceId` serving for folder covers while respecting library source boundaries, excluded paths, and media entitlements.
+- Allowed symbolic-link directories to behave like folders in the admin storage browser and public folder explorer.
+- Kept TMDB scan keys in local/private config only and removed them from public agent settings payloads.
+- Replaced raw activation/provider errors on setup with user-safe activation messages.
+
 ## v2.6.26
 
 - Hardened admin setup: new installs no longer ship with a default admin password hash, first setup requires a strong admin password, and password changes reject weak values at the backend, not only in the UI.

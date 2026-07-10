@@ -131,8 +131,33 @@ function statusLabel(subscription?: PlatformStatus) {
   if (state === "pending") return "بانتظار الموافقة";
   if (state === "expired") return "الاشتراك منتهي";
   if (state === "suspended") return "الحساب موقوف مؤقتاً";
-  if (state === "offline" || state === "cached") return "تعذّر التحقق الآن";
+  if (state === "offline" || state === "cached") return "تعذر الاتصال";
   return "غير مسجل";
+}
+
+function activationTitle(subscription?: PlatformStatus) {
+  const state = String(subscription?.state || "unregistered");
+  if (state === "pending") return "طلبك وصل بنجاح";
+  if (state === "expired") return "يلزم تجديد الاشتراك";
+  if (state === "suspended") return "الخدمة متوقفة مؤقتاً";
+  return "لا يمكن فتح التطبيق الآن";
+}
+
+function activationMessage(subscription?: PlatformStatus) {
+  const state = String(subscription?.state || "unregistered");
+  if (state === "pending") {
+    return "سيعمل WIVA تلقائياً بعد الموافقة على هذا الجهاز وتفعيل الاشتراك.";
+  }
+  if (state === "expired") {
+    return "انتهت مدة الاشتراك لهذا الجهاز. تواصل مع مزود الخدمة لتجديده ثم حدّث الحالة.";
+  }
+  if (state === "suspended") {
+    return "الخدمة متوقفة مؤقتاً لهذا الجهاز. تواصل مع مزود الخدمة ثم حدّث الحالة.";
+  }
+  if (state === "offline" || state === "cached") {
+    return "تعذر التحقق من حالة الاشتراك الآن. تأكد من اتصال الجهاز بالإنترنت ثم جرّب تحديث الحالة.";
+  }
+  return "سجّل هذا الجهاز لإكمال الإعداد، ثم انتظر تفعيل الاشتراك.";
 }
 
 function RegistrationGate({ children }: { children: React.ReactNode }) {
@@ -270,12 +295,8 @@ function ActivationPending({
       <section className="activation-panel activation-panel-centered">
         <img src="/wiva-logo.png" alt="" className="activation-logo activation-logo-large" />
         <span className="badge badge-warn">{statusLabel(subscription)}</span>
-        <h1>{subscription?.state === "pending" ? "طلبك وصل بنجاح" : "لا يمكن فتح التطبيق الآن"}</h1>
-        <p>
-          {subscription?.state === "pending"
-            ? "سيعمل WIVA تلقائياً بعد موافقة مالك المنصة وتفعيل الاشتراك لهذا الجهاز."
-            : subscription?.error || subscription?.instance?.supportNote || "راجع حالة الاشتراك أو اتصال الجهاز بالإنترنت ثم أعد المحاولة."}
-        </p>
+        <h1>{activationTitle(subscription)}</h1>
+        <p>{activationMessage(subscription)}</p>
         <div className="activation-summary">
           <div>
             <span>الشبكة</span>

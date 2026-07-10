@@ -17,6 +17,7 @@ dist-ssr
 .env
 .env.*
 !.env.example
+.neon
 electron-broadcaster/library/cloud-runtime.cjs
 
 # Editor directories and files

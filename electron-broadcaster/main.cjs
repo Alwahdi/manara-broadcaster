@@ -41,6 +41,7 @@ const DEFAULT_LIBRARY_PORT = 8788;
 const ADMIN_HASH_PREFIX = 'scrypt';
 const ADMIN_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const WINDOWS_STARTUP_TASK_NAME = 'WIVA Agent';
+const ENV_TMDB_KEY = process.env.WIVA_TMDB_API_KEY || process.env.TMDB_API_KEY || process.env.TMDB_KEY || '';
 const adminSessions = new Map();
 let shouldRevealWindowWhenReady = false;
 
@@ -344,6 +345,7 @@ function publicSettings() {
   delete clone.adminPassword;
   delete clone.adminPasswordHash;
   delete clone.licenseKey;
+  delete clone.tmdbKey;
   return clone;
 }
 
@@ -537,8 +539,20 @@ let lastLoginItemStatus = null;
 const launchedAtBoot = process.argv.includes('--autostart') || process.argv.includes('--hidden');
 
 function cloudSafeSettings() {
-  const { channels: _channels, localIptvChannels: _localIptvChannels, licenseKey: _licenseKey, neonDatabaseUrl: _neonDatabaseUrl, ...rest } = settings;
+  const { channels: _channels, localIptvChannels: _localIptvChannels, licenseKey: _licenseKey, neonDatabaseUrl: _neonDatabaseUrl, tmdbKey: _tmdbKey, ...rest } = settings;
   return rest;
+}
+
+function configuredTmdbKey() {
+  return String(settings.tmdbKey || ENV_TMDB_KEY || '').trim();
+}
+
+function libraryScanConfig() {
+  return {
+    tmdbKey: configuredTmdbKey(),
+    tmdbLang: settings.tmdbLang || 'ar',
+    thumbnailDir: path.join(app.getPath('userData'), 'media-thumbnails'),
+  };
 }
 
 function localStatePayload() {
@@ -1029,11 +1043,7 @@ function mediaServerOptions() {
     setCloudIptvEnabled: (id, enabled) => updateCloudIptvOverride(id, { enabled }),
     getIptvChannels: () => publicIptvChannels(),
     getBroadcastChannels: () => syncBroadcastChannelsFromDb({ persist: false }),
-    getLibraryConfig: () => ({
-      tmdbKey: settings.tmdbKey || '',
-      tmdbLang: settings.tmdbLang || 'ar',
-      thumbnailDir: path.join(app.getPath('userData'), 'media-thumbnails'),
-    }),
+    getLibraryConfig: () => libraryScanConfig(),
     getPlatformStatus: () => platform.status(),
     requestPlatformActivation,
     refreshPlatformStatus,
@@ -1641,7 +1651,7 @@ ipcMain.handle('library-scan', async () => {
   scanInProgress = true;
   try {
     const r = await libraryScanner.scanAll(
-      { tmdbKey: settings.tmdbKey || '', tmdbLang: settings.tmdbLang || 'ar', thumbnailDir: path.join(app.getPath('userData'), 'media-thumbnails') },
+      libraryScanConfig(),
       (p) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('library-scan-progress', p);
