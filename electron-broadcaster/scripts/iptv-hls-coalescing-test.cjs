@@ -2,6 +2,8 @@ const assert = require('node:assert/strict');
 const http = require('node:http');
 
 const iptv = require('../library/iptv.cjs');
+const VIEWERS = Math.max(1, Number(process.env.WIVA_HLS_VIEWERS || 20));
+const MAX_RSS_GROWTH_MB = Math.max(32, Number(process.env.WIVA_HLS_MAX_RSS_GROWTH_MB || 384));
 
 function listen(server) {
   return new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -85,11 +87,16 @@ async function main() {
     assert.ok(segmentPath, 'rewritten segment URL exists');
 
     const segmentUrl = new URL(segmentPath, proxyBase).toString();
-    const responses = await Promise.all(Array.from({ length: 20 }, () => fetch(segmentUrl)));
-    assert.deepEqual(responses.map((res) => res.status), Array(20).fill(200));
+    const rssBefore = process.memoryUsage().rss;
+    const startedAt = Date.now();
+    const responses = await Promise.all(Array.from({ length: VIEWERS }, () => fetch(segmentUrl)));
+    assert.deepEqual(responses.map((res) => res.status), Array(VIEWERS).fill(200));
     const bodies = await Promise.all(responses.map((res) => res.arrayBuffer()));
+    const elapsedMs = Date.now() - startedAt;
+    const rssGrowthMb = Math.max(0, process.memoryUsage().rss - rssBefore) / (1024 * 1024);
     assert.ok(bodies.every((body) => body.byteLength === segmentBody.length), 'all viewers receive the full segment');
     assert.equal(segmentHits, 1, 'concurrent viewers for one HLS segment must coalesce to one upstream request');
+    assert.ok(rssGrowthMb <= MAX_RSS_GROWTH_MB, `RSS growth ${rssGrowthMb.toFixed(1)}MB exceeded ${MAX_RSS_GROWTH_MB}MB`);
 
     const cached = await fetch(segmentUrl);
     assert.equal(cached.status, 200);
@@ -105,9 +112,17 @@ async function main() {
     upstreamBroken = false;
 
     const status = iptv.status()[channel.id];
-    assert.ok(status.cacheCoalesced >= 19, 'metrics record coalesced segment waiters');
+    assert.ok(status.cacheCoalesced >= VIEWERS - 1, 'metrics record coalesced segment waiters');
     assert.ok(status.cacheHits >= 1, 'metrics record a cache hit after the first segment load');
     assert.ok(status.hlsTokenEntries >= 1, 'metrics expose active HLS token entries');
+    console.log(JSON.stringify({
+      viewers: VIEWERS,
+      upstreamSegmentRequests: segmentHits,
+      downstreamBytes: VIEWERS * segmentBody.length,
+      elapsedMs,
+      rssGrowthMb: Number(rssGrowthMb.toFixed(1)),
+      cacheCoalesced: status.cacheCoalesced,
+    }, null, 2));
     console.log('WIVA IPTV HLS coalescing test passed');
   } finally {
     await close(proxy);

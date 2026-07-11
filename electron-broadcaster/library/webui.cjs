@@ -6,6 +6,9 @@ const path = require('path');
 
 const DIST_DIR = path.resolve(path.join(__dirname, '..', 'webui', 'dist'));
 const INDEX_FILE = path.join(DIST_DIR, 'index.html');
+const STATIC_CACHE_MAX_BYTES = 64 * 1024 * 1024;
+const staticCache = new Map();
+let staticCacheBytes = 0;
 
 const STATIC_MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -43,6 +46,25 @@ function contentType(file) {
   return STATIC_MIME[path.extname(file).toLowerCase()] || 'application/octet-stream';
 }
 
+function readCached(file) {
+  const stat = fs.statSync(file);
+  const cached = staticCache.get(file);
+  if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) return cached.body;
+  const body = fs.readFileSync(file);
+  if (body.length > STATIC_CACHE_MAX_BYTES) return body;
+  if (cached) staticCacheBytes -= cached.body.length;
+  staticCache.delete(file);
+  while (staticCacheBytes + body.length > STATIC_CACHE_MAX_BYTES && staticCache.size) {
+    const oldestKey = staticCache.keys().next().value;
+    const oldest = staticCache.get(oldestKey);
+    staticCache.delete(oldestKey);
+    staticCacheBytes -= oldest?.body?.length || 0;
+  }
+  staticCache.set(file, { body, mtimeMs: stat.mtimeMs, size: stat.size });
+  staticCacheBytes += body.length;
+  return body;
+}
+
 // Resolve a request pathname to a safe file inside DIST_DIR (prevents traversal).
 function resolveStatic(pathname) {
   const clean = decodeURIComponent(pathname.split('?')[0]);
@@ -62,7 +84,7 @@ function serveStatic(req, res, pathname) {
   if (!isAvailable()) return false;
   const file = resolveStatic(pathname);
   if (!file) return false;
-  const body = fs.readFileSync(file);
+  const body = readCached(file);
   const hashed = /[.-][A-Za-z0-9_-]{8,}\.[a-z0-9]+$/.test(path.basename(file));
   res.writeHead(200, {
     'Content-Type': contentType(file),
@@ -75,7 +97,7 @@ function serveStatic(req, res, pathname) {
 // Serve the SPA shell (index.html) for client-side routed navigation requests.
 function serveApp(req, res) {
   if (!isAvailable()) return false;
-  const body = fs.readFileSync(INDEX_FILE);
+  const body = readCached(INDEX_FILE);
   res.writeHead(200, {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'no-store',
@@ -129,4 +151,5 @@ module.exports = {
   liveHandler,
   broadcast,
   clientCount: () => clients.size,
+  cacheStats: () => ({ entries: staticCache.size, bytes: staticCacheBytes, maxBytes: STATIC_CACHE_MAX_BYTES }),
 };

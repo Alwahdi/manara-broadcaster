@@ -1,7 +1,7 @@
 {
   "name": "wiva-agent",
   "productName": "WIVA",
-  "version": "2.6.49",
+  "version": "2.6.50",
   "description": "WIVA — Local network live TV, IPTV, and media library agent for hotels, hospitals, cafes, and private networks.",
   "main": "main.cjs",
   "author": {
@@ -23,6 +23,7 @@
     "platform:list": "node scripts/platform-admin.cjs list all",
     "test": "node scripts/smoke-test.cjs && node scripts/entitlements-test.cjs && node scripts/format-test.cjs && node scripts/settings-test.cjs && node scripts/iptv-hls-coalescing-test.cjs && node scripts/public-viewer-copy-test.cjs",
     "test:load": "node scripts/load-test.cjs",
+    "test:load:capture": "node scripts/capture-signaling-load-test.cjs",
     "audit:prod": "npm audit --omit=dev --audit-level=moderate",
     "ci": "npm run test && npm run typecheck:webui && npm run audit:prod"
   },

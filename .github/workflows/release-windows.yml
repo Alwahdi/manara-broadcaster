@@ -40,11 +40,13 @@ jobs:
           MANARA_NEON_DATABASE_URL: ${{ secrets.MANARA_NEON_DATABASE_URL }}
           WIVA_CLOUD_URL: ${{ secrets.WIVA_CLOUD_URL }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          WIVA_TMDB_API_KEY: ${{ secrets.WIVA_TMDB_API_KEY }}
         run: |
           $neon = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($env:MANARA_NEON_DATABASE_URL ?? ""))
           $cloud = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($env:WIVA_CLOUD_URL ?? ""))
           $sentry = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($env:SENTRY_DSN ?? ""))
-          "module.exports = { neonDatabaseUrl: Buffer.from('$neon', 'base64').toString('utf8'), cloudUrl: Buffer.from('$cloud', 'base64').toString('utf8'), sentryDsn: Buffer.from('$sentry', 'base64').toString('utf8') };" | Set-Content -Path "library/cloud-runtime.cjs" -Encoding UTF8
+          $tmdb = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($env:WIVA_TMDB_API_KEY ?? ""))
+          "module.exports = { neonDatabaseUrl: Buffer.from('$neon', 'base64').toString('utf8'), cloudUrl: Buffer.from('$cloud', 'base64').toString('utf8'), sentryDsn: Buffer.from('$sentry', 'base64').toString('utf8'), tmdbKey: Buffer.from('$tmdb', 'base64').toString('utf8') };" | Set-Content -Path "library/cloud-runtime.cjs" -Encoding UTF8
 
       - name: Publish release artifacts
         run: npm run release

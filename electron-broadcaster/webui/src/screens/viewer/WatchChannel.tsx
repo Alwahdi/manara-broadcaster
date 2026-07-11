@@ -4,9 +4,18 @@ import { AppLink, useAppPath } from "@/components/AppLink";
 import { api } from "@/lib/api";
 import { QueryBoundary } from "@/components/States";
 import { ChannelTile, ContentSection } from "@/components/common";
+import { WivaPlayerControls } from "@/components/WivaPlayerControls";
 import { getViewerChannels } from "./viewer-utils";
 
 type FitMode = "fit" | "fill" | "zoom";
+type CaptureQuality = "auto" | "1080" | "720" | "480";
+
+function recommendedCaptureQuality(): Exclude<CaptureQuality, "auto"> {
+  const nav = navigator as Navigator & { deviceMemory?: number; connection?: { effectiveType?: string; saveData?: boolean } };
+  const weakHardware = (nav.deviceMemory || 4) <= 2 || (nav.hardwareConcurrency || 4) <= 2;
+  const constrainedNetwork = nav.connection?.saveData || ["slow-2g", "2g", "3g"].includes(nav.connection?.effectiveType || "");
+  return weakHardware || constrainedNetwork ? "480" : "720";
+}
 
 export function WatchChannel() {
   const id = useAppPath().split("/").filter(Boolean).at(-1) || "";
@@ -337,11 +346,12 @@ function HlsPlayer({ src }: { src: string }) {
       <PlayerFitToolbar fitMode={fitMode} setFitMode={setFitMode} />
       <video
         ref={videoRef}
-        controls
         autoPlay
         playsInline
+        controlsList="nodownload noplaybackrate"
         className={`live-player-video live-player-video-${fitMode}`}
       />
+      <WivaPlayerControls videoRef={videoRef} live />
       {status || error ? (
         <div className={started && !error ? "live-player-recovery" : "live-player-overlay"}>
           <div>
@@ -365,16 +375,36 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
+  const qualityRef = useRef<Exclude<CaptureQuality, "auto">>("720");
+  const qualityModeRef = useRef<CaptureQuality>("auto");
   const [status, setStatus] = useState("جاري تشغيل البث...");
   const [ready, setReady] = useState(false);
   const [fitMode, setFitMode] = useState<FitMode>("fill");
   const [retryKey, setRetryKey] = useState(0);
+  const [quality, setQuality] = useState<CaptureQuality>("auto");
+
+  useEffect(() => {
+    qualityModeRef.current = quality;
+    qualityRef.current = quality === "auto" ? recommendedCaptureQuality() : quality;
+    try { localStorage.setItem("wiva-capture-quality", quality); } catch {}
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "set-quality", quality: qualityRef.current }));
+  }, [quality]);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("wiva-capture-quality");
+      if (["auto", "1080", "720", "480"].includes(saved || "")) setQuality(saved as CaptureQuality);
+    } catch {}
+  }, []);
 
   useEffect(() => {
     let closed = false;
     let retry: ReturnType<typeof setTimeout> | null = null;
     let remoteTrackTimer: ReturnType<typeof setTimeout> | null = null;
     let disconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let qualityTimer: ReturnType<typeof setInterval> | null = null;
+    let previousPackets = { received: 0, lost: 0 };
 
     function clearRetry() {
       if (retry) clearTimeout(retry);
@@ -391,9 +421,45 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
       disconnectTimer = null;
     }
 
+    function clearQualityTimer() {
+      if (qualityTimer) clearInterval(qualityTimer);
+      qualityTimer = null;
+    }
+
+    function startAdaptiveQuality(pc: RTCPeerConnection, ws: WebSocket) {
+      clearQualityTimer();
+      qualityTimer = setInterval(async () => {
+        if (qualityModeRef.current !== "auto" || pc.connectionState !== "connected") return;
+        try {
+          const report = await pc.getStats();
+          let received = 0;
+          let lost = 0;
+          let jitter = 0;
+          report.forEach((stat) => {
+            if (stat.type === "inbound-rtp" && stat.kind === "video") {
+              received += Number(stat.packetsReceived || 0);
+              lost += Number(stat.packetsLost || 0);
+              jitter = Math.max(jitter, Number(stat.jitter || 0));
+            }
+          });
+          const receivedDelta = Math.max(0, received - previousPackets.received);
+          const lostDelta = Math.max(0, lost - previousPackets.lost);
+          previousPackets = { received, lost };
+          const total = receivedDelta + lostDelta;
+          const lossRate = total ? lostDelta / total : 0;
+          const next = lossRate > 0.04 || jitter > 0.12 ? "480" : recommendedCaptureQuality();
+          if (next !== qualityRef.current && ws.readyState === WebSocket.OPEN) {
+            qualityRef.current = next;
+            ws.send(JSON.stringify({ type: "set-quality", quality: next }));
+          }
+        } catch {}
+      }, 8000);
+    }
+
     function cleanupPeer() {
       clearRemoteTrackTimer();
       clearDisconnectTimer();
+      clearQualityTimer();
       try { pcRef.current?.close(); } catch {}
       pcRef.current = null;
       if (videoRef.current) videoRef.current.srcObject = null;
@@ -450,7 +516,7 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
       ws.onopen = () => {
         clearRetry();
         setStatus("جاري تجهيز القناة...");
-        ws.send(JSON.stringify({ type: "register-viewer", channelId }));
+        ws.send(JSON.stringify({ type: "register-viewer", channelId, quality: qualityRef.current }));
       };
       ws.onerror = () => {
         setStatus("حدث انقطاع في اتصال البث.");
@@ -496,6 +562,7 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
             if (closed) return;
             if (pc.connectionState === "connected") {
               clearDisconnectTimer();
+              startAdaptiveQuality(pc, ws);
               setReady(true);
               setStatus("يبث الآن");
               return;
@@ -537,6 +604,7 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
       clearRetry();
       clearRemoteTrackTimer();
       clearDisconnectTimer();
+      clearQualityTimer();
       try { wsRef.current?.close(); } catch {}
       cleanupPeer();
     };
@@ -551,10 +619,15 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
       <PlayerFitToolbar fitMode={fitMode} setFitMode={setFitMode} />
       <video
         ref={videoRef}
-        controls
         autoPlay
         playsInline
+        controlsList="nodownload noplaybackrate"
         className={`live-player-video live-player-video-${fitMode}`}
+      />
+      <WivaPlayerControls
+        videoRef={videoRef}
+        live
+        extra={<CaptureQualityControl quality={quality} onChange={setQuality} />}
       />
       {!ready ? (
         <div className="live-player-overlay">
@@ -570,6 +643,20 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
         </div>
       ) : null}
     </div>
+  );
+}
+
+function CaptureQualityControl({ quality, onChange }: { quality: CaptureQuality; onChange: (quality: CaptureQuality) => void }) {
+  return (
+    <label className="wiva-player-quality">
+      <span>الجودة</span>
+      <select value={quality} onChange={(event) => onChange(event.target.value as CaptureQuality)} aria-label="جودة بث HDMI">
+        <option value="auto">تلقائي</option>
+        <option value="1080">Full HD 1080p</option>
+        <option value="720">HD 720p</option>
+        <option value="480">SD 480p</option>
+      </select>
+    </label>
   );
 }
 

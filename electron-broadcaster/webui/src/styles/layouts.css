@@ -1299,6 +1299,109 @@ button.folder-card {
   margin: 0;
   flex: 0 0 auto;
 }
+.wiva-player-controls {
+  position: absolute;
+  z-index: 6;
+  inset-inline: 0;
+  bottom: 0;
+  display: grid;
+  gap: 8px;
+  padding: 44px 16px 14px;
+  color: #fff;
+  background: linear-gradient(180deg, transparent, rgba(1, 4, 14, 0.9));
+}
+.wiva-player-progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+.wiva-player-progress input,
+.wiva-player-volume {
+  accent-color: #38cfff;
+  cursor: pointer;
+}
+.wiva-player-progress input {
+  width: 100%;
+  min-width: 0;
+}
+.wiva-player-control-row,
+.wiva-player-control-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.wiva-player-control-row {
+  justify-content: space-between;
+  min-width: 0;
+}
+.player-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 10px;
+  color: #fff;
+  background: rgba(5, 10, 25, .7);
+  cursor: pointer;
+  transition: background .18s ease, border-color .18s ease, transform .18s ease;
+}
+.player-icon-btn:hover,
+.player-icon-btn:focus-visible {
+  border-color: rgba(56, 207, 255, .72);
+  background: rgba(22, 58, 93, .86);
+  transform: translateY(-1px);
+}
+.player-primary-btn {
+  border-color: transparent;
+  color: #03101b;
+  background: #38cfff;
+}
+.wiva-player-volume {
+  width: 92px;
+}
+.wiva-player-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: .78rem;
+  font-weight: 900;
+}
+.wiva-player-live i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff5c71;
+  box-shadow: 0 0 0 4px rgba(255,92,113,.15);
+}
+.wiva-player-extra {
+  min-width: 0;
+  margin-inline: auto;
+}
+.wiva-player-quality {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .78rem;
+  font-weight: 800;
+}
+.wiva-player-quality select {
+  min-height: 36px;
+  max-width: 150px;
+  padding: 0 10px;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 9px;
+  color: #fff;
+  background: rgba(5,10,25,.88);
+}
+.wiva-player-feedback {
+  font-size: .76rem;
+  white-space: nowrap;
+}
 .overlay-spinner {
   margin: 0 auto 12px;
 }
@@ -3188,6 +3291,16 @@ button.folder-card {
   transform: translateZ(0);
 }
 
+/* Fit controls stay at the top; the lower edge belongs to WIVA playback controls. */
+.live-player-toolbar,
+.media-player-toolbar {
+  top: 14px;
+  right: 14px;
+  left: auto;
+  bottom: auto;
+  transform: none;
+}
+
 @media (min-width: 1500px) {
   .live-player-video {
     height: min(72vh, 900px);
@@ -3232,7 +3345,11 @@ button.folder-card {
     font-size: .74rem;
   }
   .live-player-toolbar {
-    bottom: 10px;
+    top: 10px;
+    right: 10px;
+    left: auto;
+    bottom: auto;
+    transform: none;
     max-width: calc(100% - 20px);
     padding: 4px;
     gap: 3px;
@@ -3253,6 +3370,39 @@ button.folder-card {
   .quality-switcher-options .btn {
     justify-content: center;
   }
+  .wiva-player-controls {
+    gap: 5px;
+    padding: 34px 8px 8px;
+  }
+  .wiva-player-control-row,
+  .wiva-player-control-group {
+    gap: 5px;
+  }
+  .player-icon-btn {
+    width: 36px;
+    height: 36px;
+    flex-basis: 36px;
+    border-radius: 9px;
+  }
+  .wiva-player-volume,
+  .player-pip-btn,
+  .wiva-player-feedback,
+  .wiva-player-quality > span {
+    display: none;
+  }
+  .wiva-player-quality select {
+    width: 104px;
+    min-height: 34px;
+    padding-inline: 6px;
+    font-size: .72rem;
+  }
+  .wiva-player-live {
+    font-size: .7rem;
+  }
+  .wiva-player-progress {
+    gap: 7px;
+    font-size: .7rem;
+  }
 }
 
 @media (max-width: 380px) {
@@ -3261,6 +3411,9 @@ button.folder-card {
     padding-inline: 7px;
   }
   .player-chrome-top span:not(.badge) {
+    display: none;
+  }
+  .wiva-player-live {
     display: none;
   }
 }

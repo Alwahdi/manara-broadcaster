@@ -42,6 +42,16 @@ locked (antivirus, Search indexing, backup agents). This eliminates the
 intermittent "cannot save on Windows" failures that the old
 `writeFile` + `rename` pattern caused.
 
+## v2.6.50
+
+- Added a custom WIVA player for live channels and media with accessible play/pause, volume, fullscreen, picture-in-picture, sharing, casting when supported, live state, and VOD seeking controls.
+- Added per-viewer HDMI capture quality selection for automatic, 1080p, 720p, and 480p without restarting the capture source or changing other viewers.
+- Made automatic HDMI quality device-aware and network-aware, with periodic WebRTC loss/jitter checks that lower weak clients to 480p while maintaining frame rate.
+- Reduced false media buffering overlays by waiting for a sustained stall and showing compact recovery feedback after playback starts.
+- Cached the packaged web shell and static assets in bounded memory, increased HTTP/WebSocket connection backlogs, enabled long-lived keep-alive, and hardened media Range validation.
+- Expanded load coverage to the viewer, library browser, media Range streaming, 500-viewer IPTV segment coalescing, and 500-viewer capture signaling with live quality changes.
+- Added the private `WIVA_TMDB_API_KEY` GitHub Secret to stable and beta Windows builds so network-owner library scans can retrieve TMDB artwork and metadata without exposing the key in source control.
+
 ## v2.6.49
 
 - Changed capture channels to start on demand and stop shortly after the last viewer leaves, reducing idle CPU, memory, and capture-device usage. Channels explicitly configured for automatic start remain active.

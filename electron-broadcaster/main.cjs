@@ -41,7 +41,7 @@ const DEFAULT_LIBRARY_PORT = 8788;
 const ADMIN_HASH_PREFIX = 'scrypt';
 const ADMIN_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const WINDOWS_STARTUP_TASK_NAME = 'WIVA Agent';
-const ENV_TMDB_KEY = process.env.WIVA_TMDB_API_KEY || process.env.TMDB_API_KEY || process.env.TMDB_KEY || '';
+const ENV_TMDB_KEY = process.env.WIVA_TMDB_API_KEY || process.env.TMDB_API_KEY || process.env.TMDB_KEY || runtimeConfig.tmdbKey || '';
 const adminSessions = new Map();
 let shouldRevealWindowWhenReady = false;
 

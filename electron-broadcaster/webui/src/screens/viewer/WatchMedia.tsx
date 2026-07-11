@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { QueryBoundary } from "@/components/States";
 import { FavoriteButton } from "@/components/common";
 import { formatDuration } from "@/lib/format";
+import { WivaPlayerControls } from "@/components/WivaPlayerControls";
 
 type FitMode = "fit" | "fill" | "zoom";
 
@@ -15,9 +16,26 @@ export function WatchMedia() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const lastSavedAt = useRef(0);
   const restoredProgress = useRef(false);
+  const bufferingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [fitMode, setFitMode] = useState<FitMode>("fit");
   const [status, setStatus] = useState("جاري تجهيز المحتوى...");
   const [error, setError] = useState("");
+  const [started, setStarted] = useState(false);
+
+  const clearBuffering = () => {
+    if (bufferingTimer.current) clearTimeout(bufferingTimer.current);
+    bufferingTimer.current = null;
+  };
+
+  const scheduleBuffering = () => {
+    if (bufferingTimer.current) return;
+    bufferingTimer.current = setTimeout(() => {
+      bufferingTimer.current = null;
+      setStatus("الاتصال بطيء، نحاول متابعة التشغيل...");
+    }, 3000);
+  };
+
+  useEffect(() => () => clearBuffering(), []);
 
   useEffect(() => {
     restoredProgress.current = false;
@@ -71,18 +89,20 @@ export function WatchMedia() {
               <MediaFitToolbar fitMode={fitMode} setFitMode={setFitMode} />
               <video
                 ref={videoRef}
-                controls
                 autoPlay
                 playsInline
                 preload="auto"
+                controlsList="nodownload noplaybackrate"
                 poster={item.poster}
                 className={`media-player-video media-player-video-${fitMode}`}
                 src={`/media/${item.id}`}
                 onLoadStart={() => {
                   setError("");
+                  setStarted(false);
                   setStatus("جاري تجهيز المحتوى...");
                 }}
                 onCanPlay={() => {
+                  clearBuffering();
                   setError("");
                   setStatus("");
                 }}
@@ -99,18 +119,21 @@ export function WatchMedia() {
                   api.mediaProgress(item.id, { position: event.currentTarget.duration || 0, duration: event.currentTarget.duration || 0, completed: true }).catch(() => {});
                 }}
                 onPlaying={() => {
+                  clearBuffering();
+                  setStarted(true);
                   setError("");
                   setStatus("");
                 }}
-                onWaiting={() => setStatus("جاري تحسين التشغيل...")}
-                onStalled={() => setStatus("جاري تحسين التشغيل...")}
+                onWaiting={scheduleBuffering}
+                onStalled={scheduleBuffering}
                 onError={() => {
                   setStatus("");
                   setError("تعذر تشغيل هذا المحتوى الآن.");
                 }}
               />
+              <WivaPlayerControls videoRef={videoRef} />
               {status || error ? (
-                <div className="live-player-overlay media-player-overlay">
+                <div className={started && !error ? "live-player-recovery media-player-recovery" : "live-player-overlay media-player-overlay"}>
                   <div>
                     {status && !error ? <div className="spinner overlay-spinner" /> : null}
                     <strong>{error || status}</strong>

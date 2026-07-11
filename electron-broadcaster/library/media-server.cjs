@@ -1214,8 +1214,18 @@ function streamFile(req, res, filePath) {
     const range = req.headers.range;
     if (range) {
       const m = /bytes=(\d+)-(\d+)?/.exec(range);
+      if (!m) {
+        res.writeHead(416, { 'Content-Range': `bytes */${stat.size}` });
+        res.end();
+        return;
+      }
       const start = parseInt(m[1], 10);
-      const end = m[2] ? parseInt(m[2], 10) : stat.size - 1;
+      const end = Math.min(m[2] ? parseInt(m[2], 10) : stat.size - 1, stat.size - 1);
+      if (start >= stat.size || end < start) {
+        res.writeHead(416, { 'Content-Range': `bytes */${stat.size}` });
+        res.end();
+        return;
+      }
       res.writeHead(206, {
         'Content-Range': `bytes ${start}-${end}/${stat.size}`,
         'Accept-Ranges': 'bytes',
@@ -2390,8 +2400,11 @@ function createHandler(options = {}) {
 function start(port = 8788, options = {}) {
   const server = http.createServer(createHandler(options));
   server.on('error', (e) => console.error('[media-server]', e.message));
+  server.keepAliveTimeout = 65000;
+  server.headersTimeout = 66000;
+  server.requestTimeout = 0;
   // Bind to 0.0.0.0 so LAN viewers can pull IPTV through this PC
-  server.listen(port, '0.0.0.0');
+  server.listen({ port, host: '0.0.0.0', backlog: 2048 });
   return { server, port, close: () => new Promise(r => server.close(r)) };
 }
 

@@ -65,6 +65,21 @@ function targetQuality() {
   };
 }
 
+function viewerQuality(value) {
+  const mode = ['auto', '1080', '720', '480'].includes(String(value || '')) ? String(value) : 'auto';
+  const source = targetQuality();
+  const requestedHeight = mode === '1080' ? 1080 : mode === '480' ? 480 : 720;
+  const height = Math.min(source.height, requestedHeight);
+  const scaleResolutionDownBy = Math.max(1, source.height / height);
+  const targetBitrate = mode === '1080' ? 8000 : mode === '480' ? 1500 : mode === '720' ? 3500 : 3000;
+  return {
+    mode,
+    maxBitrate: Math.min(source.bitrateKbps, targetBitrate) * 1000,
+    maxFramerate: mode === '480' ? Math.min(source.fps, 30) : source.fps,
+    scaleResolutionDownBy,
+  };
+}
+
 function directAudioConstraints(audioDevice) {
   const constraints = {
     sampleRate: { ideal: 48000 },
@@ -371,18 +386,19 @@ async function ensureStream() {
   return stream;
 }
 
-async function tuneSender(sender, track) {
+async function tuneSender(sender, track, requestedQuality = 'auto') {
   if (!sender || !track || typeof sender.getParameters !== 'function' || typeof sender.setParameters !== 'function') return;
   const quality = targetQuality();
   const params = sender.getParameters() || {};
   params.encodings = Array.isArray(params.encodings) && params.encodings.length ? params.encodings : [{}];
   if (track.kind === 'video') {
-    params.degradationPreference = 'maintain-resolution';
+    const profile = viewerQuality(requestedQuality);
+    params.degradationPreference = 'maintain-framerate';
     params.encodings[0] = {
       ...params.encodings[0],
-      maxBitrate: quality.bitrateKbps * 1000,
-      maxFramerate: quality.fps,
-      scaleResolutionDownBy: 1,
+      maxBitrate: profile.maxBitrate,
+      maxFramerate: profile.maxFramerate,
+      scaleResolutionDownBy: profile.scaleResolutionDownBy,
     };
   } else if (track.kind === 'audio') {
     params.encodings[0] = {
@@ -422,7 +438,7 @@ function closeDisconnectedPeerSoon(id, pc) {
   peerCloseTimers.set(key, timer);
 }
 
-async function offerToViewer(viewerId) {
+async function offerToViewer(viewerId, requestedQuality = 'auto') {
   const id = String(viewerId || '');
   if (!id || !ws || ws.readyState !== WebSocket.OPEN) return;
   closePeer(id);
@@ -431,7 +447,7 @@ async function offerToViewer(viewerId) {
   peers.set(id, pc);
   for (const track of localStream.getTracks()) {
     const sender = pc.addTrack(track, localStream);
-    await tuneSender(sender, track);
+    await tuneSender(sender, track, requestedQuality);
   }
   pc.onicecandidate = (event) => {
     if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
@@ -446,6 +462,12 @@ async function offerToViewer(viewerId) {
   const offer = await pc.createOffer({ offerToReceiveAudio: false, offerToReceiveVideo: false });
   await pc.setLocalDescription(offer);
   ws.send(JSON.stringify({ type: 'offer', to: id, sdp: offer.sdp }));
+}
+
+async function applyViewerQuality(viewerId, requestedQuality) {
+  const pc = peers.get(String(viewerId || ''));
+  if (!pc) return;
+  await Promise.all(pc.getSenders().map((sender) => tuneSender(sender, sender.track, requestedQuality)));
 }
 
 function restartSoon() {
@@ -476,11 +498,15 @@ async function connect() {
     let msg = null;
     try { msg = JSON.parse(String(event.data)); } catch { return; }
     if (msg.type === 'broadcaster-ready') {
-      for (const viewerId of msg.viewers || []) offerToViewer(viewerId).catch((error) => log('offer failed:', error.message));
+      for (const viewer of msg.viewers || []) {
+        const viewerId = typeof viewer === 'object' ? viewer.id : viewer;
+        const quality = typeof viewer === 'object' ? viewer.quality : 'auto';
+        offerToViewer(viewerId, quality).catch((error) => log('offer failed:', error.message));
+      }
       return;
     }
     if (msg.type === 'viewer-joined') {
-      offerToViewer(msg.id).catch((error) => log('offer failed:', error.message));
+      offerToViewer(msg.id, msg.quality).catch((error) => log('offer failed:', error.message));
       return;
     }
     if (msg.type === 'viewer-left') {
@@ -492,6 +518,10 @@ async function connect() {
       if (pc) {
         try { await pc.setRemoteDescription({ type: 'answer', sdp: msg.sdp }); } catch (error) { log('answer failed:', error.message); }
       }
+      return;
+    }
+    if (msg.type === 'set-quality' && msg.from) {
+      applyViewerQuality(msg.from, msg.quality).catch((error) => log('quality change failed:', error.message));
       return;
     }
     if (msg.type === 'ice' && msg.from) {

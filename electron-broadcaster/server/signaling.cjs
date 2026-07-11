@@ -127,6 +127,9 @@ function startSignalingServer({
     }
     res.writeHead(404); res.end('Not Found');
   });
+  server.keepAliveTimeout = 65000;
+  server.headersTimeout = 66000;
+  server.requestTimeout = 0;
 
   const wss = new WebSocketServer({ server, path: '/ws' });
 
@@ -166,7 +169,10 @@ function startSignalingServer({
         ch.meta.name = msg.name || ch.meta.name;
         ch.meta.description = msg.description || ch.meta.description;
         role = 'broadcaster'; myChannelId = id;
-        ws.send(JSON.stringify({ type:'broadcaster-ready', viewers:[...ch.viewers.keys()] }));
+        ws.send(JSON.stringify({
+          type:'broadcaster-ready',
+          viewers:[...ch.viewers.entries()].map(([id, viewer]) => ({ id, quality: viewer.wivaQuality || 'auto' })),
+        }));
         // notify existing viewers
         for (const v of ch.viewers.values()) {
           if (v.readyState === 1) v.send(JSON.stringify({ type:'broadcaster-online' }));
@@ -207,11 +213,12 @@ function startSignalingServer({
           channels.set(id, ch);
         }
         viewerId = String(nextViewerId++);
+        ws.wivaQuality = ['auto', '1080', '720', '480'].includes(String(msg.quality || '')) ? String(msg.quality) : 'auto';
         ch.viewers.set(viewerId, ws);
         role = 'viewer'; myChannelId = id;
         ws.send(JSON.stringify({ type:'viewer-id', id: viewerId, hasBroadcaster: !!(ch.broadcaster && ch.broadcaster.readyState === 1) }));
         if (ch.broadcaster && ch.broadcaster.readyState === 1) {
-          ch.broadcaster.send(JSON.stringify({ type:'viewer-joined', id: viewerId }));
+          ch.broadcaster.send(JSON.stringify({ type:'viewer-joined', id: viewerId, quality: ws.wivaQuality }));
         } else if (typeof onBroadcastDemand === 'function') {
           try { onBroadcastDemand(id); } catch {}
         }
@@ -228,6 +235,10 @@ function startSignalingServer({
         return;
       }
       if (role === 'viewer' && ch.broadcaster && ch.broadcaster.readyState === 1) {
+        if (msg.type === 'set-quality') {
+          ws.wivaQuality = ['auto', '1080', '720', '480'].includes(String(msg.quality || '')) ? String(msg.quality) : 'auto';
+          msg.quality = ws.wivaQuality;
+        }
         ch.broadcaster.send(JSON.stringify({ ...msg, from: viewerId }));
         return;
       }
@@ -257,7 +268,7 @@ function startSignalingServer({
     });
   });
 
-  server.listen(port, '0.0.0.0', () => {
+  server.listen({ port, host: '0.0.0.0', backlog: 2048 }, () => {
     const actual = server.address()?.port || port;
     console.log('[WIVA] signaling on :' + actual);
   });

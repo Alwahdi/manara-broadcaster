@@ -51,6 +51,7 @@ function runtimeConfigFromEnv() {
     neonDatabaseUrl: process.env.MANARA_NEON_DATABASE_URL || process.env.DATABASE_URL || '',
     sentryDsn: process.env.SENTRY_DSN || '',
     cloudUrl: process.env.WIVA_CLOUD_URL || process.env.MANARA_CLOUD_URL || '',
+    tmdbKey: process.env.WIVA_TMDB_API_KEY || process.env.TMDB_API_KEY || process.env.TMDB_KEY || '',
   };
 }
 
