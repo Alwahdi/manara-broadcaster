@@ -1,0 +1,34 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const root = path.join(__dirname, '..');
+const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
+const controls = read('webui/src/components/WivaPlayerControls.tsx');
+const frame = read('webui/src/components/WivaMediaPlayer.tsx');
+const live = read('webui/src/screens/viewer/WatchChannel.tsx');
+const media = read('webui/src/screens/viewer/WatchMedia.tsx');
+const styles = read('webui/src/styles/layouts.css');
+const viewerUtils = read('webui/src/screens/viewer/viewer-utils.ts');
+
+assert.doesNotMatch(live, /PlayerFitToolbar|live-player-video-(?:fit|fill|zoom)/);
+assert.doesNotMatch(media, /MediaFitToolbar|media-player-video-(?:fit|fill|zoom)/);
+assert.doesNotMatch(`${live}\n${media}`, />\s*(?:كامل|ملء|تقريب)\s*</);
+assert.match(frame, /mode:\s*"live"\s*\|\s*"vod"/);
+assert.match(frame, /is-blocked/);
+assert.match(styles, /\.wiva-player\s*\{[\s\S]*?aspect-ratio:\s*16\s*\/\s*9/);
+assert.match(styles, /\.wiva-player[\s\S]*?object-fit:\s*contain/);
+assert.match(styles, /\.wiva-player:fullscreen[\s\S]*?width:\s*100vw\s*!important/);
+assert.match(styles, /\.wiva-player:fullscreen[\s\S]*?height:\s*100vh\s*!important/);
+assert.match(controls, /requestFullscreen/);
+assert.match(controls, /dblclick/);
+assert.match(controls, /key === "f"/);
+assert.match(controls, /pictureInPictureEnabled/);
+assert.match(controls, /wiva-player-volume/);
+assert.match(controls, /setTimeout\([\s\S]*?3000/);
+assert.match(viewerUtils, /Mux\\s\+HLS\\s\+Test/i);
+assert.match(viewerUtils, /تلقائية/);
+assert.match(live, /15_000/);
+assert.match(live, /استغرق تشغيل البث وقتًا أطول من المعتاد/);
+
+console.log('WIVA unified player UI tests passed');

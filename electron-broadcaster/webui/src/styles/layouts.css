@@ -1251,17 +1251,6 @@ button.folder-card {
   object-fit: contain;
   object-position: center;
 }
-.live-player-video-fit {
-  object-fit: contain;
-  transform: scale(1);
-}
-.live-player-video-fill {
-  object-fit: cover;
-}
-.live-player-video-zoom {
-  object-fit: cover;
-  transform: scale(1.08);
-}
 .live-player-overlay {
   position: absolute;
   inset: 0;
@@ -1356,11 +1345,6 @@ button.folder-card {
   background: rgba(22, 58, 93, .86);
   transform: translateY(-1px);
 }
-.player-primary-btn {
-  border-color: transparent;
-  color: #03101b;
-  background: #38cfff;
-}
 .wiva-player-volume {
   width: 92px;
 }
@@ -1378,10 +1362,6 @@ button.folder-card {
   background: #ff5c71;
   box-shadow: 0 0 0 4px rgba(255,92,113,.15);
 }
-.wiva-player-extra {
-  min-width: 0;
-  margin-inline: auto;
-}
 .wiva-player-quality {
   display: flex;
   align-items: center;
@@ -1398,45 +1378,11 @@ button.folder-card {
   color: #fff;
   background: rgba(5,10,25,.88);
 }
-.wiva-player-feedback {
-  font-size: .76rem;
-  white-space: nowrap;
-}
 .overlay-spinner {
   margin: 0 auto 12px;
 }
 .overlay-action {
   margin-top: 14px;
-}
-.live-player-toolbar {
-  position: absolute;
-  z-index: 4;
-  top: 12px;
-  inset-inline-end: 12px;
-  display: flex;
-  gap: 6px;
-  padding: 5px;
-  border: 1px solid rgba(255,255,255,0.16);
-  border-radius: 999px;
-  background: rgba(2, 6, 23, 0.72);
-  backdrop-filter: blur(10px);
-  box-shadow: 0 16px 40px rgba(0,0,0,0.28);
-}
-.live-player-toolbar button {
-  min-height: 30px;
-  border: 0;
-  border-radius: 999px;
-  padding: 4px 10px;
-  color: var(--text-muted);
-  background: transparent;
-  font: inherit;
-  font-size: 0.78rem;
-  font-weight: 800;
-  cursor: pointer;
-}
-.live-player-toolbar button.active {
-  color: #1a1406;
-  background: var(--gold);
 }
 
 .live-feature-card,
@@ -1676,19 +1622,6 @@ button.folder-card {
   background: #000;
   object-position: center;
 }
-.media-player-video-fit {
-  object-fit: contain;
-}
-.media-player-video-fill {
-  object-fit: cover;
-}
-.media-player-video-zoom {
-  object-fit: cover;
-  transform: scale(1.08);
-}
-.media-player-toolbar {
-  bottom: 16px;
-}
 .media-player-overlay {
   z-index: 5;
 }
@@ -1881,12 +1814,6 @@ button.folder-card {
   .media-player-video {
     min-height: 220px;
     max-height: 62vh;
-  }
-  .live-player-toolbar {
-    top: auto;
-    bottom: 12px;
-    inset-inline: 12px;
-    justify-content: center;
   }
   .player-chrome-top {
     inset-inline-end: 12px;
@@ -2917,8 +2844,7 @@ button.folder-card {
 .media-player-video {
   min-height: min(56vw, 520px);
 }
-.player-chrome-top,
-.live-player-toolbar {
+.player-chrome-top {
   top: 16px;
 }
 .player-chrome-top {
@@ -2928,18 +2854,6 @@ button.folder-card {
   border-radius: 999px;
   background: rgba(0,0,0,.28);
   backdrop-filter: blur(12px);
-}
-.live-player-toolbar {
-  inset-inline-end: 16px;
-  padding: 6px;
-}
-.live-player-toolbar button {
-  min-height: 34px;
-  padding-inline: 12px;
-}
-.live-player-toolbar button.active {
-  color: #fff;
-  background: linear-gradient(135deg, #25d9ff, #6377ff);
 }
 .live-player-overlay {
   background:
@@ -3258,28 +3172,6 @@ button.folder-card {
   color: rgba(238,242,255,.86);
   pointer-events: none;
 }
-.live-player-toolbar {
-  top: auto;
-  left: 50%;
-  right: auto;
-  bottom: 16px;
-  transform: translateX(-50%);
-  width: max-content;
-  max-width: calc(100% - 32px);
-  padding: 6px;
-  background: rgba(3,7,18,.72);
-  border: 1px solid rgba(255,255,255,.14);
-  backdrop-filter: blur(18px);
-}
-.live-player-toolbar button {
-  min-width: 62px;
-  min-height: 38px;
-  padding-inline: 14px;
-}
-.live-player-toolbar button.active {
-  color: #06111f;
-  background: linear-gradient(135deg, #51e6ff, #6f8cff);
-}
 .player-info-grid {
   width: min(100%, 1680px);
   margin-inline: auto;
@@ -3291,15 +3183,6 @@ button.folder-card {
   transform: translateZ(0);
 }
 
-/* Fit controls stay at the top; the lower edge belongs to WIVA playback controls. */
-.live-player-toolbar,
-.media-player-toolbar {
-  top: 14px;
-  right: 14px;
-  left: auto;
-  bottom: auto;
-  transform: none;
-}
 
 @media (min-width: 1500px) {
   .live-player-video {
@@ -3344,22 +3227,6 @@ button.folder-card {
     padding: 6px 9px;
     font-size: .74rem;
   }
-  .live-player-toolbar {
-    top: 10px;
-    right: 10px;
-    left: auto;
-    bottom: auto;
-    transform: none;
-    max-width: calc(100% - 20px);
-    padding: 4px;
-    gap: 3px;
-  }
-  .live-player-toolbar button {
-    min-width: 52px;
-    min-height: 34px;
-    padding-inline: 9px;
-    font-size: .76rem;
-  }
   .quality-switcher {
     border-radius: 20px;
   }
@@ -3386,7 +3253,6 @@ button.folder-card {
   }
   .wiva-player-volume,
   .player-pip-btn,
-  .wiva-player-feedback,
   .wiva-player-quality > span {
     display: none;
   }
@@ -3406,10 +3272,6 @@ button.folder-card {
 }
 
 @media (max-width: 380px) {
-  .live-player-toolbar button {
-    min-width: 46px;
-    padding-inline: 7px;
-  }
   .player-chrome-top span:not(.badge) {
     display: none;
   }
@@ -3427,6 +3289,321 @@ button.folder-card {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* ---------- Unified WIVA media player ---------- */
+.wiva-player {
+  position: relative;
+  isolation: isolate;
+  width: min(100%, 1680px);
+  aspect-ratio: 16 / 9;
+  margin-inline: auto;
+  overflow: hidden;
+  border: 1px solid rgba(160, 178, 255, .22);
+  border-radius: clamp(14px, 1.5vw, 16px);
+  background: #000;
+  box-shadow: 0 34px 90px rgba(0, 0, 0, .46);
+  outline: none;
+}
+.wiva-player:focus-visible {
+  box-shadow: 0 0 0 3px rgba(56, 207, 255, .48), 0 34px 90px rgba(0, 0, 0, .46);
+}
+.wiva-player .live-player-video,
+.wiva-player .media-player-video {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-width: none;
+  max-height: none;
+  aspect-ratio: auto;
+  object-fit: contain;
+  object-position: center;
+  background: #000;
+  transform-origin: center;
+  will-change: transform;
+  touch-action: pan-y;
+}
+.wiva-player::after {
+  border-radius: inherit;
+}
+.wiva-player .player-chrome-top {
+  z-index: 7;
+  inset-inline: 14px auto;
+  top: 14px;
+  width: auto;
+  min-height: 38px;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, .13);
+  border-radius: 10px;
+  background: rgba(3, 7, 18, .6);
+  backdrop-filter: blur(12px);
+}
+.wiva-player-controls {
+  z-index: 9;
+  padding: 72px 16px 14px;
+  opacity: 1;
+  visibility: visible;
+  transition: opacity .2s ease, visibility .2s ease;
+}
+.wiva-player-controls.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.wiva-player-controls.is-visible {
+  opacity: 1;
+  visibility: visible;
+}
+.wiva-player-controls:focus-within {
+  opacity: 1;
+  visibility: visible;
+}
+.player-icon-btn {
+  width: 44px;
+  height: 44px;
+  flex-basis: 44px;
+  border-radius: 8px;
+  background: rgba(3, 7, 18, .72);
+  backdrop-filter: blur(10px);
+}
+.wiva-player-center-play {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 50%;
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(255, 255, 255, .2);
+  border-radius: 50%;
+  color: #fff;
+  background: rgba(3, 7, 18, .7);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .42);
+  backdrop-filter: blur(12px);
+  cursor: pointer;
+}
+.wiva-player-center-play:hover,
+.wiva-player-center-play:focus-visible {
+  background: rgba(28, 104, 145, .86);
+  outline: 2px solid rgba(56, 207, 255, .72);
+  outline-offset: 3px;
+}
+.wiva-player-progress input[type="range"] {
+  height: 5px;
+  background: linear-gradient(to left, #38cfff var(--progress, 0%), rgba(255, 255, 255, .28) var(--progress, 0%));
+}
+.wiva-player-settings-wrap {
+  position: relative;
+}
+.wiva-player-settings {
+  position: absolute;
+  z-index: 12;
+  inset-inline-end: 0;
+  bottom: calc(100% + 10px);
+  min-width: 220px;
+  max-width: min(310px, calc(100vw - 28px));
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, .15);
+  border-radius: 12px;
+  color: #fff;
+  background: rgba(4, 9, 23, .96);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .55);
+  backdrop-filter: blur(18px);
+}
+.wiva-player-quality {
+  justify-content: space-between;
+  min-height: 44px;
+}
+.wiva-player-quality select {
+  min-height: 40px;
+}
+.wiva-player-quality-list {
+  display: grid;
+  gap: 4px;
+}
+.wiva-player-quality-list strong {
+  padding: 4px 8px 8px;
+  font-size: .78rem;
+  color: rgba(238, 242, 255, .7);
+}
+.wiva-player-quality-list button {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  color: #fff;
+  text-align: start;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+.wiva-player-quality-list button:hover,
+.wiva-player-quality-list button:focus-visible,
+.wiva-player-quality-list button.active {
+  background: rgba(56, 207, 255, .15);
+  outline: none;
+}
+.wiva-player-quality-list button.active::after {
+  content: "✓";
+  float: left;
+  color: #51e6ff;
+}
+.player-back-link {
+  width: max-content;
+  min-height: 42px;
+}
+.watch-channel-summary {
+  width: min(100%, 1680px);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-inline: auto;
+  padding: 4px 2px;
+}
+.channel-summary-logo {
+  width: 58px;
+  height: 58px;
+  flex: 0 0 58px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 12px;
+  color: #51e6ff;
+  background: rgba(8, 13, 27, .75);
+  font-size: 1.35rem;
+  font-weight: 900;
+}
+.channel-summary-logo img {
+  width: 100%;
+  height: 100%;
+  padding: 7px;
+  object-fit: contain;
+}
+.channel-summary-copy {
+  min-width: 0;
+}
+.channel-summary-copy h1 {
+  overflow-wrap: anywhere;
+  font-size: clamp(1.35rem, 3vw, 2rem);
+}
+.channel-summary-copy p {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 0;
+  color: var(--text-muted);
+}
+.watch-channel-actions {
+  width: min(100%, 1680px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-inline: auto;
+  flex-wrap: wrap;
+}
+.wiva-player:fullscreen,
+.wiva-player:-webkit-full-screen {
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  aspect-ratio: auto;
+  background: #000;
+}
+.wiva-player:fullscreen::after,
+.wiva-player:-webkit-full-screen::after,
+.wiva-player:fullscreen .player-chrome-top,
+.wiva-player:-webkit-full-screen .player-chrome-top {
+  display: none;
+}
+.wiva-player:fullscreen .live-player-video,
+.wiva-player:fullscreen .media-player-video,
+.wiva-player:-webkit-full-screen .live-player-video,
+.wiva-player:-webkit-full-screen .media-player-video {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  object-fit: contain;
+  touch-action: none;
+}
+.wiva-player:fullscreen .wiva-player-controls,
+.wiva-player:-webkit-full-screen .wiva-player-controls {
+  padding-right: max(18px, env(safe-area-inset-right));
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  padding-left: max(18px, env(safe-area-inset-left));
+}
+
+@media (max-width: 720px) {
+  .player-stage {
+    margin-inline: -14px;
+  }
+  .wiva-player {
+    border-inline: 0;
+    border-radius: 0;
+  }
+  .media-player-shell.wiva-player {
+    margin-inline: -14px;
+  }
+  .wiva-player-controls {
+    padding: 52px 8px max(8px, env(safe-area-inset-bottom));
+  }
+  .wiva-player-control-row,
+  .wiva-player-control-group {
+    gap: 4px;
+  }
+  .player-icon-btn {
+    width: 44px;
+    height: 44px;
+    flex-basis: 44px;
+  }
+  .wiva-player-volume,
+  .player-pip-btn {
+    display: none;
+  }
+  .wiva-player-live {
+    font-size: .7rem;
+  }
+  .wiva-player-settings {
+    position: fixed;
+    right: 12px;
+    bottom: calc(76px + env(safe-area-inset-bottom));
+    left: 12px;
+    max-width: none;
+  }
+  .wiva-player-quality > span {
+    display: inline;
+  }
+  .watch-channel-summary {
+    gap: 10px;
+  }
+  .channel-summary-logo {
+    width: 48px;
+    height: 48px;
+    flex-basis: 48px;
+  }
+  .channel-summary-copy h1 {
+    font-size: 1.25rem;
+  }
+}
+
+@media (max-width: 380px) {
+  .wiva-player-live {
+    display: none;
+  }
+  .wiva-player-progress span {
+    font-size: .66rem;
   }
 }
 

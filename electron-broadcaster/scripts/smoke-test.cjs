@@ -346,10 +346,18 @@ async function main() {
 
     res = await request(base, '/api/admin/state', { headers: { Cookie: cookie.split(';')[0] } });
     assert.equal(res.status, 200);
+    assert.equal(res.headers.get('access-control-allow-origin'), null, 'admin APIs must not advertise wildcard CORS');
     const state = await res.json();
     assert.ok(Array.isArray(state.broadcast));
 
     const auth = { Cookie: cookie.split(';')[0] };
+
+    res = await request(base, '/api/admin/scan', {
+      method: 'POST',
+      headers: { ...auth, Origin: 'https://cross-site.invalid' },
+    });
+    assert.equal(res.status, 403, 'cross-site admin mutations must be rejected even with a valid session cookie');
+    assert.equal((await res.json()).error, 'invalid_origin');
 
     res = await request(base, '/api/admin/capture/devices', { headers: auth });
     assert.equal(res.status, 200);

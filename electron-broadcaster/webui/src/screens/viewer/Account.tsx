@@ -88,11 +88,10 @@ export function Account() {
   const account = state.data?.account;
   return (
     <div className="account-page">
-      <section className="account-hero">
-        <span className="badge">حسابي</span>
+      <header className="viewer-page-intro account-intro">
         <h1>{signedIn ? `مرحبًا ${account?.name || "بك"}` : `حسابك على ${brand}`}</h1>
-        <p>{signedIn ? "مفضلتك ورسائلك محفوظة على حسابك." : "سجّل بحساب بسيط لحفظ المفضلة ومراسلة إدارة الشبكة."}</p>
-      </section>
+        <p>{signedIn ? "مفضلتك ورسائلك محفوظة في مكان واحد." : "احفظ مفضلتك وتابع رسائلك بحساب بسيط."}</p>
+      </header>
 
       {state.isLoading ? <LoadingState label="جاري فتح حسابك…" /> : null}
       {state.isError ? <ErrorState error={state.error} onRetry={() => { void state.refetch(); }} /> : null}
@@ -162,11 +161,10 @@ export function Account() {
       ) : null}
 
       {!state.isLoading && !state.isError && !signedIn ? (
-        <section className="viewer-auth-panel" aria-label="تسجيل حساب المشاهد">
+        <section className="viewer-auth-panel viewer-auth-simple" aria-label="تسجيل حساب المشاهد">
           <div className="viewer-auth-intro">
-            <span className="badge">خطوة واحدة</span>
             <h2>{mode === "signup" ? "إنشاء حساب جديد" : "تسجيل الدخول"}</h2>
-            <p>استخدم اسمك ورقم الهاتف. البريد الإلكتروني اختياري.</p>
+            <p>الاسم ورقم الهاتف فقط، والبريد الإلكتروني اختياري.</p>
             <div className="viewer-auth-benefits">
               <span>حفظ المفضلة</span><span>متابعة المشاهدة</span><span>مراسلة الشبكة</span>
             </div>

@@ -42,6 +42,16 @@ locked (antivirus, Search indexing, backup agents). This eliminates the
 intermittent "cannot save on Windows" failures that the old
 `writeFile` + `rename` pattern caused.
 
+## v2.6.51
+
+- Redesigned the subscriber home, live TV, guide, search, account, and folder-first library surfaces with a compact Arabic/RTL layout that works cleanly on mobile and desktop.
+- Unified live and media playback behind the custom WIVA player with true fullscreen, contained video framing, keyboard controls, picture-in-picture, quality menus, touch zoom, persistent volume, and cleaner loading/error states.
+- Added a bounded 15-second startup state for IPTV and capture playback so unavailable streams no longer leave subscribers on an indefinite loading screen.
+- Simplified channel cards, removed duplicated quality/actions, fixed nested-folder search links, added recent searches, and reduced oversized empty states and mobile navigation.
+- Hardened every authenticated admin mutation with same-origin validation and removed wildcard CORS from admin routes.
+- Corrected IPTV health diagnostics so historical metrics are no longer counted as active streams after viewers disconnect.
+- Added public-viewer layout and player regression tests, and validated single-ingest HLS delivery, 1,000-viewer signaling, Electron SQLite storage, and high-concurrency LAN requests.
+
 ## v2.6.50
 
 - Added a custom WIVA player for live channels and media with accessible play/pause, volume, fullscreen, picture-in-picture, sharing, casting when supported, live state, and VOD seeking controls.

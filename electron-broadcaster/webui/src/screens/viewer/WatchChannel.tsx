@@ -1,13 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AppLink, useAppPath } from "@/components/AppLink";
 import { api } from "@/lib/api";
 import { QueryBoundary } from "@/components/States";
-import { ChannelTile, ContentSection } from "@/components/common";
-import { WivaPlayerControls } from "@/components/WivaPlayerControls";
+import { ChannelTile, ContentSection, FavoriteButton, ShareButton } from "@/components/common";
+import { WivaMediaPlayer } from "@/components/WivaMediaPlayer";
 import { getViewerChannels } from "./viewer-utils";
 
-type FitMode = "fit" | "fill" | "zoom";
 type CaptureQuality = "auto" | "1080" | "720" | "480";
 
 function recommendedCaptureQuality(): Exclude<CaptureQuality, "auto"> {
@@ -46,65 +45,39 @@ export function WatchChannel() {
           const related = channels.filter((item) => String(item.id) !== String(channel?.id)).slice(0, 8);
           return (
             <>
-              <div className="watch-channel-head player-page-head">
-                <AppLink href="/live" className="btn btn-ghost btn-sm">
-                  ← البث المباشر
-                </AppLink>
-                <div>
-                  <span className="badge badge-dot badge-live">بث مباشر</span>
-                  <h1 className="page-title">{channel?.name || `القناة ${id}`}</h1>
-                </div>
-              </div>
+              <AppLink href="/live" className="btn btn-ghost btn-sm player-back-link">
+                ← البث المباشر
+              </AppLink>
               <section className="player-stage">
               <div className="player-stage-glow" aria-hidden />
               {isIptv ? (
-                <>
-                  {qualityOptions.length > 1 ? (
-                    <div className="quality-switcher">
-                      <div className="row-between quality-switcher-head">
-                        <strong>جودة البث</strong>
-                        <span className="muted">{activeQuality?.label || activeQuality?.name || "تلقائي"}</span>
-                      </div>
-                      <div className="row quality-switcher-options">
-                        {qualityOptions.map((quality) => {
-                          const qualityId = String(quality.id);
-                          const active = String(activeQualityId) === qualityId;
-                          return (
-                            <button
-                              key={qualityId}
-                              type="button"
-                              className={`btn ${active ? "btn-primary" : "btn-ghost"} btn-sm`}
-                              onClick={() => setSelectedQualityId(qualityId)}
-                            >
-                              {quality.label || quality.name || "جودة"}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : null}
-                  <HlsPlayer src={src} />
-                </>
+                <HlsPlayer
+                  src={src}
+                  settings={qualityOptions.length > 1 ? (
+                    <QualityOptions
+                      options={qualityOptions}
+                      activeId={activeQualityId}
+                      onChange={setSelectedQualityId}
+                    />
+                  ) : undefined}
+                />
               ) : (
                 <BroadcastPlayer channelId={id} livePort={Number(agent.data?.ports?.live) || undefined} />
               )}
               </section>
-              <div className="player-info-grid">
-                <div className="player-info-card">
-                  <span>الحالة</span>
-                  <strong>يبث الآن</strong>
-                  <small>إذا انقطع الاتصال مؤقتًا سنحاول إعادة التشغيل تلقائيًا.</small>
+              <div className="watch-channel-summary">
+                <div className="channel-summary-logo">
+                  {channel?.logo ? <img src={channel.logo} alt="" /> : <span>{String(channel?.name || "ق").slice(0, 1)}</span>}
                 </div>
-                <div className="player-info-card">
-                  <span>النوع</span>
-                  <strong>{isIptv ? "قناة مباشرة" : "بث مباشر"}</strong>
-                  <small>{activeQuality?.label || activeQuality?.name || channel?.resolution || "جودة تلقائية"}</small>
+                <div className="channel-summary-copy">
+                  <h1>{channel?.name || `القناة ${id}`}</h1>
+                  <p><span className="badge badge-dot badge-live">مباشر</span> <span>·</span> الجودة {activeQuality?.label || activeQuality?.name || channel?.resolution || "تلقائية"}</p>
                 </div>
-                <div className="player-info-card">
-                  <span>الشبكة</span>
-                  <strong>مشاهدة داخلية</strong>
-                  <small>استمتع بالمشاهدة مباشرة من شبكتك.</small>
-                </div>
+              </div>
+              <div className="watch-channel-actions">
+                <FavoriteButton mediaId={channel?.id || id} compact={false} />
+                <ShareButton />
+                <AppLink href="/live/guide" className="btn btn-ghost btn-sm">دليل القنوات</AppLink>
               </div>
               {related.length ? (
                 <ContentSection title="قنوات أخرى" subtitle="انتقل بسرعة إلى بث آخر">
@@ -172,14 +145,13 @@ function loadHlsScript() {
   return hlsScriptPromise;
 }
 
-function HlsPlayer({ src }: { src: string }) {
+function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<HlsInstance | null>(null);
   const [status, setStatus] = useState("جاري تجهيز البث...");
   const [error, setError] = useState("");
   const [started, setStarted] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
-  const [fitMode, setFitMode] = useState<FitMode>("fill");
 
   useEffect(() => {
     const video = videoRef.current;
@@ -188,11 +160,17 @@ function HlsPlayer({ src }: { src: string }) {
     let closed = false;
     let recoveryTimer: ReturnType<typeof setTimeout> | null = null;
     let bufferingTimer: ReturnType<typeof setTimeout> | null = null;
+    let startupTimer: ReturnType<typeof setTimeout> | null = null;
     let hasPlayed = false;
 
     function clearBufferingTimer() {
       if (bufferingTimer) clearTimeout(bufferingTimer);
       bufferingTimer = null;
+    }
+
+    function clearStartupTimer() {
+      if (startupTimer) clearTimeout(startupTimer);
+      startupTimer = null;
     }
 
     function scheduleRestart(delay = 3500) {
@@ -207,6 +185,7 @@ function HlsPlayer({ src }: { src: string }) {
       if (recoveryTimer) clearTimeout(recoveryTimer);
       recoveryTimer = null;
       clearBufferingTimer();
+      clearStartupTimer();
       try { hlsRef.current?.destroy(); } catch {}
       hlsRef.current = null;
       try {
@@ -229,6 +208,7 @@ function HlsPlayer({ src }: { src: string }) {
       hasPlayed = true;
       setStarted(true);
       clearBufferingTimer();
+      clearStartupTimer();
       if (!closed) {
         setError("");
         setStatus("");
@@ -254,6 +234,12 @@ function HlsPlayer({ src }: { src: string }) {
       setStarted(false);
       setError("");
       setStatus("جاري تشغيل البث...");
+      startupTimer = setTimeout(() => {
+        startupTimer = null;
+        if (closed || hasPlayed) return;
+        setStatus("");
+        setError("استغرق تشغيل البث وقتًا أطول من المعتاد. جرّب مرة أخرى.");
+      }, 15_000);
       if (media.canPlayType("application/vnd.apple.mpegurl")) {
         media.src = src;
         try { await media.play(); } catch {}
@@ -338,36 +324,16 @@ function HlsPlayer({ src }: { src: string }) {
   }, [src, retryKey]);
 
   return (
-    <div className="live-player-card">
-      <div className="player-chrome-top">
-        <span className="badge badge-dot badge-live">مباشر</span>
-        <span>مشغل البث</span>
-      </div>
-      <PlayerFitToolbar fitMode={fitMode} setFitMode={setFitMode} />
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        controlsList="nodownload noplaybackrate"
-        className={`live-player-video live-player-video-${fitMode}`}
-      />
-      <WivaPlayerControls videoRef={videoRef} live />
-      {status || error ? (
-        <div className={started && !error ? "live-player-recovery" : "live-player-overlay"}>
-          <div>
-            {status && !error ? <div className="spinner overlay-spinner" /> : null}
-            <strong>{error || status}</strong>
-            {error ? (
-              <div className="overlay-action">
-                <button type="button" className="btn btn-primary btn-sm" onClick={() => setRetryKey((value) => value + 1)}>
-                  إعادة المحاولة
-                </button>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-    </div>
+    <WivaMediaPlayer
+      videoRef={videoRef}
+      mode="live"
+      status={status}
+      error={error}
+      started={started}
+      settings={settings}
+      onRetry={() => setRetryKey((value) => value + 1)}
+      videoProps={{ autoPlay: true }}
+    />
   );
 }
 
@@ -378,8 +344,8 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
   const qualityRef = useRef<Exclude<CaptureQuality, "auto">>("720");
   const qualityModeRef = useRef<CaptureQuality>("auto");
   const [status, setStatus] = useState("جاري تشغيل البث...");
+  const [error, setError] = useState("");
   const [ready, setReady] = useState(false);
-  const [fitMode, setFitMode] = useState<FitMode>("fill");
   const [retryKey, setRetryKey] = useState(0);
   const [quality, setQuality] = useState<CaptureQuality>("auto");
 
@@ -404,6 +370,8 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
     let remoteTrackTimer: ReturnType<typeof setTimeout> | null = null;
     let disconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let qualityTimer: ReturnType<typeof setInterval> | null = null;
+    let startupTimer: ReturnType<typeof setTimeout> | null = null;
+    let streamReady = false;
     let previousPackets = { received: 0, lost: 0 };
 
     function clearRetry() {
@@ -426,8 +394,14 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
       qualityTimer = null;
     }
 
+    function clearStartupTimer() {
+      if (startupTimer) clearTimeout(startupTimer);
+      startupTimer = null;
+    }
+
     function startAdaptiveQuality(pc: RTCPeerConnection, ws: WebSocket) {
       clearQualityTimer();
+      clearStartupTimer();
       qualityTimer = setInterval(async () => {
         if (qualityModeRef.current !== "auto" || pc.connectionState !== "connected") return;
         try {
@@ -470,6 +444,7 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
       if (closed || retry) return;
       setReady(false);
       setStatus(message);
+      setError("");
       try { wsRef.current?.close(); } catch {}
       cleanupPeer();
       retry = setTimeout(() => {
@@ -504,7 +479,15 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
     function connect() {
       if (closed) return;
       cleanupPeer();
+      streamReady = false;
+      setError("");
       setStatus("جاري تشغيل البث...");
+      startupTimer = setTimeout(() => {
+        startupTimer = null;
+        if (closed || streamReady) return;
+        setStatus("");
+        setError("تعذر بدء البث الآن. تأكد من توفر القناة ثم جرّب مرة أخرى.");
+      }, 15_000);
       let ws: WebSocket;
       try {
         ws = new WebSocket(wsUrl());
@@ -515,6 +498,7 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
       wsRef.current = ws;
       ws.onopen = () => {
         clearRetry();
+        setError("");
         setStatus("جاري تجهيز القناة...");
         ws.send(JSON.stringify({ type: "register-viewer", channelId, quality: qualityRef.current }));
       };
@@ -534,6 +518,7 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
           return;
         }
         if (msg.type === "broadcaster-online") {
+          setError("");
           setStatus("جاري فتح الصورة...");
           return;
         }
@@ -549,7 +534,10 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
             if (videoRef.current) {
               videoRef.current.srcObject = ev.streams[0];
               watchRemoteStream(ev.streams[0]);
+              streamReady = true;
+              clearStartupTimer();
               setReady(true);
+              setError("");
               setStatus("يبث الآن");
             }
           };
@@ -563,7 +551,10 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
             if (pc.connectionState === "connected") {
               clearDisconnectTimer();
               startAdaptiveQuality(pc, ws);
+              streamReady = true;
+              clearStartupTimer();
               setReady(true);
+              setError("");
               setStatus("يبث الآن");
               return;
             }
@@ -611,47 +602,25 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
   }, [channelId, livePort, retryKey]);
 
   return (
-    <div className="live-player-card">
-      <div className="player-chrome-top">
-        <span className="badge badge-dot badge-live">مباشر</span>
-        <span>مشغل البث</span>
-      </div>
-      <PlayerFitToolbar fitMode={fitMode} setFitMode={setFitMode} />
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        controlsList="nodownload noplaybackrate"
-        className={`live-player-video live-player-video-${fitMode}`}
-      />
-      <WivaPlayerControls
-        videoRef={videoRef}
-        live
-        extra={<CaptureQualityControl quality={quality} onChange={setQuality} />}
-      />
-      {!ready ? (
-        <div className="live-player-overlay">
-          <div>
-            <div className="spinner overlay-spinner" />
-            <strong>{status}</strong>
-            <div className="overlay-action">
-              <button type="button" className="btn btn-primary btn-sm" onClick={() => setRetryKey((value) => value + 1)}>
-                إعادة الاتصال
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </div>
+    <WivaMediaPlayer
+      videoRef={videoRef}
+      mode="live"
+      status={ready ? "" : status}
+      error={error}
+      settings={<CaptureQualityControl quality={quality} onChange={setQuality} />}
+      onRetry={() => setRetryKey((value) => value + 1)}
+      retryLabel="إعادة الاتصال"
+      videoProps={{ autoPlay: true }}
+    />
   );
 }
 
 function CaptureQualityControl({ quality, onChange }: { quality: CaptureQuality; onChange: (quality: CaptureQuality) => void }) {
   return (
-    <label className="wiva-player-quality">
+    <label className="wiva-player-quality" role="menuitem">
       <span>الجودة</span>
       <select value={quality} onChange={(event) => onChange(event.target.value as CaptureQuality)} aria-label="جودة بث HDMI">
-        <option value="auto">تلقائي</option>
+        <option value="auto">تلقائية</option>
         <option value="1080">Full HD 1080p</option>
         <option value="720">HD 720p</option>
         <option value="480">SD 480p</option>
@@ -660,29 +629,33 @@ function CaptureQualityControl({ quality, onChange }: { quality: CaptureQuality;
   );
 }
 
-function PlayerFitToolbar({
-  fitMode,
-  setFitMode,
+function QualityOptions({
+  options,
+  activeId,
+  onChange,
 }: {
-  fitMode: FitMode;
-  setFitMode: (mode: FitMode) => void;
+  options: Array<{ id: string | number; label?: string; name?: string }>;
+  activeId: string;
+  onChange: (id: string) => void;
 }) {
   return (
-    <div className="live-player-toolbar" aria-label="حجم صورة البث">
-      {([
-        ["fit", "كامل"],
-        ["fill", "ملء"],
-        ["zoom", "تقريب"],
-      ] as const).map(([mode, label]) => (
-        <button
-          key={mode}
-          type="button"
-          className={fitMode === mode ? "active" : ""}
-          onClick={() => setFitMode(mode)}
-        >
-          {label}
-        </button>
-      ))}
+    <div className="wiva-player-quality-list" aria-label="جودة البث">
+      <strong>الجودة</strong>
+      {options.map((option) => {
+        const optionId = String(option.id);
+        return (
+          <button
+            key={optionId}
+            type="button"
+            role="menuitemradio"
+            aria-checked={String(activeId) === optionId}
+            className={String(activeId) === optionId ? "active" : ""}
+            onClick={() => onChange(optionId)}
+          >
+            {option.label || option.name || "جودة تلقائية"}
+          </button>
+        );
+      })}
     </div>
   );
 }

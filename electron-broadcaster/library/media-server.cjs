@@ -953,6 +953,9 @@ function serviceHealth(options = {}) {
   const state = typeof options.getSetupState === 'function' ? options.getSetupState() : {};
   const mediaStats = (() => { try { return db.mediaStats(); } catch { return null; } })();
   const iptvStatus = (() => { try { return iptv.status(); } catch { return {}; } })();
+  const activeIptvStreams = Object.values(iptvStatus || {}).filter((stream) => (
+    !!stream?.upstreamOpen || Number.isFinite(stream?.lastHitMs)
+  )).length;
   return {
     ok: true,
     ready: true,
@@ -965,7 +968,7 @@ function serviceHealth(options = {}) {
     services: {
       agent: { status: 'running' },
       library: { status: 'running', totalItems: mediaStats?.total ?? 0 },
-      iptv: { status: 'ready', activeStreams: Object.keys(iptvStatus || {}).length },
+      iptv: { status: 'ready', activeStreams: activeIptvStreams },
     },
     update: state.update || {},
     subscription: state.subscription ? {
@@ -1275,10 +1278,14 @@ function createHandler(options = {}) {
     const adminBase = configuredAdminPath === '/' ? '/admin' : configuredAdminPath;
     const adminRouteBases = [...new Set(['/admin', adminBase])];
     const isAdminBase = adminRouteBases.some((base) => u.pathname === base || u.pathname.startsWith(`${base}/`));
+    const isAdminApi = u.pathname === '/api/admin' || u.pathname.startsWith('/api/admin/');
     const isAdminLogin = u.pathname === '/admin/login' || u.pathname === `${adminBase}/login`;
     const isAdminLogout = u.pathname === '/admin/logout' || u.pathname === `${adminBase}/logout`;
     setSecurityHeaders(res);
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    if (!isAdminBase && !isAdminApi) res.setHeader('Access-Control-Allow-Origin', '*');
+    if (isAdminApi && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(String(req.method || '').toUpperCase()) && !sameOriginMutation(req)) {
+      return sendJson(res, 403, { ok: false, error: 'invalid_origin', message: 'تعذر التحقق من مصدر الطلب.' });
+    }
     if (u.pathname === '/favicon.ico' || u.pathname === '/wiva-logo.png') {
       const asset = path.join(__dirname, '..', 'assets', u.pathname === '/favicon.ico' ? 'icon.png' : 'wiva.png');
       try {

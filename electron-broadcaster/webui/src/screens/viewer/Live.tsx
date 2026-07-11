@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AppLink } from "@/components/AppLink";
 import { api } from "@/lib/api";
 import { QueryBoundary, EmptyState, ViewerSkeleton } from "@/components/States";
-import { CategoryChips, ChannelTile, ContentSection } from "@/components/common";
+import { CategoryChips, ChannelTile, ContentSection, PageHeader } from "@/components/common";
 import { filterChannels, getViewerChannels } from "./viewer-utils";
 
 const FILTERS = [
@@ -27,29 +27,13 @@ export function Live() {
     return filterChannels(channels, filter, term);
   }, [channels, filter, term]);
 
-  const featured = filtered.find((channel) => channel.enabled !== false && channel.enabled !== 0) || filtered[0] || channels[0];
-
   return (
     <div className="live-page">
-      <section className="live-feature-card">
-        <div className="live-pulse-field" aria-hidden />
-        <div>
-          <span className="badge badge-dot badge-live">مباشر</span>
-          <h1>{featured?.name || "البث المباشر"}</h1>
-          <p>{featured?.description || "كل القنوات المباشرة المتاحة في تجربة مصممة للمشاهدة السريعة والسلسة على كل الأجهزة."}</p>
-          <div className="row">
-            {featured ? (
-              <AppLink href="/watch/channel/$id" params={{ id: String(featured.id) }} className="btn btn-primary">
-                تشغيل القناة
-              </AppLink>
-            ) : null}
-            <AppLink href="/live/guide" className="btn btn-ghost">دليل القنوات</AppLink>
-          </div>
-        </div>
-        <div className="live-feature-art" aria-hidden>
-          {featured?.logo ? <img src={featured.logo} alt="" /> : <span>بث</span>}
-        </div>
-      </section>
+      <PageHeader
+        title="البث المباشر"
+        subtitle="اختر قناة وابدأ المشاهدة فورًا"
+        actions={<AppLink href="/live/guide" className="btn btn-ghost btn-sm">دليل القنوات</AppLink>}
+      />
 
       <div className="viewer-filter-bar">
         <label className="search-shell">
@@ -87,25 +71,10 @@ export function Live() {
           />
         ) : (
           <>
-            <ContentSection title="يبث الآن" subtitle={`${filtered.length} قناة جاهزة للمشاهدة`}>
+            <ContentSection title="القنوات المتاحة" subtitle={`${filtered.length} قناة`}>
               <div className="live-channel-grid">
                 {filtered.map((ch) => (
                   <ChannelTile key={String(ch.id)} channel={ch} href="/watch/channel/$id" />
-                ))}
-              </div>
-            </ContentSection>
-            <ContentSection title="جدول سريع" subtitle="نظرة عملية مناسبة للجوال والكمبيوتر">
-              <div className="tv-guide-list">
-                {filtered.slice(0, 12).map((channel) => (
-                  <AppLink key={String(channel.id)} href="/watch/channel/$id" params={{ id: String(channel.id) }} className="tv-guide-row">
-                    <span className="guide-time">الآن</span>
-                    <span className="guide-logo">{channel.logo ? <img src={channel.logo} alt="" /> : "W"}</span>
-                    <span className="guide-info">
-                      <strong>{channel.name}</strong>
-                      <small>{channel.group || channel.category || "بث مباشر"}</small>
-                    </span>
-                    <span className="badge badge-dot badge-live">مباشر</span>
-                  </AppLink>
                 ))}
               </div>
             </ContentSection>

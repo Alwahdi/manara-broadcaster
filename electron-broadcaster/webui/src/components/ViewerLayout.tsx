@@ -3,6 +3,7 @@ import { AppLink, useAppPath } from "@/components/AppLink";
 import { useBrand } from "@/hooks/useBrand";
 import { LiveIndicator } from "@/components/LiveIndicator";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { Search, UserRound } from "lucide-react";
 
 const NAV = [
   { to: "/", label: "الرئيسية", short: "الرئيسية", icon: "home", exact: true },
@@ -73,6 +74,10 @@ export function ViewerLayout({ children }: { children: ReactNode }) {
             ابحث في القنوات والاستراحة
           </AppLink>
           <LiveIndicator />
+        </div>
+        <div className="viewer-mobile-actions">
+          <AppLink href={portAwareHref("/search", state)} className="viewer-header-icon" aria-label="البحث"><Search size={20} /></AppLink>
+          <AppLink href="/account" className="viewer-header-icon" aria-label="حسابي"><UserRound size={20} /></AppLink>
         </div>
       </header>
       <main id="main" className="container page grow">
