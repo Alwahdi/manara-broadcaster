@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "@/styles/theme.css";
 import "@/styles/layouts.css";
-import "@/styles/viewer-product.css";
 
 export const metadata: Metadata = {
   title: "WIVA",

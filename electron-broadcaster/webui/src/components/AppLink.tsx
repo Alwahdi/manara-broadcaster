@@ -36,7 +36,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       window.history.pushState({}, "", href);
     }
     window.dispatchEvent(new Event("wiva:navigate"));
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: "auto" });
   }, []);
 
   const value = useMemo(() => ({ path, navigate }), [navigate, path]);

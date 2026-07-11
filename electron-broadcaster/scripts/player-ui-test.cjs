@@ -16,6 +16,7 @@ assert.doesNotMatch(media, /MediaFitToolbar|media-player-video-(?:fit|fill|zoom)
 assert.doesNotMatch(`${live}\n${media}`, />\s*(?:كامل|ملء|تقريب)\s*</);
 assert.match(frame, /mode:\s*"live"\s*\|\s*"vod"/);
 assert.match(frame, /is-blocked/);
+assert.match(styles, /\.wiva-player\.is-blocked \.wiva-player-controls/);
 assert.match(styles, /\.wiva-player\s*\{[\s\S]*?aspect-ratio:\s*16\s*\/\s*9/);
 assert.match(styles, /\.wiva-player[\s\S]*?object-fit:\s*contain/);
 assert.match(styles, /\.wiva-player:fullscreen[\s\S]*?width:\s*100vw\s*!important/);
@@ -26,6 +27,10 @@ assert.match(controls, /key === "f"/);
 assert.match(controls, /pictureInPictureEnabled/);
 assert.match(controls, /wiva-player-volume/);
 assert.match(controls, /setTimeout\([\s\S]*?3000/);
+assert.match(controls, /\(hover: hover\) and \(pointer: fine\)/);
+assert.match(controls, /video\.muted = false/);
+assert.doesNotMatch(controls, /getItem\("wiva-player-muted"\)/);
+assert.match(styles, /@media \(hover: none\), \(pointer: coarse\)/);
 assert.match(viewerUtils, /Mux\\s\+HLS\\s\+Test/i);
 assert.match(viewerUtils, /تلقائية/);
 assert.match(live, /15_000/);

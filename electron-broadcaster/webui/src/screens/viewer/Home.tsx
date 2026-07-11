@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AppLink } from "@/components/AppLink";
 import { api, type MediaItem } from "@/lib/api";
@@ -7,10 +8,10 @@ import { useBrand } from "@/hooks/useBrand";
 import { folderResults, getViewerChannels } from "./viewer-utils";
 
 export function ViewerHome() {
-  const { brand, state } = useBrand();
-  const library = useQuery({ queryKey: ["library", "home"], queryFn: () => api.library() });
-  const folders = useQuery({ queryKey: ["library-browse", "home-root"], queryFn: () => api.libraryBrowse() });
-  const viewer = useQuery({ queryKey: ["viewer-state"], queryFn: api.viewerState });
+  const { brand, logo, state } = useBrand();
+  const library = useQuery({ queryKey: ["library", "home"], queryFn: () => api.library(), staleTime: 5 * 60_000, gcTime: 30 * 60_000, refetchOnWindowFocus: false });
+  const folders = useQuery({ queryKey: ["library-browse", "home-root"], queryFn: () => api.libraryBrowse(), staleTime: 30 * 60_000, gcTime: 60 * 60_000, refetchOnWindowFocus: false });
+  const viewer = useQuery({ queryKey: ["viewer-state"], queryFn: api.viewerState, staleTime: 30_000, refetchOnWindowFocus: false });
   const mode = String(state?.ports?.mode || state?.settings?.experienceLayout || "unified");
   const livePort = Number(state?.ports?.live || state?.settings?.port || 0);
   const libraryPort = Number(state?.ports?.library || state?.ports?.libraryConfigured || state?.settings?.libraryPort || 0);
@@ -22,31 +23,60 @@ export function ViewerHome() {
   };
   const channels = getViewerChannels(viewer.data);
   const media = (library.data?.items || []) as MediaItem[];
+  const featuredChannel = channels.find((item) => item.enabled !== false && item.enabled !== 0) || channels[0];
   const featuredMedia = media.find((item) => item.poster) || media[0];
+  const heroPoster = String(featuredMedia?.poster || "");
   const favorites = ((viewer.data?.favorites as MediaItem[]) || []).slice(0, 10);
   const continueItems = (viewer.data?.history || []).map((row) => row.media).filter((item): item is MediaItem => !!item).slice(0, 10);
   const folderPreview = folderResults(folders.data?.entries).filter((entry) => entry.type === "folder").slice(0, 8);
+  const showFavoritesShortcut = favorites.length > 0;
 
   return (
     <div className="viewer-home">
-      {featuredMedia?.poster ? (
-        <section className="viewer-feature" style={{ backgroundImage: `linear-gradient(90deg, rgba(3,7,18,.2), rgba(3,7,18,.94)), url(${featuredMedia.poster})` }}>
-          <div>
-            <span className="viewer-feature-kicker">مختار لك</span>
-            <h1>{featuredMedia.title || featuredMedia.name}</h1>
-            <p>{String(featuredMedia.description || "محتوى متاح الآن في الاستراحة.").slice(0, 150)}</p>
-            <div className="row">
-              <AppLink href="/watch/media/$id" params={{ id: String(featuredMedia.id) }} className="btn btn-primary">تشغيل الآن</AppLink>
-              <AppLink href={crossPortHref("/library")} className="btn btn-ghost">التفاصيل</AppLink>
-            </div>
+      <section className="viewer-hero ott-hero" style={heroPoster ? { "--hero-art": `url(${heroPoster})` } as CSSProperties : undefined}>
+        <div className="hero-ambient" aria-hidden />
+        <div className="viewer-hero-content">
+          <span className="badge badge-dot badge-live">تجربة مشاهدة مباشرة</span>
+          <h1>
+            {featuredChannel?.name || `مرحبًا بك في ${brand}`}
+          </h1>
+          <p>
+            شاهد القنوات المباشرة واستكشف الاستراحة من مكان واحد بتجربة سريعة ومصممة للجوال والشاشات الكبيرة.
+          </p>
+          <div className="viewer-hero-actions">
+            <AppLink href={featuredChannel ? `/watch/channel/${encodeURIComponent(String(featuredChannel.id))}` : crossPortHref("/live")} className="btn btn-primary">
+              تشغيل الآن
+            </AppLink>
+            <AppLink href={crossPortHref("/live")} className="btn btn-ghost">كل القنوات</AppLink>
+            <AppLink href={crossPortHref("/library")} className="btn btn-ghost">الاستراحة</AppLink>
           </div>
-        </section>
-      ) : (
-        <header className="viewer-page-intro">
-          <h1>{brand}</h1>
-          <p>شاهد القنوات المباشرة وتصفّح محتوى الشبكة بسهولة.</p>
-        </header>
-      )}
+          <div className="hero-meta-strip" aria-label="ملخص المنصة">
+            <div><strong>{channels.length}</strong><span>قناة مباشرة</span></div>
+            <div><strong>{folderPreview.length || media.length}</strong><span>قسم متاح</span></div>
+            <div><strong>سريع</strong><span>داخل الشبكة</span></div>
+          </div>
+        </div>
+        <div className="viewer-hero-panel hero-device-preview" aria-hidden>
+          <div className="hero-device-screen">
+            <img src={logo} alt="" />
+            <span>{brand}</span>
+            <strong>مباشر</strong>
+          </div>
+          <div className="hero-mini-rail">
+            <i />
+            <i />
+            <i />
+          </div>
+        </div>
+      </section>
+
+      <div className="quick-action-row" aria-label="اختصارات">
+        <AppLink href={crossPortHref("/live")} className="quick-action active">البث المباشر</AppLink>
+        <AppLink href="/live/guide" className="quick-action">دليل اليوم</AppLink>
+        <AppLink href={crossPortHref("/library")} className="quick-action">الاستراحة</AppLink>
+        <AppLink href="/search" className="quick-action">بحث سريع</AppLink>
+        {showFavoritesShortcut ? <AppLink href="/favorites" className="quick-action">المفضلة</AppLink> : null}
+      </div>
 
       {continueItems.length ? (
         <ContentSection title="متابعة المشاهدة" subtitle="أكمل من آخر مكان توقفت عنده">

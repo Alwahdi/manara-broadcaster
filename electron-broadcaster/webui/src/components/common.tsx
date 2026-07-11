@@ -4,6 +4,7 @@ import { Share2 } from "lucide-react";
 import { AppLink } from "@/components/AppLink";
 import { api, type MediaItem, type Channel, type ViewerState } from "@/lib/api";
 import { formatDuration } from "@/lib/format";
+import { getChannelQualityLabel } from "@/screens/viewer/viewer-utils";
 
 export function PageHeader({
   title,
@@ -182,8 +183,12 @@ export function ShareButton({ compact = false }: { compact?: boolean }) {
 export function ChannelTile({ channel, href }: { channel: Channel; href?: string }) {
   const enabled = channel.enabled !== false && channel.enabled !== 0;
   const kind = channel.type === "iptv" || channel.kind === "iptv" ? "قناة مباشرة" : "بث مباشر";
+  const qualities = Array.isArray(channel.qualities) ? channel.qualities : [];
+  const qualityLabel = getChannelQualityLabel(channel);
   const inner = (
-    <div className="channel-card channel-card-compact card-hover">
+    <div className="channel-card card-hover">
+      <div className="channel-card-glow" aria-hidden />
+      <div className="channel-card-pattern" aria-hidden />
       <div className="channel-card-head">
         <div className="channel-logo-wrap">
           {channel.logo ? (
@@ -196,12 +201,27 @@ export function ChannelTile({ channel, href }: { channel: Channel; href?: string
           <span className={`badge badge-dot ${enabled ? "badge-live" : "badge-off"}`}>
             {enabled ? "مباشر" : "متوقف"}
           </span>
+          <span className="quality-badge">{qualityLabel}</span>
         </div>
       </div>
       <div className="channel-card-body">
         <strong>{channel.name}</strong>
         <span>{channel.group || channel.category || kind}</span>
+        {channel.description ? <small>{channel.description}</small> : null}
       </div>
+      <div className="channel-watch-affordance" aria-hidden>
+        <span>شاهد الآن</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+          <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </div>
+      {qualities.length ? (
+        <div className="channel-quality-row">
+          {qualities.slice(0, 3).map((q) => (
+            <span key={String(q.id)}>{q.label || q.name || String(q.id)}</span>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
   if (href) {

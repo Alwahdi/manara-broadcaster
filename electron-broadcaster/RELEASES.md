@@ -42,6 +42,15 @@ locked (antivirus, Search indexing, backup agents). This eliminates the
 intermittent "cannot save on Windows" failures that the old
 `writeFile` + `rename` pattern caused.
 
+## v2.6.52
+
+- Restored the complete public viewer visual design from v2.6.50 while preserving the newer streaming, security, SQLite, diagnostics, and startup-timeout fixes.
+- Kept player controls visible on phones and touch devices during normal playback so tapping the video no longer makes the controls disappear.
+- Made each newly opened player start unmuted with the saved non-zero volume; browsers that block audible autoplay show the clear play control so one tap starts playback with sound.
+- Removed the extra v2.6.51 public-viewer style layer and returned the original home, live, guide, search, account, folder-library, header, cards, and navigation presentation.
+- Improved navigation responsiveness without changing the design by removing slow animated scroll-to-top behavior, shortening page entrance animation, and caching viewer/library/folder queries between routes.
+- Preserved clean player loading/error presentation and corrected nested-folder links in search results.
+
 ## v2.6.51
 
 - Redesigned the subscriber home, live TV, guide, search, account, and folder-first library surfaces with a compact Arabic/RTL layout that works cleanly on mobile and desktop.

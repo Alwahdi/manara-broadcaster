@@ -46,6 +46,13 @@ export function WivaPlayerControls({ videoRef, live = false, settings }: Props) 
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
   const controlsVisibleRef = useRef(true);
+  const audioInitializedRef = useRef(false);
+
+  const canAutoHide = useCallback(() => (
+    typeof window !== "undefined"
+    && window.innerWidth > 720
+    && window.matchMedia("(hover: hover) and (pointer: fine)").matches
+  ), []);
 
   const clearHideTimer = useCallback(() => {
     if (hideTimer.current) clearTimeout(hideTimer.current);
@@ -57,13 +64,13 @@ export function WivaPlayerControls({ videoRef, live = false, settings }: Props) 
     controlsVisibleRef.current = true;
     setControlsVisible(true);
     const video = videoRef.current;
-    if (!keepVisible && video && !video.paused && !settingsOpen) {
+    if (!keepVisible && canAutoHide() && video && !video.paused && !settingsOpen) {
       hideTimer.current = setTimeout(() => {
         controlsVisibleRef.current = false;
         setControlsVisible(false);
       }, 3000);
     }
-  }, [clearHideTimer, settingsOpen, videoRef]);
+  }, [canAutoHide, clearHideTimer, settingsOpen, videoRef]);
 
   const togglePlayback = useCallback(() => {
     const video = videoRef.current;
@@ -111,12 +118,14 @@ export function WivaPlayerControls({ videoRef, live = false, settings }: Props) 
     const shell = getPlayerShell(video);
     if (!video || !shell) return undefined;
 
-    try {
-      const savedVolume = Number(localStorage.getItem("wiva-player-volume"));
-      const savedMuted = localStorage.getItem("wiva-player-muted");
-      if (Number.isFinite(savedVolume) && savedVolume >= 0 && savedVolume <= 1) video.volume = savedVolume;
-      if (savedMuted !== null) video.muted = savedMuted === "true";
-    } catch {}
+    if (!audioInitializedRef.current) {
+      audioInitializedRef.current = true;
+      try {
+        const savedVolume = Number(localStorage.getItem("wiva-player-volume"));
+        if (Number.isFinite(savedVolume) && savedVolume > 0 && savedVolume <= 1) video.volume = savedVolume;
+      } catch {}
+      video.muted = false;
+    }
 
     let lastProgressUpdate = 0;
     let pinchStartDistance = 0;
@@ -142,12 +151,15 @@ export function WivaPlayerControls({ videoRef, live = false, settings }: Props) 
       sync();
       try {
         localStorage.setItem("wiva-player-volume", String(video.volume));
-        localStorage.setItem("wiva-player-muted", String(video.muted));
       } catch {}
     };
     const onInteraction = () => revealControls();
     const onClick = (event: MouseEvent) => {
       if ((event.target as HTMLElement).closest("button, input, select, [role='menu']")) return;
+      if (!canAutoHide()) {
+        revealControls(true);
+        return;
+      }
       if (controlsVisibleRef.current && !video.paused) {
         clearHideTimer();
         controlsVisibleRef.current = false;
@@ -270,7 +282,7 @@ export function WivaPlayerControls({ videoRef, live = false, settings }: Props) 
       document.removeEventListener("fullscreenchange", onFullscreen);
       document.removeEventListener("pointerdown", onDocumentPointerDown);
     };
-  }, [changeVolume, clearHideTimer, live, revealControls, settingsOpen, toggleFullscreen, toggleMute, togglePlayback, videoRef]);
+  }, [canAutoHide, changeVolume, clearHideTimer, live, revealControls, settingsOpen, toggleFullscreen, toggleMute, togglePlayback, videoRef]);
 
   return (
     <div

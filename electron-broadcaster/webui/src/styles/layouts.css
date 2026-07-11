@@ -3358,6 +3358,15 @@ button.folder-card {
   opacity: 1;
   visibility: visible;
 }
+.wiva-player.is-blocked .wiva-player-controls {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.wiva-player.is-blocked .live-player-overlay,
+.wiva-player.is-blocked .media-player-overlay {
+  z-index: 10;
+}
 .wiva-player-controls:focus-within {
   opacity: 1;
   visibility: visible;
@@ -3627,4 +3636,23 @@ button.folder-card {
   .account-page .account-hero { padding: 18px; }
   .account-page .account-hero h1 { max-width: none; font-size: clamp(1.9rem, 9vw, 2.55rem); }
   .account-page .account-hero p { font-size: 0.92rem; }
+}
+
+/* Touch players keep their essential controls visible; tapping video never hides them. */
+@media (hover: none), (pointer: coarse) {
+  .wiva-player:not(.is-blocked) .wiva-player-controls.is-hidden,
+  .wiva-player:not(.is-blocked) .wiva-player-controls.is-visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+}
+
+@media (max-width: 720px) {
+  .wiva-player:not(.is-blocked) .wiva-player-controls.is-hidden,
+  .wiva-player:not(.is-blocked) .wiva-player-controls.is-visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
 }

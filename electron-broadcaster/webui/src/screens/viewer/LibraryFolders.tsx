@@ -108,10 +108,16 @@ export function LibraryFolders() {
 
   return (
     <div className="library-page">
-      <header className="viewer-page-intro library-intro">
+      <section className="library-hero">
+        <span className="badge">محتوى الشبكة</span>
         <h1>الاستراحة</h1>
         <p>تصفّح الأقسام والمجلدات المتاحة وشاهد المحتوى مباشرة من داخل الشبكة.</p>
-      </header>
+        <div className="library-hero-orbits" aria-hidden>
+          <span />
+          <span />
+          <span />
+        </div>
+      </section>
       <QueryBoundary
         query={browse}
         isEmpty={(d) => !d.entries || d.entries.length === 0}
@@ -154,10 +160,10 @@ export function LibraryFolders() {
                   </span>
                 ))}
               </nav>
-              <div className="library-count-line" aria-label="ملخص محتوى المجلد">
-                <span><strong>{folderCount}</strong> أقسام</span>
-                <span><strong>{mediaCount}</strong> ملفات</span>
-                {term || filter !== "all" ? <span><strong>{entries.length}</strong> نتائج</span> : null}
+              <div className="library-stats">
+                <div><strong>{folderCount}</strong><span>أقسام</span></div>
+                <div><strong>{mediaCount}</strong><span>ملفات</span></div>
+                <div><strong>{entries.length}</strong><span>نتائج</span></div>
               </div>
               {viewer.data?.permissions?.manageLibrary && data.source ? (
                 <aside className="library-manager-bar" aria-label="إدارة المجلد الحالي">
