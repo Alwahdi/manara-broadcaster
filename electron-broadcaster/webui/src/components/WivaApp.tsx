@@ -1,7 +1,7 @@
 "use client";
 
 import { QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, type FormEvent, useEffect, useMemo, useState } from "react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { AppLink, NavigationProvider, useAppPath } from "@/components/AppLink";
 import { SetupLayout } from "@/components/SetupLayout";
@@ -10,44 +10,44 @@ import { ViewerLayout } from "@/components/ViewerLayout";
 import { api, type AgentState, type PlatformStatus } from "@/lib/api";
 import { queryClient } from "@/lib/queryClient";
 
-import { AdminAdvanced } from "@/screens/admin/Advanced";
-import { AdminBranding } from "@/screens/admin/Branding";
-import { AdminCapture } from "@/screens/admin/Capture";
-import { AdminChannelNew } from "@/screens/admin/ChannelNew";
-import { AdminChannels } from "@/screens/admin/Channels";
-import { AdminDashboard } from "@/screens/admin/Dashboard";
-import { AdminDiagnostics } from "@/screens/admin/Diagnostics";
-import { AdminIptv } from "@/screens/admin/Iptv";
-import { AdminIptvImport } from "@/screens/admin/IptvImport";
-import { AdminLibrary } from "@/screens/admin/Library";
-import { AdminLibraryBrowser } from "@/screens/admin/LibraryBrowser";
-import { AdminLibrarySources } from "@/screens/admin/LibrarySources";
-import { AdminLogs } from "@/screens/admin/Logs";
-import { AdminMessages } from "@/screens/admin/Messages";
-import { AdminReports } from "@/screens/admin/Reports";
-import { AdminSecurity } from "@/screens/admin/Security";
-import { AdminSettings } from "@/screens/admin/Settings";
-import { AdminViewers } from "@/screens/admin/Viewers";
+const AdminAdvanced = lazy(() => import("@/screens/admin/Advanced").then((m) => ({ default: m.AdminAdvanced })));
+const AdminBranding = lazy(() => import("@/screens/admin/Branding").then((m) => ({ default: m.AdminBranding })));
+const AdminCapture = lazy(() => import("@/screens/admin/Capture").then((m) => ({ default: m.AdminCapture })));
+const AdminChannelNew = lazy(() => import("@/screens/admin/ChannelNew").then((m) => ({ default: m.AdminChannelNew })));
+const AdminChannels = lazy(() => import("@/screens/admin/Channels").then((m) => ({ default: m.AdminChannels })));
+const AdminDashboard = lazy(() => import("@/screens/admin/Dashboard").then((m) => ({ default: m.AdminDashboard })));
+const AdminDiagnostics = lazy(() => import("@/screens/admin/Diagnostics").then((m) => ({ default: m.AdminDiagnostics })));
+const AdminIptv = lazy(() => import("@/screens/admin/Iptv").then((m) => ({ default: m.AdminIptv })));
+const AdminIptvImport = lazy(() => import("@/screens/admin/IptvImport").then((m) => ({ default: m.AdminIptvImport })));
+const AdminLibrary = lazy(() => import("@/screens/admin/Library").then((m) => ({ default: m.AdminLibrary })));
+const AdminLibraryBrowser = lazy(() => import("@/screens/admin/LibraryBrowser").then((m) => ({ default: m.AdminLibraryBrowser })));
+const AdminLibrarySources = lazy(() => import("@/screens/admin/LibrarySources").then((m) => ({ default: m.AdminLibrarySources })));
+const AdminLogs = lazy(() => import("@/screens/admin/Logs").then((m) => ({ default: m.AdminLogs })));
+const AdminMessages = lazy(() => import("@/screens/admin/Messages").then((m) => ({ default: m.AdminMessages })));
+const AdminReports = lazy(() => import("@/screens/admin/Reports").then((m) => ({ default: m.AdminReports })));
+const AdminSecurity = lazy(() => import("@/screens/admin/Security").then((m) => ({ default: m.AdminSecurity })));
+const AdminSettings = lazy(() => import("@/screens/admin/Settings").then((m) => ({ default: m.AdminSettings })));
+const AdminViewers = lazy(() => import("@/screens/admin/Viewers").then((m) => ({ default: m.AdminViewers })));
 
-import { SetupAdminAccount } from "@/screens/setup/AdminAccount";
-import { SetupBranding } from "@/screens/setup/Branding";
-import { SetupFinish } from "@/screens/setup/Finish";
-import { SetupIptv } from "@/screens/setup/Iptv";
-import { SetupLibrary } from "@/screens/setup/Library";
-import { SetupNetwork } from "@/screens/setup/Network";
-import { SetupPorts } from "@/screens/setup/Ports";
-import { SetupWelcome } from "@/screens/setup/Welcome";
+const SetupAdminAccount = lazy(() => import("@/screens/setup/AdminAccount").then((m) => ({ default: m.SetupAdminAccount })));
+const SetupBranding = lazy(() => import("@/screens/setup/Branding").then((m) => ({ default: m.SetupBranding })));
+const SetupFinish = lazy(() => import("@/screens/setup/Finish").then((m) => ({ default: m.SetupFinish })));
+const SetupIptv = lazy(() => import("@/screens/setup/Iptv").then((m) => ({ default: m.SetupIptv })));
+const SetupLibrary = lazy(() => import("@/screens/setup/Library").then((m) => ({ default: m.SetupLibrary })));
+const SetupNetwork = lazy(() => import("@/screens/setup/Network").then((m) => ({ default: m.SetupNetwork })));
+const SetupPorts = lazy(() => import("@/screens/setup/Ports").then((m) => ({ default: m.SetupPorts })));
+const SetupWelcome = lazy(() => import("@/screens/setup/Welcome").then((m) => ({ default: m.SetupWelcome })));
 
-import { Account } from "@/screens/viewer/Account";
-import { Favorites } from "@/screens/viewer/Favorites";
-import { ViewerHome } from "@/screens/viewer/Home";
-import { Library } from "@/screens/viewer/Library";
-import { LibraryFolders } from "@/screens/viewer/LibraryFolders";
-import { Live } from "@/screens/viewer/Live";
-import { LiveGuide } from "@/screens/viewer/LiveGuide";
-import { Search } from "@/screens/viewer/Search";
-import { WatchChannel } from "@/screens/viewer/WatchChannel";
-import { WatchMedia } from "@/screens/viewer/WatchMedia";
+const Account = lazy(() => import("@/screens/viewer/Account").then((m) => ({ default: m.Account })));
+const Favorites = lazy(() => import("@/screens/viewer/Favorites").then((m) => ({ default: m.Favorites })));
+const ViewerHome = lazy(() => import("@/screens/viewer/Home").then((m) => ({ default: m.ViewerHome })));
+const Library = lazy(() => import("@/screens/viewer/Library").then((m) => ({ default: m.Library })));
+const LibraryFolders = lazy(() => import("@/screens/viewer/LibraryFolders").then((m) => ({ default: m.LibraryFolders })));
+const Live = lazy(() => import("@/screens/viewer/Live").then((m) => ({ default: m.Live })));
+const LiveGuide = lazy(() => import("@/screens/viewer/LiveGuide").then((m) => ({ default: m.LiveGuide })));
+const Search = lazy(() => import("@/screens/viewer/Search").then((m) => ({ default: m.Search })));
+const WatchChannel = lazy(() => import("@/screens/viewer/WatchChannel").then((m) => ({ default: m.WatchChannel })));
+const WatchMedia = lazy(() => import("@/screens/viewer/WatchMedia").then((m) => ({ default: m.WatchMedia })));
 
 function adminPage(path: string) {
   if (path === "/admin" || path === "/admin/" || path === "/admin/dashboard") return <AdminDashboard />;
@@ -113,9 +113,14 @@ function NotFound({ surface }: { surface: "viewer" | "admin" | "setup" }) {
 
 function RoutedApp() {
   const path = useAppPath();
-  if (path.startsWith("/admin")) return <AdminLayout>{adminPage(path)}</AdminLayout>;
-  if (path.startsWith("/setup") || path === "/agent") return <SetupLayout>{setupPage(path === "/agent" ? "/setup/welcome" : path)}</SetupLayout>;
-  return <ViewerLayout>{viewerPage(path)}</ViewerLayout>;
+  const loading = <LoadingState label="جارٍ فتح الصفحة…" />;
+  if (path.startsWith("/admin")) {
+    return <AdminLayout><Suspense fallback={loading}>{adminPage(path)}</Suspense></AdminLayout>;
+  }
+  if (path.startsWith("/setup") || path === "/agent") {
+    return <SetupLayout><Suspense fallback={loading}>{setupPage(path === "/agent" ? "/setup/welcome" : path)}</Suspense></SetupLayout>;
+  }
+  return <ViewerLayout><Suspense fallback={loading}>{viewerPage(path)}</Suspense></ViewerLayout>;
 }
 
 function platformState(state?: AgentState) {

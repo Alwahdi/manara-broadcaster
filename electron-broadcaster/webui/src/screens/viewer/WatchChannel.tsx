@@ -242,7 +242,14 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
       }, 15_000);
       if (media.canPlayType("application/vnd.apple.mpegurl")) {
         media.src = src;
-        try { await media.play(); } catch {}
+        try {
+          await media.play();
+        } catch (playError) {
+          if (playError instanceof DOMException && playError.name === "NotAllowedError") {
+            clearStartupTimer();
+            setStarted(true);
+          }
+        }
         if (!closed) setStatus("");
         return;
       }
@@ -258,6 +265,11 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
         lowLatencyMode: true,
         progressive: true,
         startFragPrefetch: true,
+        startLevel: 0,
+        capLevelToPlayerSize: true,
+        abrEwmaDefaultEstimate: 500_000,
+        maxStarvationDelay: 2,
+        maxLoadingDelay: 3,
         backBufferLength: 30,
         maxBufferLength: 30,
         maxMaxBufferLength: 60,
@@ -281,8 +293,11 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
       hls.attachMedia(media);
       if (Hls.Events.MANIFEST_PARSED) {
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          media.play().catch(() => {});
+          clearStartupTimer();
+          setStarted(true);
+          setError("");
           setStatus("");
+          media.play().catch(() => {});
         });
       }
       hls.on(Hls.Events.ERROR, (_event, data) => {

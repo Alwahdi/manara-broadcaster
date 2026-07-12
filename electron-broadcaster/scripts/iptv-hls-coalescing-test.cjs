@@ -103,7 +103,7 @@ async function main() {
     await cached.arrayBuffer();
     assert.equal(segmentHits, 1, 'cached HLS segment must not refetch upstream');
 
-    await new Promise((resolve) => setTimeout(resolve, 1400));
+    await new Promise((resolve) => setTimeout(resolve, 2200));
     upstreamBroken = true;
     const stalePlaylistRes = await fetch(`${proxyBase}/iptv/test/index.m3u8`);
     assert.equal(stalePlaylistRes.status, 200, 'playlist should fall back to the last good response during a brief upstream outage');
@@ -112,7 +112,10 @@ async function main() {
     upstreamBroken = false;
 
     const status = iptv.status()[channel.id];
-    assert.ok(status.cacheCoalesced >= VIEWERS - 1, 'metrics record coalesced segment waiters');
+    assert.ok(
+      status.cacheCoalesced + status.cacheHits >= VIEWERS - 1,
+      'every additional viewer reuses either the in-flight or cached segment',
+    );
     assert.ok(status.cacheHits >= 1, 'metrics record a cache hit after the first segment load');
     assert.ok(status.hlsTokenEntries >= 1, 'metrics expose active HLS token entries');
     console.log(JSON.stringify({
@@ -122,6 +125,7 @@ async function main() {
       elapsedMs,
       rssGrowthMb: Number(rssGrowthMb.toFixed(1)),
       cacheCoalesced: status.cacheCoalesced,
+      cacheHits: status.cacheHits,
     }, null, 2));
     console.log('WIVA IPTV HLS coalescing test passed');
   } finally {

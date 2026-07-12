@@ -18,18 +18,27 @@ let neonDatabaseUrl = process.env.MANARA_NEON_DATABASE_URL || runtimeConfig.neon
 
 const DEV_DEMO_CHANNELS = [
   {
-    id: 'dev-apple-bipbop-16x9',
-    name: 'Apple BipBop 16:9 Demo',
-    url: 'https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_16x9/bipbop_16x9_variant.m3u8',
+    id: 'dev-apple-bipbop-4x3-sd',
+    name: 'Apple Demo 4:3 SD',
+    url: 'https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/gear1/prog_index.m3u8',
     logo: '',
     category: 'Demo',
     headers: {},
     transferLimitBytes: 0,
   },
   {
-    id: 'dev-mux-hls',
-    name: 'Mux HLS Test',
-    url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+    id: 'dev-mux-240p',
+    name: 'Mux Demo 240p',
+    url: 'https://test-streams.mux.dev/x36xhzz/url_2/193039199_mp4_h264_aac_ld_7.m3u8',
+    logo: '',
+    category: 'Demo',
+    headers: {},
+    transferLimitBytes: 0,
+  },
+  {
+    id: 'dev-mux-380p',
+    name: 'Mux Demo 380p',
+    url: 'https://test-streams.mux.dev/x36xhzz/url_4/193039199_mp4_h264_aac_7.m3u8',
     logo: '',
     category: 'Demo',
     headers: {},
@@ -42,6 +51,8 @@ let cached = []; // [{id,name,url,logo,category,headers}]
 let lastFetch = 0;
 let lastStatus = { state: 'idle', at: null, error: '', count: 0, source: '' };
 let timer = null;
+let initialTimer = null;
+let refreshPromise = null;
 let refreshMs = DEFAULT_REFRESH_MS;
 let cacheSecret = null;
 
@@ -164,7 +175,7 @@ function normalizeRows(rows) {
 async function fetchFromNeon() {
   if (!neonDatabaseUrl) return null;
   const { neon } = await import('@neondatabase/serverless');
-  const sql = neon(neonDatabaseUrl);
+  const sql = neon(neonDatabaseUrl, { fetchOptions: { signal: AbortSignal.timeout(12000) } });
   const rows = await sql`
     select id, name, url, logo_url, category, headers, transfer_limit_bytes
     from cloud_iptv_channels
@@ -178,7 +189,7 @@ function setNeonDatabaseUrl(url) {
   neonDatabaseUrl = String(url || '').trim() || process.env.MANARA_NEON_DATABASE_URL || runtimeConfig.neonDatabaseUrl || '';
 }
 
-async function refresh(licenseKey) {
+async function performRefresh(licenseKey) {
   const failures = [];
   if (!neonDatabaseUrl && process.defaultApp) {
     cached = DEV_DEMO_CHANNELS;
@@ -229,6 +240,14 @@ async function refresh(licenseKey) {
   return cached;
 }
 
+function refresh(licenseKey) {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = performRefresh(licenseKey).finally(() => {
+    refreshPromise = null;
+  });
+  return refreshPromise;
+}
+
 function setRefreshIntervalMs(ms) {
   refreshMs = Math.max(60 * 1000, Math.min(24 * 60 * 60 * 1000, Number(ms) || DEFAULT_REFRESH_MS));
   return refreshMs;
@@ -237,9 +256,12 @@ function setRefreshIntervalMs(ms) {
 function startAutoRefresh(getLicenseKey, intervalMs) {
   setRefreshIntervalMs(intervalMs);
   if (timer) clearInterval(timer);
+  if (initialTimer) clearTimeout(initialTimer);
   // First fetch shortly after start
-  setTimeout(() => refresh(getLicenseKey()), 5000);
+  initialTimer = setTimeout(() => refresh(getLicenseKey()), 5000);
+  if (typeof initialTimer.unref === 'function') initialTimer.unref();
   timer = setInterval(() => refresh(getLicenseKey()), refreshMs);
+  if (typeof timer.unref === 'function') timer.unref();
 }
 
 function list(options = {}) {

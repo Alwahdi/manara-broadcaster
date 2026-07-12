@@ -37,6 +37,18 @@ function clean(s) {
   return s.replace(/[._]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+function metadataCandidates(item, folder, parsedFile) {
+  const candidates = [];
+  if (item.kind === 'movie' && folder) {
+    const parsedFolder = parseName(path.basename(folder));
+    if (parsedFolder.title && !/^(movies?|films?|videos?|أفلام|فيديوهات)$/i.test(parsedFolder.title)) {
+      candidates.push({ title: parsedFolder.title, year: parsedFolder.year || item.year });
+    }
+  }
+  candidates.push({ title: parsedFile.title || item.title, year: parsedFile.year || item.year });
+  return candidates.filter((candidate, index, all) => candidate.title && all.findIndex((row) => row.title === candidate.title && row.year === candidate.year) === index);
+}
+
 function sourceLabel(lp) {
   return lp.label || path.basename(String(lp.path || '').replace(/[\\/]+$/, '')) || lp.path || 'مصدر المكتبة';
 }
@@ -98,22 +110,30 @@ function shouldSkipEntry(entry, fullPath, isExcluded) {
   return isExcluded(fullPath);
 }
 
-function walk(dir, out = [], report = { folderCount: 0, permissionErrors: [] }, options = {}) {
-  let entries;
-  try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
-  catch (e) {
-    report.permissionErrors.push({ path: dir, error: e.message });
-    return out;
-  }
+async function walk(dir, out = [], report = { folderCount: 0, permissionErrors: [] }, options = {}) {
   const isExcluded = typeof options.isExcluded === 'function' ? options.isExcluded : () => false;
-  for (const e of entries) {
-    const full = path.join(dir, e.name);
-    if (shouldSkipEntry(e, full, isExcluded)) continue;
-    if (e.isDirectory()) {
-      report.folderCount += 1;
-      walk(full, out, report, options);
+  const pending = [dir];
+  let visited = 0;
+  while (pending.length) {
+    const current = pending.pop();
+    let entries;
+    try { entries = await fs.promises.readdir(current, { withFileTypes: true }); }
+    catch (e) {
+      report.permissionErrors.push({ path: current, error: e.message });
+      continue;
     }
-    else if (e.isFile()) out.push(full);
+    for (const e of entries) {
+      const full = path.join(current, e.name);
+      if (shouldSkipEntry(e, full, isExcluded)) continue;
+      if (e.isDirectory()) {
+        report.folderCount += 1;
+        pending.push(full);
+      } else if (e.isFile()) {
+        out.push(full);
+      }
+      visited += 1;
+      if (visited % 250 === 0) await new Promise((resolve) => setImmediate(resolve));
+    }
   }
   return out;
 }
@@ -130,6 +150,24 @@ function thumbnailName(file) {
   return crypto.createHash('sha1').update(String(file)).digest('hex') + '.jpg';
 }
 
+function ffmpegExecutable() {
+  if (process.env.FFMPEG_PATH) return process.env.FFMPEG_PATH;
+  try {
+    const bundled = String(require('@ffmpeg-installer/ffmpeg').path || '');
+    const unpacked = bundled.replace(`${path.sep}app.asar${path.sep}`, `${path.sep}app.asar.unpacked${path.sep}`);
+    if (unpacked) return unpacked;
+  } catch {}
+  const executable = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
+  const resources = String(process.resourcesPath || '');
+  const candidates = resources ? [
+    path.join(resources, executable),
+    path.join(resources, 'bin', executable),
+  ] : [];
+  return candidates.find((candidate) => {
+    try { return fs.existsSync(candidate) && fs.statSync(candidate).isFile(); } catch { return false; }
+  }) || 'ffmpeg';
+}
+
 async function generateVideoThumbnail(file, thumbnailDir) {
   if (!thumbnailDir || !file || /^https?:\/\//i.test(String(file))) return '';
   const outName = thumbnailName(file);
@@ -141,7 +179,7 @@ async function generateVideoThumbnail(file, thumbnailDir) {
     return '';
   }
   return new Promise((resolve) => {
-    const ffmpeg = process.env.FFMPEG_PATH || 'ffmpeg';
+    const ffmpeg = ffmpegExecutable();
     let child;
     let done = false;
     const finish = (value) => {
@@ -182,8 +220,12 @@ async function generateVideoThumbnail(file, thumbnailDir) {
   });
 }
 
-async function scanAll({ tmdbKey, tmdbLang = 'ar', thumbnailDir = '' } = {}, onProgress) {
+let activeScanPromise = null;
+let queuedScan = null;
+
+async function performScanAll({ tmdbKey, tmdbLang = 'ar', thumbnailDir = '' } = {}, onProgress) {
   const paths = db.listPaths();
+  const existingByPath = new Map(db.listMedia({ limit: 100000 }).map((item) => [String(item.path), item]));
   const report = {
     total: 0,
     done: 0,
@@ -214,7 +256,7 @@ async function scanAll({ tmdbKey, tmdbLang = 'ar', thumbnailDir = '' } = {}, onP
     db.updatePathStatus(lp.id, { status: 'scanning', lastError: '', fileCount: Number(lp.file_count || 0), folderCount: Number(lp.folder_count || 0), label });
     const walkReport = { folderCount: 0, permissionErrors: [] };
     const isExcluded = excludeMatcher(lp);
-    const files = walk(lp.path, [], walkReport, { isExcluded });
+    const files = await walk(lp.path, [], walkReport, { isExcluded });
     report.permissionErrors.push(...walkReport.permissionErrors);
     const allFiles = [];
     for (const f of files) {
@@ -235,7 +277,7 @@ async function scanAll({ tmdbKey, tmdbLang = 'ar', thumbnailDir = '' } = {}, onP
     if (onProgress) onProgress({ stage: 'scanning_source', sourceId: lp.id, source: label, done: 0, total: allFiles.length, message: 'جاري فحص ' + label });
     for (const { file, remoteUrl, libKind, mediaKind, source, sourceLabel: labelText, relPath, relDir } of allFiles) {
       try {
-        const stat = fs.statSync(file);
+        const stat = await fs.promises.stat(file);
         const meta = parseName(path.basename(file));
         const playablePath = remoteUrl || file;
         const folder = relDir && relDir !== '.' ? relDir : '';
@@ -255,17 +297,31 @@ async function scanAll({ tmdbKey, tmdbLang = 'ar', thumbnailDir = '' } = {}, onP
           source_label: labelText,
           relative_path: relPath,
         };
-        if (tmdbKey) {
-          try {
-            const info = await tmdb.search(tmdbKey, item.title, item.year, item.kind, tmdbLang);
-            if (info) {
-              item.tmdb_id = info.id;
-              item.poster_url = info.poster;
-              item.backdrop_url = info.backdrop;
-              item.overview = info.overview;
-              item.rating = info.rating;
+        const existing = existingByPath.get(String(playablePath));
+        if (existing) {
+          item.tmdb_id = existing.tmdb_id || null;
+          item.poster_url = existing.poster_url || null;
+          item.backdrop_url = existing.backdrop_url || null;
+          item.overview = existing.overview || null;
+          item.rating = existing.rating || null;
+          item.duration = existing.duration || null;
+        }
+        if (tmdbKey && !item.tmdb_id && !item.poster_url) {
+          for (const candidate of metadataCandidates(item, folder, meta)) {
+            try {
+              const info = await tmdb.search(tmdbKey, candidate.title, candidate.year, item.kind, tmdbLang);
+              if (info) {
+                item.tmdb_id = info.id;
+                item.poster_url = info.poster;
+                item.backdrop_url = info.backdrop;
+                item.overview = info.overview;
+                item.rating = info.rating;
+                break;
+              }
+            } catch {
+              break;
             }
-          } catch { /* ignore TMDB errors per-item */ }
+          }
         }
         if (!item.poster_url && !item.backdrop_url && mediaKind === 'video' && !remoteUrl) {
           const thumb = await generateVideoThumbnail(file, thumbnailDir);
@@ -303,6 +359,25 @@ async function scanAll({ tmdbKey, tmdbLang = 'ar', thumbnailDir = '' } = {}, onP
   }
   if (onProgress) onProgress({ stage: 'done', done: report.done, total: report.total, message: 'اكتمل فحص المكتبة' });
   return report;
+}
+
+function scanAll(options = {}, onProgress) {
+  if (activeScanPromise) {
+    queuedScan = { options, onProgress };
+    return activeScanPromise;
+  }
+  activeScanPromise = (async () => {
+    let result = await performScanAll(options, onProgress);
+    while (queuedScan) {
+      const next = queuedScan;
+      queuedScan = null;
+      result = await performScanAll(next.options, next.onProgress);
+    }
+    return result;
+  })().finally(() => {
+    activeScanPromise = null;
+  });
+  return activeScanPromise;
 }
 
 module.exports = { scanAll, parseName };

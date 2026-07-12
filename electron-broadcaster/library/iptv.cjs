@@ -30,6 +30,7 @@ const IDLE_MS = 5000;
 const HLS_VIEWER_TTL_MS = 25000;
 const RATE_WINDOW_MS = 30000;
 const HLS_PLAYLIST_CACHE_MS = 1200;
+const HLS_VOD_PLAYLIST_CACHE_MS = 10 * 60 * 1000;
 const HLS_SEGMENT_CACHE_MS = 2 * 60 * 1000;
 const HLS_PLAYLIST_STALE_MS = 12 * 1000;
 const HLS_SEGMENT_STALE_MS = 10 * 60 * 1000;
@@ -598,9 +599,13 @@ async function fetchCachedHlsResource(channel, targetUrl, headers, ttlMs, staleM
       HLS_RESOURCE_CACHE.delete(key);
       return { ...value, fromCache: false };
     }
+    const contentType = value.headers?.['content-type'] || '';
+    const effectiveTtlMs = isPlaylistResponse(targetUrl, contentType, value.body)
+      ? playlistCacheLifetime(value.body, ttlMs)
+      : ttlMs;
     HLS_RESOURCE_CACHE.set(key, {
-      expiresAt: Date.now() + ttlMs,
-      staleUntil: Date.now() + ttlMs + staleMs,
+      expiresAt: Date.now() + effectiveTtlMs,
+      staleUntil: Date.now() + effectiveTtlMs + staleMs,
       value,
       channelId: String(channel.id),
       bytes,
@@ -660,6 +665,15 @@ function isPlaylistResponse(targetUrl, contentType, body) {
   return isHls(targetUrl) ||
     /mpegurl|vnd\.apple\.mpegurl/i.test(contentType || '') ||
     body.slice(0, 512).toString('utf8').trimStart().startsWith('#EXTM3U');
+}
+
+function playlistCacheLifetime(body, fallbackMs = HLS_PLAYLIST_CACHE_MS) {
+  const text = Buffer.isBuffer(body) ? body.toString('utf8') : String(body || '');
+  if (!text.trimStart().startsWith('#EXTM3U')) return fallbackMs;
+  if (/#EXT-X-ENDLIST/i.test(text)) return HLS_VOD_PLAYLIST_CACHE_MS;
+  const targetDuration = Number(text.match(/#EXT-X-TARGETDURATION\s*:\s*(\d+(?:\.\d+)?)/i)?.[1] || 0);
+  if (!targetDuration) return fallbackMs;
+  return Math.max(fallbackMs, Math.min(5000, Math.round(targetDuration * 500)));
 }
 
 async function serveHlsPlaylist(channel, playlistUrl, baseProxyUrl, req, res, policy = {}) {

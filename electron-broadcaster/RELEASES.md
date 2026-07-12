@@ -42,6 +42,17 @@ locked (antivirus, Search indexing, backup agents). This eliminates the
 intermittent "cannot save on Windows" failures that the old
 `writeFile` + `rename` pattern caused.
 
+## v2.6.53
+
+- Replaced the unreliable cloud demo IPTV sources with tested low-bitrate direct playlists and kept all three cloud records active.
+- Improved IPTV startup by beginning at the lowest HLS level, sizing quality to the player, coalescing concurrent requests, and caching static or target-duration playlists appropriately.
+- Fixed false player timeouts when browsers block sound-on autoplay, while keeping the Play control visible and ready for a user gesture.
+- Split viewer, setup, and admin screens into on-demand bundles so subscriber devices no longer parse the entire application at startup.
+- Made library traversal asynchronous, coalesced overlapping scans, reused existing metadata, and cached artwork discovery to prevent large libraries from blocking live traffic.
+- Added bounded TMDB lookup caching and timeouts, folder-name metadata matching, and automatic folder covers from local artwork or media metadata.
+- Bundled an LGPL-compatible cross-platform FFmpeg executable to generate cached video-frame thumbnails when no poster or folder artwork exists.
+- Added regression coverage for folder artwork precedence, generated thumbnails, web bundle splitting, cloud refresh deduplication, player startup, and HLS caching.
+
 ## v2.6.52
 
 - Restored the complete public viewer visual design from v2.6.50 while preserving the newer streaming, security, SQLite, diagnostics, and startup-timeout fixes.

@@ -35,5 +35,10 @@ assert.match(viewerUtils, /Mux\\s\+HLS\\s\+Test/i);
 assert.match(viewerUtils, /تلقائية/);
 assert.match(live, /15_000/);
 assert.match(live, /استغرق تشغيل البث وقتًا أطول من المعتاد/);
+assert.match(live, /MANIFEST_PARSED[\s\S]*?clearStartupTimer\(\)[\s\S]*?setStarted\(true\)/);
+assert.match(live, /playError instanceof DOMException[\s\S]*?NotAllowedError[\s\S]*?clearStartupTimer\(\)[\s\S]*?setStarted\(true\)/);
+assert.match(live, /startLevel:\s*0/);
+assert.match(live, /capLevelToPlayerSize:\s*true/);
+assert.match(live, /abrEwmaDefaultEstimate:\s*500_000/);
 
 console.log('WIVA unified player UI tests passed');

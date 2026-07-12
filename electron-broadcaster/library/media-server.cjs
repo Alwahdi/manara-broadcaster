@@ -233,6 +233,23 @@ const FOLDER_ARTWORK_NAMES = [
   'folder-poster', 'folder-cover', 'cover-front', 'poster-large',
   'بوستر', 'غلاف', 'صورة', 'خلفية', 'ملصق',
 ];
+const artworkDiscoveryCache = new Map();
+const ARTWORK_CACHE_MAX = 3000;
+const ARTWORK_HIT_TTL_MS = 10 * 60 * 1000;
+const ARTWORK_MISS_TTL_MS = 30 * 1000;
+
+function cachedArtwork(cacheKey, discover) {
+  const cached = artworkDiscoveryCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  const value = discover();
+  artworkDiscoveryCache.delete(cacheKey);
+  artworkDiscoveryCache.set(cacheKey, {
+    value,
+    expiresAt: Date.now() + (value ? ARTWORK_HIT_TTL_MS : ARTWORK_MISS_TTL_MS),
+  });
+  while (artworkDiscoveryCache.size > ARTWORK_CACHE_MAX) artworkDiscoveryCache.delete(artworkDiscoveryCache.keys().next().value);
+  return value;
+}
 
 function artworkMime(filePath) {
   const ext = path.extname(filePath || '').toLowerCase();
@@ -255,46 +272,50 @@ function bundledAssetMime(filePath) {
 function findArtworkFile(item) {
   const source = String(item?.path || '');
   if (!source || /^https?:\/\//i.test(source)) return '';
-  const dir = path.dirname(source);
-  const base = path.basename(source, path.extname(source));
-  const candidates = [];
-  for (const ext of ARTWORK_EXT) candidates.push(path.join(dir, base + ext), path.join(dir, base + '-poster' + ext), path.join(dir, base + '.poster' + ext));
-  for (const name of FOLDER_ARTWORK_NAMES) for (const ext of ARTWORK_EXT) candidates.push(path.join(dir, name + ext));
-  return candidates.find((candidate) => {
-    try { return fs.existsSync(candidate) && fs.statSync(candidate).isFile(); } catch { return false; }
-  }) || '';
+  return cachedArtwork(`media:${source}`, () => {
+    const dir = path.dirname(source);
+    const base = path.basename(source, path.extname(source));
+    const candidates = [];
+    for (const ext of ARTWORK_EXT) candidates.push(path.join(dir, base + ext), path.join(dir, base + '-poster' + ext), path.join(dir, base + '.poster' + ext));
+    for (const name of FOLDER_ARTWORK_NAMES) for (const ext of ARTWORK_EXT) candidates.push(path.join(dir, name + ext));
+    return candidates.find((candidate) => {
+      try { return fs.existsSync(candidate) && fs.statSync(candidate).isFile(); } catch { return false; }
+    }) || '';
+  });
 }
 
 function findFolderArtworkFile(folderPath) {
   const dir = String(folderPath || '');
   if (!dir) return '';
-  const candidates = [];
-  const folderBase = path.basename(dir.replace(/[\\/]+$/g, ''));
-  const names = [...FOLDER_ARTWORK_NAMES, folderBase].filter(Boolean);
-  for (const name of names) {
-    for (const variant of [name, `.${name}`, `_${name}`]) {
-      for (const ext of ARTWORK_EXT) candidates.push(path.join(dir, variant + ext));
+  return cachedArtwork(`folder:${path.resolve(dir)}`, () => {
+    const candidates = [];
+    const folderBase = path.basename(dir.replace(/[\\/]+$/g, ''));
+    const names = [...FOLDER_ARTWORK_NAMES, folderBase].filter(Boolean);
+    for (const name of names) {
+      for (const variant of [name, `.${name}`, `_${name}`]) {
+        for (const ext of ARTWORK_EXT) candidates.push(path.join(dir, variant + ext));
+      }
     }
-  }
-  const exact = candidates.find((candidate) => {
-    try { return fs.existsSync(candidate) && fs.statSync(candidate).isFile(); } catch { return false; }
-  }) || '';
-  if (exact) return exact;
-  try {
-    const images = fs.readdirSync(dir, { withFileTypes: true })
-      .filter((entry) => entry.isFile() && ARTWORK_EXT.includes(path.extname(entry.name).toLowerCase()))
-      .slice(0, 300)
-      .map((entry) => path.join(dir, entry.name));
-    images.sort((a, b) => {
-      const scoreA = folderArtworkScore(a, folderBase);
-      const scoreB = folderArtworkScore(b, folderBase);
-      if (scoreA !== scoreB) return scoreB - scoreA;
-      return path.basename(a).localeCompare(path.basename(b), undefined, { numeric: true });
-    });
-    return images[0] || '';
-  } catch {
-    return '';
-  }
+    const exact = candidates.find((candidate) => {
+      try { return fs.existsSync(candidate) && fs.statSync(candidate).isFile(); } catch { return false; }
+    }) || '';
+    if (exact) return exact;
+    try {
+      const images = fs.readdirSync(dir, { withFileTypes: true })
+        .filter((entry) => entry.isFile() && ARTWORK_EXT.includes(path.extname(entry.name).toLowerCase()))
+        .slice(0, 300)
+        .map((entry) => path.join(dir, entry.name));
+      images.sort((a, b) => {
+        const scoreA = folderArtworkScore(a, folderBase);
+        const scoreB = folderArtworkScore(b, folderBase);
+        if (scoreA !== scoreB) return scoreB - scoreA;
+        return path.basename(a).localeCompare(path.basename(b), undefined, { numeric: true });
+      });
+      return images[0] || '';
+    } catch {
+      return '';
+    }
+  });
 }
 
 function folderArtworkScore(filePath, folderBase = '') {
