@@ -676,6 +676,28 @@ function playlistCacheLifetime(body, fallbackMs = HLS_PLAYLIST_CACHE_MS) {
   return Math.max(fallbackMs, Math.min(5000, Math.round(targetDuration * 500)));
 }
 
+function firstPlaylistResource(body, playlistUrl) {
+  const text = Buffer.isBuffer(body) ? body.toString('utf8') : String(body || '');
+  const line = text.split(/\r?\n/).map((value) => value.trim()).find((value) => value && !value.startsWith('#'));
+  if (!line) return '';
+  try { return new URL(line, playlistUrl).toString(); } catch { return ''; }
+}
+
+async function prefetchFirstHlsResource(channel, body, playlistUrl, policy = {}, depth = 0) {
+  if (depth > 1 || limitExceeded(channel, policy)) return;
+  const targetUrl = firstPlaylistResource(body, playlistUrl);
+  if (!targetUrl) return;
+  const playlist = isHls(targetUrl);
+  const ttl = playlist ? HLS_PLAYLIST_CACHE_MS : HLS_SEGMENT_CACHE_MS;
+  const staleTtl = playlist ? HLS_PLAYLIST_STALE_MS : HLS_SEGMENT_STALE_MS;
+  const up = await fetchCachedHlsResource(channel, targetUrl, upstreamHeaders(channel), ttl, staleTtl);
+  if (up.statusCode >= 400 || !up.body?.length) return;
+  if (!up.fromCache) addBytes(channel.id, up.body.length, 0);
+  if (isPlaylistResponse(targetUrl, up.headers?.['content-type'] || '', up.body)) {
+    await prefetchFirstHlsResource(channel, up.body, targetUrl, policy, depth + 1);
+  }
+}
+
 async function serveHlsPlaylist(channel, playlistUrl, baseProxyUrl, req, res, policy = {}) {
   try {
     const blocked = limitExceeded(channel, policy);
@@ -717,6 +739,10 @@ async function serveHlsPlaylist(channel, playlistUrl, baseProxyUrl, req, res, po
       'Access-Control-Allow-Origin': '*',
     });
     res.end(rewritten);
+    // The playlist request proves there is an active viewer. Warm the first
+    // playable resource so the browser can join the in-flight fetch instead of
+    // showing a black frame during another full upstream round trip.
+    prefetchFirstHlsResource(channel, up.body, playlistUrl, policy).catch(() => {});
   } catch (e) {
     const message = e.message === 'timeout'
       ? `Timed out while loading the IPTV playlist. URL: ${playlistUrl}`

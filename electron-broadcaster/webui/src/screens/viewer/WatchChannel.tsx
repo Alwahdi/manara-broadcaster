@@ -200,12 +200,14 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
       bufferingTimer = setTimeout(() => {
         bufferingTimer = null;
         if (closed || error) return;
-        if (hasPlayed && media.readyState < 3) setStatus("الاتصال غير مستقر، نحاول استئناف البث...");
-      }, 5000);
+        if (hasPlayed && media.readyState < 3) setStatus("توقف البث مؤقتًا، نحاول استئنافه...");
+      }, 8000);
     }
 
     function markPlaying() {
       hasPlayed = true;
+      if (recoveryTimer) clearTimeout(recoveryTimer);
+      recoveryTimer = null;
       setStarted(true);
       clearBufferingTimer();
       clearStartupTimer();
@@ -248,9 +250,9 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
           if (playError instanceof DOMException && playError.name === "NotAllowedError") {
             clearStartupTimer();
             setStarted(true);
+            setStatus("");
           }
         }
-        if (!closed) setStatus("");
         return;
       }
       await loadHlsScript();
@@ -293,11 +295,14 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
       hls.attachMedia(media);
       if (Hls.Events.MANIFEST_PARSED) {
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          clearStartupTimer();
-          setStarted(true);
           setError("");
-          setStatus("");
-          media.play().catch(() => {});
+          media.play().catch((playError) => {
+            if (playError instanceof DOMException && playError.name === "NotAllowedError") {
+              clearStartupTimer();
+              setStarted(true);
+              setStatus("");
+            }
+          });
         });
       }
       hls.on(Hls.Events.ERROR, (_event, data) => {
@@ -305,7 +310,7 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
         if (data.type === Hls.ErrorTypes?.NETWORK_ERROR) {
           setStatus("انقطع الاتصال مؤقتًا، نحاول إعادة التشغيل...");
           try { hls.startLoad?.(); } catch {}
-          scheduleRestart(6000);
+          scheduleRestart(10_000);
           return;
         }
         if (data.type === Hls.ErrorTypes?.MEDIA_ERROR) {

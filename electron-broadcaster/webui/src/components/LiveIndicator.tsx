@@ -1,9 +1,9 @@
 import { useLiveStatus, type LiveStatus } from "@/hooks/useLiveStatus";
 
 const LABEL: Record<LiveStatus, string> = {
-  connecting: "يتصل…",
-  online: "مباشر",
-  offline: "لا يتوفر بث",
+  connecting: "جارٍ الاتصال…",
+  online: "متصل",
+  offline: "غير متصل",
 };
 const CLASS: Record<LiveStatus, string> = {
   connecting: "badge-warn",
@@ -15,7 +15,7 @@ const CLASS: Record<LiveStatus, string> = {
 export function LiveIndicator() {
   const { status } = useLiveStatus();
   return (
-    <span className={`badge badge-dot ${CLASS[status]}`} title="حالة الاتصال المباشر">
+    <span className={`badge badge-dot ${CLASS[status]}`} title="اتصال التحديث المباشر">
       {LABEL[status]}
     </span>
   );

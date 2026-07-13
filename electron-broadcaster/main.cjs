@@ -1034,6 +1034,15 @@ function mediaServerOptions() {
     clearAdminSession: (token) => clearAdminSession(token),
     getAdminPath: () => settings.adminPath || 'admin',
     getSetupState: () => agentState(),
+    getUpdateStatus: () => ({
+      ...updateState,
+      currentVersion: app.getVersion(),
+      supported: app.isPackaged,
+      automatic: settings.autoCheckUpdates !== false,
+    }),
+    checkForUpdate: () => checkForAppUpdate(),
+    downloadUpdate: () => downloadAppUpdate(),
+    installUpdate: () => installAppUpdate(),
     checkPort: (port) => checkPortAvailability(port),
     listCaptureSources: () => listCaptureSourcesForAdmin(),
     applySetup: async (patch = {}) => {
@@ -1478,12 +1487,40 @@ function createWindow(options = {}) {
   mainWindow.once('ready-to-show', () => {
     if (options.forceShow || shouldRevealWindowWhenReady) revealMainWindow();
   });
+  let unresponsiveReloadTimer = null;
+  mainWindow.on('unresponsive', () => {
+    console.error('[WIVA] agent window became unresponsive; scheduling renderer recovery');
+    if (unresponsiveReloadTimer) return;
+    unresponsiveReloadTimer = setTimeout(() => {
+      unresponsiveReloadTimer = null;
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        console.warn('[WIVA] reloading the agent renderer after an extended stall');
+        mainWindow.webContents.reloadIgnoringCache();
+      }
+    }, 12_000);
+  });
+  mainWindow.on('responsive', () => {
+    if (unresponsiveReloadTimer) clearTimeout(unresponsiveReloadTimer);
+    unresponsiveReloadTimer = null;
+  });
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error('[WIVA] agent renderer exited:', details?.reason || 'unknown');
+    setTimeout(() => {
+      if (app.isQuitting) return;
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
+      } catch {}
+      mainWindow = null;
+      createWindow({ forceShow: shouldRevealWindowWhenReady });
+    }, 500);
+  });
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   mainWindow.webContents.once('did-finish-load', () => {
     syncBroadcastChannelsFromDb({ persist: false });
     notifyStorageReady();
   });
   mainWindow.on('closed', () => {
+    if (unresponsiveReloadTimer) clearTimeout(unresponsiveReloadTimer);
     mainWindow = null;
   });
   mainWindow.on('close', (e) => {
@@ -1750,12 +1787,33 @@ autoUpdater.on('update-not-available', () => broadcastUpdate({ state: 'none' }))
 autoUpdater.on('error', (err) => broadcastUpdate({ state: 'error', message: String(err?.message || err) }));
 autoUpdater.on('download-progress', (p) => broadcastUpdate({ state: 'downloading', percent: Math.round(p.percent || 0) }));
 autoUpdater.on('update-downloaded', (info) => broadcastUpdate({ state: 'ready', version: info?.version }));
+async function checkForAppUpdate() {
+  if (!app.isPackaged) return { ok: false, error: 'Update checks are available in installed builds only.', ...updateState };
+  try {
+    await autoUpdater.checkForUpdates();
+    return { ok: true, ...updateState };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e), ...updateState };
+  }
+}
+async function downloadAppUpdate() {
+  if (!app.isPackaged) return { ok: false, error: 'Update downloads are available in installed builds only.', ...updateState };
+  try {
+    await autoUpdater.downloadUpdate();
+    return { ok: true, ...updateState };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e), ...updateState };
+  }
+}
+function installAppUpdate() {
+  if (!app.isPackaged) return { ok: false, error: 'Update installation is available in installed builds only.', ...updateState };
+  if (updateState.state !== 'ready') return { ok: false, error: 'No downloaded update is ready to install.', ...updateState };
+  setTimeout(() => autoUpdater.quitAndInstall(false, true), 750);
+  return { ok: true, state: 'installing', version: updateState.version };
+}
 ipcMain.handle('update-status', () => updateState);
-ipcMain.handle('update-check', async () => {
-  try { await autoUpdater.checkForUpdates(); return { ok: true }; }
-  catch (e) { return { ok: false, error: String(e?.message || e) }; }
-});
-ipcMain.handle('update-install', () => { autoUpdater.quitAndInstall(false, true); });
+ipcMain.handle('update-check', () => checkForAppUpdate());
+ipcMain.handle('update-install', () => installAppUpdate());
 
 // ---------- Library IPC ----------
 let libraryServerInfo = null;

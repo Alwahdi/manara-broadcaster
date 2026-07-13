@@ -43,7 +43,9 @@ export function WivaPlayerControls({ videoRef, live = false, settings }: Props) 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [pipAvailable, setPipAvailable] = useState(false);
+  const [seekFeedback, setSeekFeedback] = useState<"forward" | "back" | null>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seekFeedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
   const controlsVisibleRef = useRef(true);
   const audioInitializedRef = useRef(false);
@@ -131,6 +133,8 @@ export function WivaPlayerControls({ videoRef, live = false, settings }: Props) 
     let pinchStartDistance = 0;
     let pinchStartScale = 1;
     let zoomScale = 1;
+    let lastTapAt = 0;
+    let lastTapSide = 0;
     const sync = () => {
       setPlaying(!video.paused && !video.ended);
       setMuted(video.muted);
@@ -229,9 +233,24 @@ export function WivaPlayerControls({ videoRef, live = false, settings }: Props) 
       zoomScale = Math.max(1, Math.min(2, pinchStartScale * (distance / pinchStartDistance)));
       video.style.transform = zoomScale === 1 ? "" : `scale(${zoomScale})`;
     };
-    const onTouchEnd = () => {
+    const onTouchEnd = (event: TouchEvent) => {
+      const wasPinching = pinchStartDistance > 0;
       pinchStartDistance = 0;
       if (zoomScale < 1.03) resetZoom();
+      if (wasPinching || live || event.changedTouches.length !== 1) return;
+      const rect = shell.getBoundingClientRect();
+      const side = event.changedTouches[0].clientX < rect.left + (rect.width / 2) ? -1 : 1;
+      const now = Date.now();
+      if (now - lastTapAt <= 350 && side === lastTapSide && Number.isFinite(video.duration)) {
+        video.currentTime = Math.max(0, Math.min(video.duration || 0, video.currentTime + (side * 10)));
+        setSeekFeedback(side > 0 ? "forward" : "back");
+        if (seekFeedbackTimer.current) clearTimeout(seekFeedbackTimer.current);
+        seekFeedbackTimer.current = setTimeout(() => setSeekFeedback(null), 700);
+        lastTapAt = 0;
+        return;
+      }
+      lastTapAt = now;
+      lastTapSide = side;
     };
     const onDocumentPointerDown = (event: PointerEvent) => {
       if (!settingsOpen) return;
@@ -265,6 +284,7 @@ export function WivaPlayerControls({ videoRef, live = false, settings }: Props) 
 
     return () => {
       clearHideTimer();
+      if (seekFeedbackTimer.current) clearTimeout(seekFeedbackTimer.current);
       events.forEach((event) => video.removeEventListener(event, sync));
       video.removeEventListener("timeupdate", syncProgress);
       video.removeEventListener("loadedmetadata", resetZoom);
@@ -357,6 +377,11 @@ export function WivaPlayerControls({ videoRef, live = false, settings }: Props) 
         <button type="button" className="wiva-player-center-play" onClick={togglePlayback} aria-label="تشغيل الفيديو">
           <Play size={30} fill="currentColor" />
         </button>
+      ) : null}
+      {seekFeedback ? (
+        <div className={`wiva-player-seek-feedback ${seekFeedback}`} aria-live="polite">
+          {seekFeedback === "forward" ? "+10" : "-10"}
+        </div>
       ) : null}
     </div>
   );

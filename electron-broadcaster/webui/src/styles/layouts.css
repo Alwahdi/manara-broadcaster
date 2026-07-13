@@ -3403,6 +3403,30 @@ button.folder-card {
   outline: 2px solid rgba(56, 207, 255, .72);
   outline-offset: 3px;
 }
+.wiva-player-seek-feedback {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  color: #fff;
+  background: rgba(3, 7, 18, .72);
+  font-weight: 900;
+  direction: ltr;
+  pointer-events: none;
+  animation: player-seek-feedback .7s ease both;
+}
+.wiva-player-seek-feedback.forward { right: 16%; }
+.wiva-player-seek-feedback.back { left: 16%; }
+@keyframes player-seek-feedback {
+  0% { opacity: 0; transform: translateY(-50%) scale(.82); }
+  20%, 75% { opacity: 1; transform: translateY(-50%) scale(1); }
+  100% { opacity: 0; transform: translateY(-50%) scale(1.06); }
+}
 .wiva-player-progress input[type="range"] {
   height: 5px;
   background: linear-gradient(to left, #38cfff var(--progress, 0%), rgba(255, 255, 255, .28) var(--progress, 0%));

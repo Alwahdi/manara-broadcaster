@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { QueryBoundary } from "@/components/States";
 import { PageHeader } from "@/components/common";
@@ -9,6 +9,11 @@ export function AdminSettings() {
   const { query } = useBrand();
   const qc = useQueryClient();
   const [form, setForm] = useState<Record<string, string>>({});
+  const update = useQuery({
+    queryKey: ["app-update"],
+    queryFn: api.updateStatus,
+    refetchInterval: (query) => ["checking", "downloading"].includes(String(query.state.data?.update?.state || "")) ? 1500 : false,
+  });
 
   useEffect(() => {
     if (query.data) {
@@ -40,6 +45,17 @@ export function AdminSettings() {
       autoStartBeforeLogin: form.autoStartBeforeLogin === "true",
     }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["agent-state"] }),
+  });
+  const updateAction = useMutation({
+    mutationFn: (action: "check" | "download" | "install") => {
+      if (action === "download") return api.downloadUpdate();
+      if (action === "install") return api.installUpdate();
+      return api.checkUpdate();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["app-update"] });
+      qc.invalidateQueries({ queryKey: ["agent-state"] });
+    },
   });
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -132,6 +148,37 @@ export function AdminSettings() {
           </div>
         )}
       </QueryBoundary>
+      <div className="card card-pad" style={{ marginTop: 16 }}>
+        <h2 style={{ marginTop: 0 }}>تحديث البرنامج</h2>
+        <p className="hint">تحقق من النسخة الجديدة وحمّلها وثبّتها من هذه الصفحة. ستتم إعادة تشغيل WIVA عند بدء التثبيت.</p>
+        {update.isLoading ? <div className="skeleton" style={{ height: 72 }} /> : (
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <strong>الإصدار الحالي: {update.data?.update?.currentVersion || query.data?.version || "—"}</strong>
+              <span className="hint" style={{ display: "block" }}>
+                {update.data?.update?.state === "ready" ? `الإصدار ${update.data.update.version || "الجديد"} جاهز للتثبيت`
+                  : update.data?.update?.state === "downloading" ? `جارٍ التحميل ${Math.round(Number(update.data.update.percent) || 0)}%`
+                    : update.data?.update?.state === "available" ? `يتوفر الإصدار ${update.data.update.version || "الجديد"}`
+                      : update.data?.update?.state === "checking" ? "جارٍ التحقق من التحديثات…"
+                        : update.data?.update?.state === "none" ? "لديك أحدث إصدار"
+                          : update.data?.update?.state === "error" ? (update.data.update.message || "تعذر التحقق من التحديث")
+                            : "التحديث التلقائي مفعّل للإصدارات المثبتة"}
+              </span>
+            </div>
+            <div className="row">
+              <button className="btn" disabled={updateAction.isPending} onClick={() => updateAction.mutate("check")}>التحقق الآن</button>
+              {update.data?.update?.state === "available" ? (
+                <button className="btn btn-primary" disabled={updateAction.isPending} onClick={() => updateAction.mutate("download")}>تحميل التحديث</button>
+              ) : null}
+              {update.data?.update?.state === "ready" ? (
+                <button className="btn btn-primary" disabled={updateAction.isPending} onClick={() => updateAction.mutate("install")}>تثبيت وإعادة التشغيل</button>
+              ) : null}
+            </div>
+          </div>
+        )}
+        {updateAction.data && !updateAction.data.ok ? <div className="notice notice-error" style={{ marginTop: 12 }}>{updateAction.data.error || "تعذر تنفيذ التحديث."}</div> : null}
+        {updateAction.isError ? <div className="notice notice-error" style={{ marginTop: 12 }}>{(updateAction.error as Error).message}</div> : null}
+      </div>
     </div>
   );
 }

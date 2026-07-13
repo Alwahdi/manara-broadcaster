@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { AppLink, useAppPath } from "@/components/AppLink";
 import { useBrand } from "@/hooks/useBrand";
-import { LiveIndicator } from "@/components/LiveIndicator";
 import { OfflineBanner } from "@/components/OfflineBanner";
 
 const NAV = [
@@ -72,7 +71,6 @@ export function ViewerLayout({ children }: { children: ReactNode }) {
           <AppLink href={portAwareHref("/search", state)} className="top-search-link">
             ابحث في القنوات والاستراحة
           </AppLink>
-          <LiveIndicator />
         </div>
       </header>
       <main id="main" className="container page grow">

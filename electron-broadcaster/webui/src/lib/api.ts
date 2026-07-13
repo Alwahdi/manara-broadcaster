@@ -65,6 +65,7 @@ export const http = {
 /* ---------------- Types ---------------- */
 
 export interface AgentState {
+  version?: string;
   setupCompleted?: boolean;
   brandName?: string;
   brandTagline?: string;
@@ -85,7 +86,19 @@ export interface AgentState {
   };
   settings?: Record<string, unknown>;
   subscription?: PlatformStatus;
+  update?: UpdateStatus;
   [k: string]: unknown;
+}
+
+export interface UpdateStatus {
+  state?: "idle" | "checking" | "available" | "none" | "downloading" | "ready" | "installing" | "error" | string;
+  version?: string;
+  currentVersion?: string;
+  percent?: number;
+  message?: string;
+  error?: string;
+  supported?: boolean;
+  automatic?: boolean;
 }
 
 export interface PlatformInstance {
@@ -420,6 +433,10 @@ export const api = {
   // Reports & diagnostics
   reports: () => http.get<Record<string, unknown>>("/api/admin/reports"),
   diagnostics: () => http.get<Diagnostics>("/api/admin/diagnostics"),
+  updateStatus: () => http.get<{ ok: boolean; update: UpdateStatus }>("/api/admin/update"),
+  checkUpdate: () => http.post<{ ok: boolean; error?: string; state?: string; version?: string }>("/api/admin/update/check"),
+  downloadUpdate: () => http.post<{ ok: boolean; error?: string; state?: string; version?: string }>("/api/admin/update/download"),
+  installUpdate: () => http.post<{ ok: boolean; error?: string; state?: string; version?: string }>("/api/admin/update/install"),
 
   // Settings (persisted through the setup pipeline)
   saveSettings: (body: Record<string, unknown>) =>

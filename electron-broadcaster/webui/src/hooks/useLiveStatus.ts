@@ -9,7 +9,7 @@ export interface LiveEvent {
 }
 
 interface UseLiveOptions {
-  /** SSE endpoint. Falls back to WebSocket if EventSource fails. */
+  /** SSE endpoint. WebSocket is used only when an explicit wsPath is supplied. */
   path?: string;
   wsPath?: string;
   enabled?: boolean;
@@ -18,8 +18,9 @@ interface UseLiveOptions {
 
 /**
  * Subscribes to the Agent's live event stream.
- * Prefers EventSource (SSE) and transparently falls back to WebSocket,
- * with automatic reconnection — designed for always-on LAN dashboards / TVs.
+ * Uses EventSource (SSE), whose native reconnect behavior is ideal for an
+ * always-on LAN dashboard. A WebSocket transport is opt-in because the Agent
+ * does not expose a WebSocket endpoint for these events.
  */
 export function useLiveStatus(options: UseLiveOptions = {}) {
   const { path = "/api/live", wsPath, enabled = true, onEvent } = options;
@@ -39,20 +40,19 @@ export function useLiveStatus(options: UseLiveOptions = {}) {
     let es: EventSource | null = null;
     let ws: WebSocket | null = null;
     let retry: ReturnType<typeof setTimeout> | null = null;
+    let retryAttempt = 0;
 
     const wsUrl = () => {
       const proto = location.protocol === "https:" ? "wss:" : "ws:";
-      const derived = wsPath
-        || (path.startsWith("/api/live")
-          ? path.replace(/^\/api\/live/, "/api/live/ws")
-          : `${path.replace(/\/$/, "")}/ws`);
-      return `${proto}//${location.host}${derived}`;
+      return `${proto}//${location.host}${wsPath}`;
     };
 
     const scheduleReconnect = () => {
-      if (closed) return;
+      if (closed || retry) return;
       setStatus("offline");
-      retry = setTimeout(connectWs, 3000);
+      const delay = Math.min(30_000, 1_000 * (2 ** Math.min(retryAttempt, 5)));
+      retryAttempt += 1;
+      retry = setTimeout(wsPath ? connectWs : connectSse, delay);
     };
 
     function handleMessage(raw: string) {
@@ -67,6 +67,7 @@ export function useLiveStatus(options: UseLiveOptions = {}) {
 
     function connectWs() {
       if (closed) return;
+      retry = null;
       try {
         ws = new WebSocket(wsUrl());
       } catch {
@@ -74,27 +75,38 @@ export function useLiveStatus(options: UseLiveOptions = {}) {
         return;
       }
       setStatus("connecting");
-      ws.onopen = () => setStatus("online");
+      ws.onopen = () => {
+        retryAttempt = 0;
+        setStatus("online");
+      };
       ws.onmessage = (ev) => handleMessage(String(ev.data));
       ws.onerror = () => ws?.close();
       ws.onclose = () => scheduleReconnect();
     }
 
     function connectSse() {
-      if (typeof EventSource === "undefined") return connectWs();
+      retry = null;
+      if (typeof EventSource === "undefined") {
+        if (wsPath) connectWs();
+        else setStatus("offline");
+        return;
+      }
       setStatus("connecting");
       try {
         es = new EventSource(path, { withCredentials: true });
       } catch {
-        return connectWs();
+        scheduleReconnect();
+        return;
       }
-      es.onopen = () => setStatus("online");
+      es.onopen = () => {
+        retryAttempt = 0;
+        setStatus("online");
+      };
       es.onmessage = (ev) => handleMessage(String(ev.data));
       es.onerror = () => {
         es?.close();
         es = null;
-        // SSE failed (or endpoint missing) — fall back to WebSocket.
-        connectWs();
+        scheduleReconnect();
       };
     }
 

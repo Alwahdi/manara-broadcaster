@@ -28,6 +28,24 @@ function responseCookies(response, names = []) {
   }).filter(Boolean).join('; ');
 }
 
+function openEventStream(url) {
+  return new Promise((resolve, reject) => {
+    const req = http.get(url, (res) => {
+      res.once('data', (chunk) => {
+        resolve({ status: res.statusCode, contentType: res.headers['content-type'] || '', chunk: chunk.toString('utf8') });
+        req.destroy();
+      });
+    });
+    req.once('error', (error) => {
+      if (error.code !== 'ECONNRESET') reject(error);
+    });
+    req.setTimeout(3000, () => {
+      req.destroy();
+      reject(new Error('live event stream timed out'));
+    });
+  });
+}
+
 async function main() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wiva-smoke-'));
   db.init(path.join(dir, 'library.db'), { broadcast: [], iptv: [] });
@@ -77,6 +95,7 @@ async function main() {
   };
   let platformState = { state: 'unregistered', features: {}, activationId: '' };
   let iptvPolicy = { iptvGlobalLimitBytes: 0, cloudIptvRefreshMinutes: 3 };
+  let updateState = { state: 'none', currentVersion: 'test', supported: true };
   let cloudIptvRows = [
     { id: 'cloud-smoke', name: 'Cloud Smoke IPTV HD', url: `${cloudUpstreamBase}/cloud/index.m3u8`, category: 'سحابي', enabled: false, source: 'cloud' },
   ];
@@ -85,6 +104,13 @@ async function main() {
     getAdminAuth: () => ({ username: 'admin' }),
     getAdminPath: () => 'admin',
     getSetupState: () => setupState,
+    getUpdateStatus: () => updateState,
+    checkForUpdate: async () => ({ ok: true, ...updateState }),
+    downloadUpdate: async () => {
+      updateState = { ...updateState, state: 'ready', version: 'test-next' };
+      return { ok: true, ...updateState };
+    },
+    installUpdate: async () => ({ ok: true, state: 'installing', version: updateState.version }),
     checkPort: (port) => ({ ok: true, available: true, port: Number(port), message: 'available' }),
     applySetup: async (patch) => {
       const livePort = Number(patch.port || patch.livePort || setupState.settings.port || 8787);
@@ -311,6 +337,10 @@ async function main() {
     assert.equal(res.status, 200, 'signaling server forwards the bundled HLS player asset');
     assert.match(res.headers.get('content-type') || '', /javascript/, 'HLS player asset is served as JavaScript');
 
+    const liveEvents = await openEventStream(`${signalingBase}/api/live`);
+    assert.equal(liveEvents.status, 200, 'unified signaling port forwards the live SSE endpoint');
+    assert.match(liveEvents.contentType, /text\/event-stream/, 'live status uses an SSE content type');
+
     res = await request(base, '/admin/channels/new', { headers: { Cookie: cookie.split(';')[0] } });
     if (spaBuilt) {
       assert.equal(res.status, 200);
@@ -351,6 +381,18 @@ async function main() {
     assert.ok(Array.isArray(state.broadcast));
 
     const auth = { Cookie: cookie.split(';')[0] };
+
+    res = await request(base, '/api/admin/update', { headers: auth });
+    assert.equal(res.status, 200, 'admin can read updater state');
+    assert.equal((await res.json()).update.currentVersion, 'test');
+    res = await request(base, '/api/admin/update/download', { method: 'POST', headers: auth });
+    assert.equal(res.status, 200, 'admin can request an update download');
+    assert.equal((await res.json()).state, 'ready');
+    res = await request(base, '/api/admin/update/install', { method: 'POST', headers: auth });
+    assert.equal(res.status, 200, 'admin can install a downloaded update');
+    assert.equal((await res.json()).state, 'installing');
+    res = await request(base, '/api/admin/update');
+    assert.equal(res.status, 401, 'updater controls remain admin-only');
 
     res = await request(base, '/api/admin/scan', {
       method: 'POST',

@@ -1745,6 +1745,26 @@ function createHandler(options = {}) {
       if (!requireAdmin(req, res, options, adminBase)) return;
       return sendJson(res, 200, diagnosticsPayload(options));
     }
+    if (u.pathname === '/api/admin/update' && req.method === 'GET') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      const update = typeof options.getUpdateStatus === 'function' ? options.getUpdateStatus() : {};
+      return sendJson(res, 200, { ok: true, update });
+    }
+    if (u.pathname === '/api/admin/update/check' && req.method === 'POST') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      if (typeof options.checkForUpdate !== 'function') return sendJson(res, 503, { ok: false, error: 'Update service is unavailable.' });
+      return sendJson(res, 200, await options.checkForUpdate());
+    }
+    if (u.pathname === '/api/admin/update/download' && req.method === 'POST') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      if (typeof options.downloadUpdate !== 'function') return sendJson(res, 503, { ok: false, error: 'Update service is unavailable.' });
+      return sendJson(res, 200, await options.downloadUpdate());
+    }
+    if (u.pathname === '/api/admin/update/install' && req.method === 'POST') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      if (typeof options.installUpdate !== 'function') return sendJson(res, 503, { ok: false, error: 'Update service is unavailable.' });
+      return sendJson(res, 200, await options.installUpdate());
+    }
     let m = /^\/media-art\/(\d+)\/poster$/.exec(u.pathname);
     if (m) {
       if (!featureAllowed(options, 'media')) return denyFeature(req, res, options, 'media');

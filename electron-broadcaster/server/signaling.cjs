@@ -102,7 +102,7 @@ function startSignalingServer({
 
   const server = http.createServer((req, res) => {
     const url = req.url || '/';
-    if (mediaHandler && /^(\/$|\/index\.html(?:\?|$)|\/_next\/|\/live(?:\/|\?|$)|\/watch(?:\/|\?|$)|\/(?:account|favorites|search)(?:\/|\?|$)|\/iptv-player(?:\/|\?|$)|\/favicon\.ico|\/wiva-logo\.png|\/hls\.min\.js(?:\?|$)|\/library-assets\/|\/folder-art\/|\/iptv\/|\/setup(?:\/|\?|$)|\/api\/setup\/|\/api\/platform\/|\/agent(?:\/|\?|$)|\/api\/agent\/|\/admin(?:\/|\?|$)|\/api\/admin\/|\/library(?:\?|\/|$)|\/api\/library(?:\?|\/|$)|\/player\/|\/api\/media\/|\/api\/viewer\/|\/media\/|\/sub\/)/.test(url)) {
+    if (mediaHandler && /^(\/$|\/index\.html(?:\?|$)|\/_next\/|\/live(?:\/|\?|$)|\/watch(?:\/|\?|$)|\/(?:account|favorites|search)(?:\/|\?|$)|\/iptv-player(?:\/|\?|$)|\/favicon\.ico|\/wiva-logo\.png|\/hls\.min\.js(?:\?|$)|\/library-assets\/|\/folder-art\/|\/iptv\/|\/setup(?:\/|\?|$)|\/api\/setup\/|\/api\/platform\/|\/api\/live(?:\?|$)|\/agent(?:\/|\?|$)|\/api\/agent\/|\/admin(?:\/|\?|$)|\/api\/admin\/|\/library(?:\?|\/|$)|\/api\/library(?:\?|\/|$)|\/player\/|\/api\/media\/|\/api\/viewer\/|\/media\/|\/sub\/)/.test(url)) {
       return mediaHandler(req, res);
     }
     if (url === '/' || url === '/index.html') {

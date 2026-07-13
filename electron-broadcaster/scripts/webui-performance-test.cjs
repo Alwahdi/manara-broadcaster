@@ -8,6 +8,9 @@ const cloudIptv = fs.readFileSync(path.join(root, 'library/cloud-iptv.cjs'), 'ut
 const scanner = fs.readFileSync(path.join(root, 'library/scanner.cjs'), 'utf8');
 const iptv = fs.readFileSync(path.join(root, 'library/iptv.cjs'), 'utf8');
 const tmdb = fs.readFileSync(path.join(root, 'library/tmdb.cjs'), 'utf8');
+const liveStatus = fs.readFileSync(path.join(root, 'webui/src/hooks/useLiveStatus.ts'), 'utf8');
+const viewerLayout = fs.readFileSync(path.join(root, 'webui/src/components/ViewerLayout.tsx'), 'utf8');
+const signaling = fs.readFileSync(path.join(root, 'server/signaling.cjs'), 'utf8');
 
 assert.match(app, /import \{ lazy, Suspense,/);
 assert.match(app, /const ViewerHome = lazy\(/);
@@ -32,5 +35,10 @@ assert.match(iptv, /effectiveTtlMs/);
 
 assert.match(tmdb, /AbortSignal\.timeout\(8000\)/);
 assert.match(tmdb, /const CACHE = new Map\(\)/);
+
+assert.doesNotMatch(liveStatus, /path\.replace\([\s\S]*?\/api\/live\/ws/);
+assert.match(liveStatus, /wsPath \? connectWs : connectSse/);
+assert.doesNotMatch(viewerLayout, /<LiveIndicator/);
+assert.match(signaling, /\/api\\\/live/);
 
 console.log('WIVA web UI performance safeguards passed');
