@@ -8,6 +8,7 @@ const { execFileSync } = require('node:child_process');
 const db = require('../library/db.cjs');
 const scanner = require('../library/scanner.cjs');
 const mediaServer = require('../library/media-server.cjs');
+const { startSignalingServer } = require('../server/signaling.cjs');
 
 async function main() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wiva-folder-art-'));
@@ -57,6 +58,7 @@ async function main() {
 
   const server = http.createServer(mediaServer.createHandler({
     getPlatformStatus: () => ({ state: 'active', features: { media: true } }),
+    getLibraryConfig: () => ({ thumbnailDir }),
   }));
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -66,7 +68,7 @@ async function main() {
     const payload = await response.json();
     const byName = new Map(payload.entries.map((entry) => [entry.name, entry]));
     assert.match(byName.get('Local Cover Movie').cover, /^\/folder-art\//);
-    assert.equal(byName.get('TMDB Movie').cover, 'https://image.tmdb.org/t/p/w500/example.jpg');
+    assert.equal(byName.get('TMDB Movie').cover, '/tmdb-art/w500/example.jpg');
     assert.equal(byName.get('Generated Thumbnail Movie').cover, '/media-thumb/0123456789012345678901234567890123456789.jpg');
     assert.match(byName.get('Extracted Frame Movie').cover, /^\/media-thumb\/[a-f0-9]{40}\.jpg$/);
     assert.ok(fs.readdirSync(thumbnailDir).some((name) => /^[a-f0-9]{40}\.jpg$/.test(name)));
@@ -74,6 +76,33 @@ async function main() {
     const coverResponse = await fetch(base + byName.get('Local Cover Movie').cover);
     assert.equal(coverResponse.status, 200);
     assert.equal(Buffer.from(await coverResponse.arrayBuffer()).toString(), 'folder-cover');
+    const localItem = db.listMedia({ limit: 100 }).find((item) => item.title === 'movie' && item.relative_path.includes('Local Cover Movie'));
+    assert.ok(localItem, 'local artwork media item was indexed');
+    const mediaArtworkResponse = await fetch(`${base}/media-art/${localItem.id}/poster`);
+    assert.equal(mediaArtworkResponse.status, 200, 'media artwork endpoint serves sidecar covers');
+    const generatedCoverResponse = await fetch(base + byName.get('Extracted Frame Movie').cover);
+    assert.equal(generatedCoverResponse.status, 200, 'generated video thumbnail is served to viewers');
+    assert.match(generatedCoverResponse.headers.get('content-type') || '', /image\/jpeg/);
+    const forwarded = [];
+    const unified = startSignalingServer({
+      port: 0,
+      mediaHandler: (req, res) => {
+        forwarded.push(req.url);
+        res.writeHead(204);
+        res.end();
+      },
+    });
+    while (!unified.address()) await new Promise((resolve) => setTimeout(resolve, 10));
+    const unifiedBase = `http://127.0.0.1:${unified.port}`;
+    try {
+      for (const route of ['/media-art/1/poster', '/media-thumb/0123456789012345678901234567890123456789.jpg', '/tmdb-art/w500/example.jpg']) {
+        const forwardedResponse = await fetch(unifiedBase + route);
+        assert.equal(forwardedResponse.status, 204, `unified viewer port forwards ${route}`);
+      }
+      assert.equal(forwarded.length, 3);
+    } finally {
+      await unified.close();
+    }
     console.log('WIVA folder artwork cascade tests passed');
   } finally {
     await new Promise((resolve) => server.close(resolve));

@@ -1,16 +1,11 @@
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowRight, Film, FolderOpen, Search } from "lucide-react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppLink } from "@/components/AppLink";
 import { api, type LibraryBrowseEntry } from "@/lib/api";
 import { QueryBoundary, EmptyState, ViewerSkeleton } from "@/components/States";
-import { CategoryChips, ContentSection, FavoriteButton } from "@/components/common";
+import { ContentSection, FavoriteButton } from "@/components/common";
 import { useLiveStatus } from "@/hooks/useLiveStatus";
-
-const LIBRARY_FILTERS = [
-  { value: "all", label: "الكل" },
-  { value: "folder", label: "مجلدات" },
-  { value: "media", label: "ملفات" },
-];
 
 /** Folder-first subscriber library view. */
 export function LibraryFolders() {
@@ -18,7 +13,6 @@ export function LibraryFolders() {
   const [sourceId, setSourceId] = useState<string>(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("sourceId") || "");
   const [path, setPath] = useState<string>(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("path") || "");
   const [term, setTerm] = useState("");
-  const [filter, setFilter] = useState("all");
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadNotice, setUploadNotice] = useState("");
@@ -43,11 +37,14 @@ export function LibraryFolders() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const next = new URL(window.location.href);
-    if (sourceId) next.searchParams.set("sourceId", sourceId); else next.searchParams.delete("sourceId");
-    if (path) next.searchParams.set("path", path); else next.searchParams.delete("path");
-    window.history.replaceState({}, "", `${next.pathname}${next.search}${next.hash}`);
-  }, [sourceId, path]);
+    const syncFromHistory = () => {
+      const query = new URLSearchParams(window.location.search);
+      setSourceId(query.get("sourceId") || "");
+      setPath(query.get("path") || "");
+    };
+    window.addEventListener("popstate", syncFromHistory);
+    return () => window.removeEventListener("popstate", syncFromHistory);
+  }, []);
 
   useLiveStatus({
     onEvent: (event) => {
@@ -68,18 +65,19 @@ export function LibraryFolders() {
     });
   };
 
-  const openRoot = () => {
-    setSourceId("");
-    setPath("");
+  const navigateTo = (nextSourceId: string, nextPath: string) => {
+    setSourceId(nextSourceId);
+    setPath(nextPath);
+    const next = new URL(window.location.href);
+    if (nextSourceId) next.searchParams.set("sourceId", nextSourceId); else next.searchParams.delete("sourceId");
+    if (nextPath) next.searchParams.set("path", nextPath); else next.searchParams.delete("path");
+    window.history.pushState({}, "", `${next.pathname}${next.search}${next.hash}`);
   };
-  const openSource = (id: string | number) => {
-    setSourceId(String(id));
-    setPath("");
-  };
+  const openRoot = () => navigateTo("", "");
+  const openSource = (id: string | number) => navigateTo(String(id), "");
   const openFolder = (entry: LibraryBrowseEntry) => {
     if (!entry.sourceId) return;
-    setSourceId(String(entry.sourceId));
-    setPath(entry.path || "");
+    navigateTo(String(entry.sourceId), entry.path || "");
   };
 
   const uploadFiles = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -127,23 +125,32 @@ export function LibraryFolders() {
           const q = term.trim().toLowerCase();
           const entries = data.entries.filter((entry) => {
             const matchesTerm = !q || `${entry.name} ${entry.path || ""} ${entry.media?.title || ""}`.toLowerCase().includes(q);
-            const matchesFilter = filter === "all" || entry.type === filter;
-            return matchesTerm && matchesFilter;
+            return matchesTerm;
           });
-          const folderCount = data.entries.filter((entry) => entry.type === "folder").length;
-          const mediaCount = data.entries.filter((entry) => entry.type === "media").length;
           const singleSourceMode = (data.sources?.length || 0) === 1;
+          const parentPath = data.breadcrumbs.length > 1 ? data.breadcrumbs.at(-2)?.path || "" : "";
+          const canGoBack = Boolean(sourceId || path);
           return (
             <section className="folder-browser" aria-label="تصفح الاستراحة">
               {browse.isFetching && !browse.isLoading ? <div className="folder-refresh-line" aria-hidden /> : null}
               <div className="viewer-filter-bar">
                 <label className="search-shell">
-                  <span>بحث</span>
+                  <Search size={19} aria-hidden />
                   <input value={term} onChange={(event) => setTerm(event.target.value)} placeholder="ابحث داخل هذا المجلد" />
                 </label>
-                <CategoryChips items={LIBRARY_FILTERS} value={filter} onChange={setFilter} />
               </div>
               <nav className="folder-breadcrumbs" aria-label="تنقل الاستراحة">
+                {canGoBack ? (
+                  <button
+                    type="button"
+                    className="folder-back-button"
+                    onClick={() => path ? navigateTo(sourceId, parentPath) : openRoot()}
+                    aria-label="العودة إلى المجلد السابق"
+                  >
+                    <ArrowRight size={18} aria-hidden />
+                    <span>رجوع</span>
+                  </button>
+                ) : null}
                 <button type="button" onClick={openRoot}>الاستراحة</button>
                 {data.source && !singleSourceMode ? (
                   <>
@@ -156,15 +163,10 @@ export function LibraryFolders() {
                 {data.breadcrumbs.map((crumb) => (
                   <span key={crumb.path} className="folder-crumb">
                     <span>/</span>
-                    <button type="button" onClick={() => setPath(crumb.path)}>{crumb.name}</button>
+                    <button type="button" onClick={() => navigateTo(sourceId, crumb.path)}>{crumb.name}</button>
                   </span>
                 ))}
               </nav>
-              <div className="library-stats">
-                <div><strong>{folderCount}</strong><span>أقسام</span></div>
-                <div><strong>{mediaCount}</strong><span>ملفات</span></div>
-                <div><strong>{entries.length}</strong><span>نتائج</span></div>
-              </div>
               {viewer.data?.permissions?.manageLibrary && data.source ? (
                 <aside className="library-manager-bar" aria-label="إدارة المجلد الحالي">
                   <div>
@@ -221,7 +223,7 @@ function FolderCard({ entry, onOpen, onPrefetch }: { entry: LibraryBrowseEntry; 
   return (
     <button type="button" className="folder-card folder-card-cinematic" onClick={onOpen} onPointerEnter={onPrefetch} onFocus={onPrefetch}>
       <div className="folder-card-art">
-        {entry.cover ? <img src={entry.cover} alt="" loading="lazy" /> : <span aria-hidden>ملف</span>}
+        <ArtworkImage src={entry.cover} kind="folder" />
         {!entry.online ? <span className="offline-ribbon">غير متاح حاليًا</span> : null}
       </div>
       <div className="folder-card-body">
@@ -240,7 +242,7 @@ function MediaFileCard({ entry }: { entry: LibraryBrowseEntry }) {
     return (
       <div className="folder-card folder-file-card" aria-disabled="true">
         <div className="folder-card-art">
-          {entry.cover ? <img src={entry.cover} alt="" loading="lazy" /> : <span aria-hidden>فيديو</span>}
+          <ArtworkImage src={entry.cover} kind="media" />
           <span className="offline-ribbon">غير جاهز</span>
         </div>
         <div className="folder-card-body">
@@ -258,7 +260,7 @@ function MediaFileCard({ entry }: { entry: LibraryBrowseEntry }) {
         className="folder-card folder-file-card"
       >
         <div className="folder-card-art">
-          {entry.cover ? <img src={entry.cover} alt="" loading="lazy" /> : <span aria-hidden>فيديو</span>}
+          <ArtworkImage src={entry.cover} kind="media" />
           {!entry.online ? <span className="offline-ribbon">غير متاح حاليًا</span> : null}
         </div>
         <div className="folder-card-body">
@@ -268,5 +270,18 @@ function MediaFileCard({ entry }: { entry: LibraryBrowseEntry }) {
       </AppLink>
       <FavoriteButton mediaId={mediaId} />
     </div>
+  );
+}
+
+function ArtworkImage({ src, kind }: { src?: string; kind: "folder" | "media" }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [src]);
+  if (src && !failed) {
+    return <img src={src} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />;
+  }
+  return (
+    <span className="folder-art-placeholder" aria-hidden>
+      {kind === "folder" ? <FolderOpen size={34} /> : <Film size={34} />}
+    </span>
   );
 }

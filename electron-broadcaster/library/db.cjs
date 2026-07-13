@@ -167,10 +167,15 @@ function serializePathList(value) {
 }
 function publicLibraryPath(row = {}) {
   const excludePaths = normalizePathList(row.exclude_paths ?? row.excludePaths ?? []);
+  const hideEmptyFolders = row.hide_empty_folders === undefined && row.hideEmptyFolders === undefined
+    ? true
+    : Boolean(Number(row.hide_empty_folders ?? row.hideEmptyFolders));
   return {
     ...row,
     exclude_paths: excludePaths,
     excludePaths,
+    hide_empty_folders: hideEmptyFolders ? 1 : 0,
+    hideEmptyFolders,
   };
 }
 function loadMediaFallback(dbPath) {
@@ -185,6 +190,9 @@ function loadMediaFallback(dbPath) {
     _mediaFallback.library_paths = _mediaFallback.library_paths.map((row) => ({
       ...row,
       exclude_paths: normalizePathList(row.exclude_paths ?? row.excludePaths ?? []),
+      hide_empty_folders: row.hide_empty_folders === undefined && row.hideEmptyFolders === undefined
+        ? 1
+        : (Boolean(Number(row.hide_empty_folders ?? row.hideEmptyFolders)) ? 1 : 0),
     }));
   } catch (e) { console.error('[WIVA] media fallback read failed:', e.message); }
 }
@@ -222,6 +230,7 @@ function init(dbPath, seed = {}) {
       last_scan_at INTEGER,
       last_error TEXT,
       exclude_paths TEXT NOT NULL DEFAULT '[]',
+      hide_empty_folders INTEGER NOT NULL DEFAULT 1,
       file_count INTEGER NOT NULL DEFAULT 0,
       folder_count INTEGER NOT NULL DEFAULT 0
     );
@@ -280,6 +289,7 @@ function init(dbPath, seed = {}) {
       'ALTER TABLE library_paths ADD COLUMN last_scan_at INTEGER',
       'ALTER TABLE library_paths ADD COLUMN last_error TEXT',
       'ALTER TABLE library_paths ADD COLUMN exclude_paths TEXT NOT NULL DEFAULT \'[]\'',
+      'ALTER TABLE library_paths ADD COLUMN hide_empty_folders INTEGER NOT NULL DEFAULT 1',
       'ALTER TABLE library_paths ADD COLUMN file_count INTEGER NOT NULL DEFAULT 0',
       'ALTER TABLE library_paths ADD COLUMN folder_count INTEGER NOT NULL DEFAULT 0',
     ]) {
@@ -307,6 +317,9 @@ function listPaths() {
 }
 function addPath(p, kind = 'movies', locked = 0, options = {}) {
   const excludePaths = normalizePathList(options.excludePaths ?? options.exclude_paths ?? []);
+  const hideEmptyFolders = options.hideEmptyFolders === undefined && options.hide_empty_folders === undefined
+    ? true
+    : Boolean(options.hideEmptyFolders ?? options.hide_empty_folders);
   if (!_db) {
     if (!_mediaFallback.library_paths.find((r) => r.path === p)) {
       const id = (_mediaFallback.library_paths.reduce((m, r) => Math.max(m, r.id || 0), 0)) + 1;
@@ -321,6 +334,7 @@ function addPath(p, kind = 'movies', locked = 0, options = {}) {
         last_scan_at: null,
         last_error: '',
         exclude_paths: excludePaths,
+        hide_empty_folders: hideEmptyFolders ? 1 : 0,
         file_count: 0,
         folder_count: 0,
       });
@@ -330,8 +344,8 @@ function addPath(p, kind = 'movies', locked = 0, options = {}) {
     return;
   }
   const label = path.basename(String(p).replace(/[\\/]+$/, '')) || p;
-  db().prepare('INSERT OR IGNORE INTO library_paths (path, kind, locked, added_at, label, status, exclude_paths) VALUES (?,?,?,?,?,?,?)')
-    .run(p, kind, locked ? 1 : 0, Date.now(), label, 'connected', serializePathList(excludePaths));
+  db().prepare('INSERT OR IGNORE INTO library_paths (path, kind, locked, added_at, label, status, exclude_paths, hide_empty_folders) VALUES (?,?,?,?,?,?,?,?)')
+    .run(p, kind, locked ? 1 : 0, Date.now(), label, 'connected', serializePathList(excludePaths), hideEmptyFolders ? 1 : 0);
   bumpMediaRevision();
 }
 function removePath(id) {
@@ -383,17 +397,20 @@ function updatePath(id, patch = {}) {
     kind: patch.kind ? String(patch.kind).trim().slice(0, 40) : current.kind || 'movies',
     label: patch.label !== undefined ? String(patch.label || '').trim().slice(0, 120) : current.label || null,
     exclude_paths: normalizePathList(patch.excludePaths ?? patch.exclude_paths ?? current.exclude_paths),
+    hide_empty_folders: patch.hideEmptyFolders === undefined && patch.hide_empty_folders === undefined
+      ? (current.hideEmptyFolders !== false ? 1 : 0)
+      : (Boolean(patch.hideEmptyFolders ?? patch.hide_empty_folders) ? 1 : 0),
   };
   if (!_db) {
     _mediaFallback.library_paths = _mediaFallback.library_paths.map((row) => String(row.id) === String(id)
-      ? { ...row, kind: clean.kind, label: clean.label || row.label, exclude_paths: clean.exclude_paths }
+      ? { ...row, kind: clean.kind, label: clean.label || row.label, exclude_paths: clean.exclude_paths, hide_empty_folders: clean.hide_empty_folders }
       : row);
     saveMediaFallback();
     bumpMediaRevision();
     return listPaths().find((row) => String(row.id) === String(id)) || null;
   }
-  db().prepare('UPDATE library_paths SET kind=?, label=COALESCE(?, label), exclude_paths=? WHERE id=?')
-    .run(clean.kind, clean.label || null, serializePathList(clean.exclude_paths), id);
+  db().prepare('UPDATE library_paths SET kind=?, label=COALESCE(?, label), exclude_paths=?, hide_empty_folders=? WHERE id=?')
+    .run(clean.kind, clean.label || null, serializePathList(clean.exclude_paths), clean.hide_empty_folders, id);
   bumpMediaRevision();
   return listPaths().find((row) => String(row.id) === String(id)) || null;
 }

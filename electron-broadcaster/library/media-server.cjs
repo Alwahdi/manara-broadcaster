@@ -332,13 +332,55 @@ function folderArtworkScore(filePath, folderBase = '') {
 }
 
 function mediaPosterUrl(item) {
-  if (item?.poster_url) return item.poster_url;
+  if (item?.poster_url) return localizeTmdbArtwork(item.poster_url);
   return findArtworkFile(item) ? `/media-art/${item.id}/poster` : '';
 }
 
 function mediaBackdropUrl(item) {
-  if (item?.backdrop_url) return item.backdrop_url;
+  if (item?.backdrop_url) return localizeTmdbArtwork(item.backdrop_url);
   return findArtworkFile(item) ? `/media-art/${item.id}/poster` : '';
+}
+
+function localizeTmdbArtwork(value) {
+  const source = String(value || '');
+  const match = /^https:\/\/image\.tmdb\.org\/t\/p\/(w\d+|original)\/([A-Za-z0-9._-]+)$/i.exec(source);
+  return match ? `/tmdb-art/${match[1]}/${match[2]}` : source;
+}
+
+const tmdbArtworkInflight = new Map();
+
+async function fetchTmdbArtwork(size, fileName, cacheRoot) {
+  const key = `${size}/${fileName}`;
+  const cacheFile = cacheRoot ? path.join(cacheRoot, 'tmdb', size, fileName) : '';
+  try {
+    if (cacheFile && fs.existsSync(cacheFile) && fs.statSync(cacheFile).size > 512) return fs.readFileSync(cacheFile);
+  } catch {}
+  if (tmdbArtworkInflight.has(key)) return tmdbArtworkInflight.get(key);
+  const pending = (async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    try {
+      const response = await fetch(`https://image.tmdb.org/t/p/${size}/${fileName}`, { signal: controller.signal });
+      if (!response.ok) throw new Error(`tmdb_artwork_${response.status}`);
+      const body = Buffer.from(await response.arrayBuffer());
+      if (body.length < 512) throw new Error('tmdb_artwork_empty');
+      if (cacheFile) {
+        fs.mkdirSync(path.dirname(cacheFile), { recursive: true });
+        const temp = `${cacheFile}.${process.pid}.${Date.now()}.tmp`;
+        fs.writeFileSync(temp, body);
+        fs.renameSync(temp, cacheFile);
+      }
+      return body;
+    } finally {
+      clearTimeout(timer);
+    }
+  })();
+  tmdbArtworkInflight.set(key, pending);
+  try {
+    return await pending;
+  } finally {
+    tmdbArtworkInflight.delete(key);
+  }
 }
 
 function mediaOnline(item) {
@@ -497,6 +539,8 @@ function librarySourcesPayload() {
       message: info.message,
       excludePaths,
       exclude_paths: excludePaths,
+      hideEmptyFolders: row.hideEmptyFolders !== false,
+      hide_empty_folders: row.hideEmptyFolders !== false ? 1 : 0,
     };
   });
 }
@@ -748,6 +792,7 @@ function libraryBrowseSources() {
       path: source.path,
       online,
       excludePaths: Array.isArray(source.excludePaths) ? source.excludePaths : Array.isArray(source.exclude_paths) ? source.exclude_paths : [],
+      hideEmptyFolders: source.hideEmptyFolders !== false,
     };
   });
 }
@@ -777,6 +822,7 @@ function buildLibraryBrowseIndex() {
     source.path,
     source.online,
     (source.excludePaths || []).join('|'),
+    source.hideEmptyFolders !== false ? 'hide-empty' : 'show-empty',
   ].join(':')).join('||');
   const key = `${revision}:${sourceSignature}`;
   if (libraryBrowseIndexCache?.key === key) return libraryBrowseIndexCache.index;
@@ -863,7 +909,7 @@ function entriesForSource(source, currentPath = '', index = buildLibraryBrowseIn
           const fullPath = path.join(target, entry.name);
           if (excluded(fullPath)) continue;
           const rel = normalizeRelativePath(path.relative(root, fullPath));
-          if (!rel || folders.has(rel)) continue;
+          if (!rel || folders.has(rel) || source.hideEmptyFolders !== false) continue;
           folders.set(rel, {
             type: 'folder',
             sourceId,
@@ -1534,6 +1580,7 @@ function createHandler(options = {}) {
         if (!validation.ok) return sendJson(res, 400, { error: 'invalid_path', message: validation.message });
         db.addPath(validation.path, body.kind || 'movies', 0, {
           excludePaths: normalizeExcludePaths(body.excludePaths || body.exclude_paths || [], validation.path),
+          hideEmptyFolders: body.hideEmptyFolders !== false && body.hide_empty_folders !== false,
         });
         const cfg = typeof options.getLibraryConfig === 'function' ? options.getLibraryConfig() : {};
         const result = await scanner.scanAll({ tmdbKey: cfg.tmdbKey || '', tmdbLang: cfg.tmdbLang || 'ar', thumbnailDir: cfg.thumbnailDir || '' });
@@ -1556,6 +1603,9 @@ function createHandler(options = {}) {
           excludePaths: body.excludePaths !== undefined || body.exclude_paths !== undefined
             ? normalizeExcludePaths(body.excludePaths || body.exclude_paths || [], current.path)
             : current.exclude_paths,
+          hideEmptyFolders: body.hideEmptyFolders !== undefined || body.hide_empty_folders !== undefined
+            ? Boolean(body.hideEmptyFolders ?? body.hide_empty_folders)
+            : current.hideEmptyFolders !== false,
         });
         invalidateLibraryBrowseCache();
         webui.broadcast('library', { sourceId: id, updated: true });
@@ -1792,6 +1842,20 @@ function createHandler(options = {}) {
         });
       } catch (e) {
         return sendJson(res, 500, { error: e.message });
+      }
+    }
+    m = /^\/tmdb-art\/(w\d+|original)\/([A-Za-z0-9._-]+)$/.exec(u.pathname);
+    if (m) {
+      if (!featureAllowed(options, 'media')) return denyFeature(req, res, options, 'media');
+      try {
+        const cfg = typeof options.getLibraryConfig === 'function' ? options.getLibraryConfig() : {};
+        const body = await fetchTmdbArtwork(m[1], m[2], String(cfg.thumbnailDir || ''));
+        return send(res, 200, body, {
+          'Content-Type': artworkMime(m[2]),
+          'Cache-Control': 'public, max-age=2592000, immutable',
+        });
+      } catch {
+        return send(res, 404, 'Artwork not available', { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
       }
     }
     m = /^\/folder-art\/(\d+)$/.exec(u.pathname);

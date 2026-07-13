@@ -495,8 +495,18 @@ async function main() {
     res = await request(base, variantFolderEntry.cover);
     assert.equal(res.status, 200, 'folder artwork route serves fallback artwork files');
     assert.match(res.headers.get('content-type') || '', /image\/webp/, 'folder artwork route detects webp fallback artwork MIME');
-    assert.ok(scannedBrowseSource.entries.some((entry) => entry.type === 'folder' && entry.name === 'مجلد ظاهر بدون ملفات'), 'folder browser shows real disk folders even before media is indexed');
+    assert.ok(!scannedBrowseSource.entries.some((entry) => entry.type === 'folder' && entry.name === 'مجلد ظاهر بدون ملفات'), 'folder browser hides empty folders by default');
     assert.ok(!scannedBrowseSource.entries.some((entry) => entry.name === 'قسم مستبعد'), 'folder browser hides excluded source folders');
+
+    res = await request(base, `/api/admin/library/sources/${encodeURIComponent(sourceRow.id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...auth },
+      body: JSON.stringify({ hideEmptyFolders: false }),
+    });
+    assert.equal(res.status, 200, 'admin can enable empty folder visibility');
+    res = await request(base, '/api/library/browse?sourceId=' + encodeURIComponent(sourceRow.id));
+    scannedBrowseSource = await res.json();
+    assert.ok(scannedBrowseSource.entries.some((entry) => entry.type === 'folder' && entry.name === 'مجلد ظاهر بدون ملفات'), 'folder browser shows empty folders when admin enables them');
 
     // Adding a single capture channel through the wizard endpoint.
     res = await request(base, '/api/admin/broadcast', {

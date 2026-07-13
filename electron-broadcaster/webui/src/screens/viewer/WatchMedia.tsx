@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AppLink, useAppPath } from "@/components/AppLink";
+import { useAppPath } from "@/components/AppLink";
 import { api } from "@/lib/api";
 import { QueryBoundary } from "@/components/States";
 import { FavoriteButton, ShareButton } from "@/components/common";
@@ -69,9 +69,13 @@ export function WatchMedia() {
       <QueryBoundary query={media}>
         {(item) => (
           <div>
-            <AppLink href="/library" className="btn btn-ghost btn-sm player-back-link">
-              ← الاستراحة
-            </AppLink>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm player-back-link"
+              onClick={() => window.history.length > 1 ? window.history.back() : window.location.assign("/library")}
+            >
+              العودة إلى المجلد السابق
+            </button>
             <WivaMediaPlayer
               videoRef={videoRef}
               mode="vod"

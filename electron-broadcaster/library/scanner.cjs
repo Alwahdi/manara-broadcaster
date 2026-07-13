@@ -150,6 +150,19 @@ function thumbnailName(file) {
   return crypto.createHash('sha1').update(String(file)).digest('hex') + '.jpg';
 }
 
+function validStoredArtwork(value, thumbnailDir) {
+  const artwork = String(value || '');
+  if (!artwork) return '';
+  const thumb = /^\/media-thumb\/([a-f0-9]{40}\.jpg)$/i.exec(artwork);
+  if (!thumb) return artwork;
+  try {
+    const file = path.join(String(thumbnailDir || ''), thumb[1]);
+    return thumbnailDir && fs.existsSync(file) && fs.statSync(file).size > 512 ? artwork : '';
+  } catch {
+    return '';
+  }
+}
+
 function ffmpegExecutable() {
   if (process.env.FFMPEG_PATH) return process.env.FFMPEG_PATH;
   try {
@@ -197,7 +210,8 @@ async function generateVideoThumbnail(file, thumbnailDir) {
         '-q:v', '5',
         outFile,
       ], { stdio: 'ignore', windowsHide: true });
-    } catch {
+    } catch (error) {
+      console.warn('[WIVA] thumbnail generator could not start:', error.message);
       finish('');
       return;
     }
@@ -213,8 +227,9 @@ async function generateVideoThumbnail(file, thumbnailDir) {
         finish('');
       }
     });
-    child.on('error', () => {
+    child.on('error', (error) => {
       clearTimeout(timer);
+      console.warn('[WIVA] thumbnail generation failed:', path.basename(file), error.message);
       finish('');
     });
   });
@@ -300,13 +315,13 @@ async function performScanAll({ tmdbKey, tmdbLang = 'ar', thumbnailDir = '' } = 
         const existing = existingByPath.get(String(playablePath));
         if (existing) {
           item.tmdb_id = existing.tmdb_id || null;
-          item.poster_url = existing.poster_url || null;
-          item.backdrop_url = existing.backdrop_url || null;
+          item.poster_url = validStoredArtwork(existing.poster_url, thumbnailDir) || null;
+          item.backdrop_url = validStoredArtwork(existing.backdrop_url, thumbnailDir) || null;
           item.overview = existing.overview || null;
           item.rating = existing.rating || null;
           item.duration = existing.duration || null;
         }
-        if (tmdbKey && !item.tmdb_id && !item.poster_url) {
+        if (tmdbKey && !item.poster_url && !item.backdrop_url) {
           for (const candidate of metadataCandidates(item, folder, meta)) {
             try {
               const info = await tmdb.search(tmdbKey, candidate.title, candidate.year, item.kind, tmdbLang);

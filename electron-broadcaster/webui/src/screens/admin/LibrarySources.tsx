@@ -61,6 +61,11 @@ export function AdminLibrarySources() {
       api.removeLibrarySourceExclude(id, excludePath),
     onSuccess: invalidateLibrary,
   });
+  const updateSource = useMutation({
+    mutationFn: ({ id, hideEmptyFolders }: { id: number | string; hideEmptyFolders: boolean }) =>
+      api.updateLibrarySource(id, { hideEmptyFolders }),
+    onSuccess: invalidateLibrary,
+  });
 
   if (relinkFor) {
     return (
@@ -165,6 +170,18 @@ export function AdminLibrarySources() {
                   <span>·</span>
                   <span>آخر فحص: {formatDateTime(s.lastScan)}</span>
                 </div>
+                <label className="library-source-option">
+                  <input
+                    type="checkbox"
+                    checked={s.hideEmptyFolders !== false}
+                    disabled={updateSource.isPending}
+                    onChange={(event) => updateSource.mutate({ id: s.id, hideEmptyFolders: event.target.checked })}
+                  />
+                  <span>
+                    <strong>إخفاء المجلدات الفارغة</strong>
+                    <small>لا تظهر للمشاهد إلا المجلدات التي تحتوي على محتوى قابل للمشاهدة.</small>
+                  </span>
+                </label>
                 {s.online === false ? (
                   <p className="hint" style={{ marginTop: 8 }}>
                     فصل القرص لا يحذف العناصر — تظهر كغير متصلة حتى إعادة التوصيل.

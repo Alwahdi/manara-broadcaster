@@ -211,6 +211,8 @@ export interface LibrarySource {
   lastScan?: string | number | null;
   excludePaths?: string[];
   exclude_paths?: string[];
+  hideEmptyFolders?: boolean;
+  hide_empty_folders?: number;
   [k: string]: unknown;
 }
 
@@ -352,12 +354,12 @@ export const api = {
 
   // Library sources
   librarySources: () => http.get<{ sources: LibrarySource[] }>("/api/admin/library/sources"),
-  addLibrarySource: (body: { path: string; kind?: string; excludePaths?: string[] }) =>
+  addLibrarySource: (body: { path: string; kind?: string; excludePaths?: string[]; hideEmptyFolders?: boolean }) =>
     http.post<{ ok: boolean; sources: LibrarySource[]; inserted?: number; updated?: number }>(
       "/api/admin/library/sources",
       body,
     ),
-  updateLibrarySource: (id: number | string, body: { label?: string; kind?: string; excludePaths?: string[] }) =>
+  updateLibrarySource: (id: number | string, body: { label?: string; kind?: string; excludePaths?: string[]; hideEmptyFolders?: boolean }) =>
     http.put<{ ok: boolean; source: LibrarySource; sources: LibrarySource[] }>(
       `/api/admin/library/sources/${id}`,
       body,
