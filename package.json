@@ -1,7 +1,7 @@
 {
   "name": "wiva-workspace",
   "private": true,
-  "version": "2.6.55",
+  "version": "2.6.56",
   "description": "Workspace entrypoint for the WIVA Agent. The production Electron app lives in electron-broadcaster/.",
   "scripts": {
     "start": "npm --prefix electron-broadcaster start",

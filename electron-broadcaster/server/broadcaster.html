@@ -22,15 +22,18 @@ function readConfig() {
 const config = readConfig();
 const peers = new Map();
 const peerCloseTimers = new Map();
+const peerOfferGenerations = new Map();
 let ws = null;
 let stream = null;
 let captureSourceStream = null;
 let audioContext = null;
 let reconnectTimer = null;
-let audioMuteTimer = null;
 let healthTimer = null;
+let audioMissingSince = 0;
+let audioMutedSince = 0;
 let restarting = false;
-const AUDIO_MUTE_RESTART_MS = 4500;
+const AUDIO_MISSING_RESTART_MS = 20000;
+const AUDIO_STALL_RESTART_MS = 20000;
 const HEALTH_CHECK_MS = 2500;
 
 function positiveNumber(value, fallback, min, max) {
@@ -112,8 +115,8 @@ function trackSummary(track) {
 }
 
 function stopCurrentStream() {
-  if (audioMuteTimer) clearTimeout(audioMuteTimer);
-  audioMuteTimer = null;
+  audioMissingSince = 0;
+  audioMutedSince = 0;
   try { stream?.getTracks?.().forEach((track) => track.stop()); } catch {}
   if (captureSourceStream && captureSourceStream !== stream) {
     try { captureSourceStream.getTracks().forEach((track) => track.stop()); } catch {}
@@ -131,7 +134,9 @@ function needsConfiguredAudio() {
 function audioTracksHealthy(mediaStream) {
   if (!needsConfiguredAudio()) return true;
   const audioTracks = mediaStream?.getAudioTracks?.() || [];
-  return audioTracks.some((track) => track.readyState === 'live' && track.enabled !== false && !track.muted);
+  // HDMI capture drivers can report a transient muted state while their clock
+  // resynchronizes. A live track is still usable and usually recovers itself.
+  return audioTracks.some((track) => track.readyState === 'live' && track.enabled !== false);
 }
 
 function restartCapture(reason) {
@@ -144,24 +149,17 @@ function restartCapture(reason) {
   setTimeout(() => { restarting = false; restartSoon(); }, 200);
 }
 
-function scheduleAudioRestart(reason) {
-  if (!needsConfiguredAudio() || audioMuteTimer || restarting) return;
-  audioMuteTimer = setTimeout(() => {
-    audioMuteTimer = null;
-    restartCapture(reason);
-  }, AUDIO_MUTE_RESTART_MS);
-}
-
-function clearAudioRestart() {
-  if (audioMuteTimer) clearTimeout(audioMuteTimer);
-  audioMuteTimer = null;
-}
-
 function watchTrackHealth(track, label = '') {
   track.onended = () => restartCapture(`${track.kind} track ended ${label}`.trim());
   if (track.kind === 'audio') {
-    track.onmute = () => scheduleAudioRestart(`audio track muted ${label}`.trim());
-    track.onunmute = () => clearAudioRestart();
+    track.onmute = () => {
+      if (!audioMutedSince) audioMutedSince = Date.now();
+      log(`audio track temporarily muted ${label}`.trim());
+    };
+    track.onunmute = () => {
+      audioMutedSince = 0;
+      log(`audio track resumed ${label}`.trim());
+    };
   }
 }
 
@@ -172,11 +170,28 @@ function startHealthWatch() {
     if (audioContext?.state === 'suspended') {
       audioContext.resume().catch(() => {});
     }
-    if (needsConfiguredAudio() && stream && !audioTracksHealthy(stream)) {
-      scheduleAudioRestart('audio output is not healthy');
+    const audioMissing = needsConfiguredAudio()
+      && ((!stream || !audioTracksHealthy(stream))
+        || (!captureSourceStream || !audioTracksHealthy(captureSourceStream)));
+    if (!audioMissing) {
+      audioMissingSince = 0;
+    } else if (!audioMissingSince) {
+      audioMissingSince = Date.now();
+    } else if (Date.now() - audioMissingSince >= AUDIO_MISSING_RESTART_MS) {
+      restartCapture('configured audio track is no longer available');
     }
-    if (needsConfiguredAudio() && captureSourceStream && !audioTracksHealthy(captureSourceStream)) {
-      scheduleAudioRestart('audio source is not healthy');
+    const audioTracks = [
+      ...(captureSourceStream?.getAudioTracks?.() || []),
+      ...(stream?.getAudioTracks?.() || []),
+    ];
+    const audioStillMuted = needsConfiguredAudio()
+      && audioTracks.some((track) => track.readyState === 'live' && track.muted);
+    if (!audioStillMuted) {
+      audioMutedSince = 0;
+    } else if (!audioMutedSince) {
+      audioMutedSince = Date.now();
+    } else if (Date.now() - audioMutedSince >= AUDIO_STALL_RESTART_MS) {
+      restartCapture('configured audio remained muted');
     }
   }, HEALTH_CHECK_MS);
 }
@@ -315,7 +330,7 @@ async function prepareAudio(rawStream) {
     }
     audioContext.onstatechange = () => {
       if (audioContext?.state === 'suspended') {
-        audioContext.resume().catch(() => scheduleAudioRestart('audio engine suspended'));
+        audioContext.resume().catch((error) => log('audio engine resume deferred:', error.message));
       }
     };
     const sourceNode = audioContext.createMediaStreamSource(rawStream);
@@ -380,7 +395,8 @@ async function ensureStream() {
     } catch {}
     watchTrackHealth(track, 'output');
   }
-  clearAudioRestart();
+  audioMissingSince = 0;
+  audioMutedSince = 0;
   startHealthWatch();
   log('capture ready for', config.channelId, stream.getTracks().map(trackSummary).join(', '));
   return stream;
@@ -416,9 +432,10 @@ function closePeer(id) {
   peerCloseTimers.delete(key);
   const pc = peers.get(key);
   if (pc) {
-    try { pc.close(); } catch {}
     peers.delete(key);
+    try { pc.close(); } catch {}
   }
+  peerOfferGenerations.set(key, (peerOfferGenerations.get(key) || 0) + 1);
 }
 
 function clearPeerClose(id) {
@@ -442,26 +459,33 @@ async function offerToViewer(viewerId, requestedQuality = 'auto') {
   const id = String(viewerId || '');
   if (!id || !ws || ws.readyState !== WebSocket.OPEN) return;
   closePeer(id);
+  const generation = (peerOfferGenerations.get(id) || 0) + 1;
+  peerOfferGenerations.set(id, generation);
   const localStream = await ensureStream();
+  if (peerOfferGenerations.get(id) !== generation || !ws || ws.readyState !== WebSocket.OPEN) return;
   const pc = new RTCPeerConnection({ iceServers: [] });
   peers.set(id, pc);
   for (const track of localStream.getTracks()) {
     const sender = pc.addTrack(track, localStream);
     await tuneSender(sender, track, requestedQuality);
+    if (peers.get(id) !== pc) return;
   }
   pc.onicecandidate = (event) => {
-    if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
+    if (peers.get(id) === pc && event.candidate && ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'ice', to: id, candidate: event.candidate }));
     }
   };
   pc.onconnectionstatechange = () => {
+    if (peers.get(id) !== pc) return;
     if (pc.connectionState === 'connected') clearPeerClose(id);
     else if (pc.connectionState === 'disconnected') closeDisconnectedPeerSoon(id, pc);
     else if (['failed', 'closed'].includes(pc.connectionState)) closePeer(id);
   };
   const offer = await pc.createOffer({ offerToReceiveAudio: false, offerToReceiveVideo: false });
   await pc.setLocalDescription(offer);
-  ws.send(JSON.stringify({ type: 'offer', to: id, sdp: offer.sdp }));
+  if (peers.get(id) === pc && ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'offer', to: id, sdp: offer.sdp }));
+  }
 }
 
 async function applyViewerQuality(viewerId, requestedQuality) {

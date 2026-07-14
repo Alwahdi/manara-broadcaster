@@ -7,7 +7,6 @@ const NAV = [
   { to: "/", label: "الرئيسية", short: "الرئيسية", icon: "home", exact: true },
   { to: "/live", label: "البث المباشر", short: "مباشر", icon: "live" },
   { to: "/library", label: "الاستراحة", short: "الاستراحة", icon: "library" },
-  { to: "/search", label: "البحث", short: "بحث", icon: "search" },
   { to: "/account", label: "الحساب والإعدادات", short: "حسابي", icon: "user" },
 ];
 
@@ -36,9 +35,6 @@ function NavIcon({ name }: { name: string }) {
   }
   if (name === "library") {
     return <svg {...common}><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4H20v15H6.5A2.5 2.5 0 0 0 4 21V6.5Z" /><path d="M8 8h8" /><path d="M8 12h6" /></svg>;
-  }
-  if (name === "search") {
-    return <svg {...common}><circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" /></svg>;
   }
   return <svg {...common}><circle cx="12" cy="8" r="4" /><path d="M5 21a7 7 0 0 1 14 0" /></svg>;
 }

@@ -4,7 +4,7 @@ import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-quer
 import { AppLink } from "@/components/AppLink";
 import { api, type LibraryBrowseEntry } from "@/lib/api";
 import { QueryBoundary, EmptyState, ViewerSkeleton } from "@/components/States";
-import { ContentSection, FavoriteButton } from "@/components/common";
+import { ContentSection, FavoriteButton, mediaKindLabel } from "@/components/common";
 import { useLiveStatus } from "@/hooks/useLiveStatus";
 
 /** Folder-first subscriber library view. */
@@ -172,7 +172,7 @@ export function LibraryFolders() {
                   <div>
                     <span>إدارة هذا المجلد</span>
                     <strong>{data.breadcrumbs.at(-1)?.name || data.source.name || data.source.label || "القسم"}</strong>
-                    <small>{uploading ? `جاري الرفع ${uploadProgress}%` : uploadNotice || "يمكنك رفع فيديو أو ملف صوتي أو صورة غلاف هنا."}</small>
+                    <small>{uploading ? `جاري الرفع ${uploadProgress}%` : uploadNotice || "يمكنك رفع فيديو أو صوت أو كتاب أو مستند أو صورة غلاف هنا."}</small>
                   </div>
                   <div className="library-manager-actions">
                     <input
@@ -180,7 +180,7 @@ export function LibraryFolders() {
                       type="file"
                       hidden
                       multiple
-                      accept="video/*,audio/*,.mkv,.ts,.srt,.vtt,image/jpeg,image/png,image/webp,image/avif,image/gif,image/bmp"
+                      accept="video/*,audio/*,.mkv,.ts,.srt,.vtt,.pdf,.epub,.mobi,.azw,.azw3,.cbz,.cbr,.djvu,.txt,.md,.rtf,.doc,.docx,.odt,.ppt,.pptx,.xls,.xlsx,.csv,image/jpeg,image/png,image/webp,image/avif,image/gif,image/bmp"
                       onChange={uploadFiles}
                     />
                     <button type="button" className="btn btn-primary" disabled={uploading} onClick={() => fileInput.current?.click()}>
@@ -265,7 +265,7 @@ function MediaFileCard({ entry }: { entry: LibraryBrowseEntry }) {
         </div>
         <div className="folder-card-body">
           <span className="folder-card-title">{title}</span>
-          <span className="folder-card-sub">{item?.kind || item?.category || "فيديو"}</span>
+          <span className="folder-card-sub">{item?.category || mediaKindLabel(item?.kind)}</span>
         </div>
       </AppLink>
       <FavoriteButton mediaId={mediaId} />

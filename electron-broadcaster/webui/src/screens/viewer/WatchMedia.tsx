@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Download } from "lucide-react";
 import { useAppPath } from "@/components/AppLink";
-import { api } from "@/lib/api";
+import { api, type MediaItem } from "@/lib/api";
 import { QueryBoundary } from "@/components/States";
 import { FavoriteButton, ShareButton } from "@/components/common";
 import { formatDuration } from "@/lib/format";
@@ -44,7 +45,7 @@ export function WatchMedia() {
     restoredProgress.current = true;
     const saved = viewer.data.history?.find((row) => String(row.mediaId) === String(mediaId));
     const position = Number(saved?.position || 0);
-    if (position > 5 && position < video.duration * 0.9) video.currentTime = position;
+    if (position > 5 && position < video.duration * 0.9) video.currentTime = Math.max(0, position - 10);
   };
 
   useEffect(() => {
@@ -76,7 +77,9 @@ export function WatchMedia() {
             >
               العودة إلى المجلد السابق
             </button>
-            <WivaMediaPlayer
+            {item.kind === "book" || item.kind === "document" ? (
+              <DocumentReader item={item} allowDownload={viewer.data?.libraryPolicy?.downloadsEnabled !== false} />
+            ) : <WivaMediaPlayer
               videoRef={videoRef}
               mode="vod"
               status={status}
@@ -123,7 +126,7 @@ export function WatchMedia() {
                   setError("تعذر تشغيل هذا المحتوى الآن. تحقق من اتصال الشبكة ثم حاول مرة أخرى.");
                 },
               }}
-            />
+            />}
             <div className="detail-panel">
               <div>
                 <h2>{item.title || item.name}</h2>
@@ -132,6 +135,12 @@ export function WatchMedia() {
               <div className="row">
                 <FavoriteButton mediaId={item.id} compact={false} />
                 <ShareButton />
+                {viewer.data?.libraryPolicy?.downloadsEnabled !== false ? (
+                  <a className="btn btn-ghost" href={`/media/${item.id}?download=1`}>
+                    <Download size={18} aria-hidden />
+                    تنزيل
+                  </a>
+                ) : null}
                 {item.category ? <span className="badge">{item.category}</span> : null}
                 {item.durationSec ? <span className="badge">{formatDuration(item.durationSec)}</span> : null}
                 {item.online === false ? <span className="badge badge-warn">غير متاح حاليًا</span> : null}
@@ -141,6 +150,26 @@ export function WatchMedia() {
         )}
       </QueryBoundary>
     </div>
+  );
+}
+
+function DocumentReader({ item, allowDownload }: { item: MediaItem; allowDownload: boolean }) {
+  const format = String(item.format || "").toLowerCase();
+  const canPreview = [".pdf", ".txt", ".md", ".csv"].includes(format);
+  if (canPreview) {
+    return (
+      <section className="document-reader" aria-label={`قراءة ${item.title || item.name || "المحتوى"}`}>
+        <iframe src={`/media/${item.id}`} title={item.title || item.name || "قارئ المحتوى"} loading="eager" />
+      </section>
+    );
+  }
+  return (
+    <section className="document-reader document-reader-fallback">
+      <div>
+        <h2>{item.title || item.name || "كتاب"}</h2>
+        <p>{allowDownload ? "يمكن تنزيل هذا الملف من الخيارات أدناه وفتحه باستخدام التطبيق المناسب على جهازك." : "لا يمكن معاينة هذا التنسيق داخل المتصفح."}</p>
+      </div>
+    </section>
   );
 }
 

@@ -18,7 +18,7 @@ async function main() {
   const extractedFolder = path.join(dir, 'Extracted Frame Movie');
   for (const folder of [localFolder, tmdbFolder, thumbFolder, extractedFolder]) fs.mkdirSync(folder, { recursive: true });
   fs.writeFileSync(path.join(localFolder, 'movie.mp4'), Buffer.alloc(1024));
-  fs.writeFileSync(path.join(localFolder, 'cover.jpg'), Buffer.from('folder-cover'));
+  fs.writeFileSync(path.join(localFolder, '0.jpg'), Buffer.from('folder-cover'));
   fs.writeFileSync(path.join(tmdbFolder, 'movie.mp4'), Buffer.alloc(1024));
   fs.writeFileSync(path.join(thumbFolder, 'movie.mp4'), Buffer.alloc(1024));
   const ffmpeg = require('@ffmpeg-installer/ffmpeg').path;
@@ -78,8 +78,19 @@ async function main() {
     assert.equal(Buffer.from(await coverResponse.arrayBuffer()).toString(), 'folder-cover');
     const localItem = db.listMedia({ limit: 100 }).find((item) => item.title === 'movie' && item.relative_path.includes('Local Cover Movie'));
     assert.ok(localItem, 'local artwork media item was indexed');
+    const nestedResponse = await fetch(`${base}/api/library/browse?sourceId=${source.id}&path=${encodeURIComponent('Local Cover Movie')}`);
+    assert.equal(nestedResponse.status, 200);
+    const nestedPayload = await nestedResponse.json();
+    assert.match(nestedPayload.entries.find((entry) => entry.type === 'media').cover, /^\/media-art\//, 'arbitrarily named local image is used by the video card');
     const mediaArtworkResponse = await fetch(`${base}/media-art/${localItem.id}/poster`);
     assert.equal(mediaArtworkResponse.status, 200, 'media artwork endpoint serves sidecar covers');
+    db.setLibraryPolicy({ downloadsEnabled: false });
+    const blockedDownload = await fetch(`${base}/media/${localItem.id}?download=1`);
+    assert.equal(blockedDownload.status, 403, 'disabled downloads are blocked by the server');
+    db.setLibraryPolicy({ downloadsEnabled: true, downloadRateBytesPerSecond: 1024 * 1024 });
+    const allowedDownload = await fetch(`${base}/media/${localItem.id}?download=1`);
+    assert.equal(allowedDownload.status, 200, 'enabled downloads are served');
+    assert.match(allowedDownload.headers.get('content-disposition') || '', /^attachment;/, 'explicit downloads use attachment disposition');
     const generatedCoverResponse = await fetch(base + byName.get('Extracted Frame Movie').cover);
     assert.equal(generatedCoverResponse.status, 200, 'generated video thumbnail is served to viewers');
     assert.match(generatedCoverResponse.headers.get('content-type') || '', /image\/jpeg/);

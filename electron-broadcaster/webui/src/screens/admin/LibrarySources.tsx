@@ -9,6 +9,12 @@ import { formatDateTime, formatNumber } from "@/lib/format";
 export function AdminLibrarySources() {
   const qc = useQueryClient();
   const sources = useQuery({ queryKey: ["library-sources"], queryFn: api.librarySources });
+  const scanStatus = useQuery({
+    queryKey: ["library-scan-status"],
+    queryFn: api.libraryScanStatus,
+    refetchInterval: 1500,
+  });
+  const libraryPolicy = useQuery({ queryKey: ["library-policy"], queryFn: api.libraryPolicy });
   const [adding, setAdding] = useState(false);
   const [relinkFor, setRelinkFor] = useState<LibrarySource | null>(null);
   const [excludePickerFor, setExcludePickerFor] = useState<LibrarySource | null>(null);
@@ -27,6 +33,14 @@ export function AdminLibrarySources() {
   const rescan = useMutation({
     mutationFn: (id: number | string) => api.librarySourceRescan(id),
     onSuccess: invalidateLibrary,
+  });
+  const scanAll = useMutation({
+    mutationFn: api.libraryScanAll,
+    onSuccess: () => scanStatus.refetch(),
+  });
+  const cancelScan = useMutation({
+    mutationFn: api.cancelLibraryScan,
+    onSuccess: () => scanStatus.refetch(),
   });
   const relink = useMutation({
     mutationFn: ({ id, path }: { id: number | string; path: string }) =>
@@ -66,6 +80,10 @@ export function AdminLibrarySources() {
       api.updateLibrarySource(id, { hideEmptyFolders }),
     onSuccess: invalidateLibrary,
   });
+  const updatePolicy = useMutation({
+    mutationFn: api.updateLibraryPolicy,
+    onSuccess: (data) => qc.setQueryData(["library-policy"], data),
+  });
 
   if (relinkFor) {
     return (
@@ -104,7 +122,75 @@ export function AdminLibrarySources() {
       <PageHeader
         title="مصادر التخزين"
         subtitle="أضف مسار قرص أو مجلد، وسيبدأ WIVA فحصه وبناء المكتبة مباشرة."
+        actions={
+          <button className="btn btn-ghost" onClick={() => scanAll.mutate()} disabled={scanAll.isPending || scanStatus.data?.status.active}>
+            فحص كل المصادر
+          </button>
+        }
       />
+      {scanStatus.data?.status.active || ["complete", "error", "cancelled"].includes(scanStatus.data?.status.state || "") ? (
+        <div className="card card-pad" style={{ marginBottom: 18 }} aria-live="polite">
+          <div className="row-between">
+            <div>
+              <strong>{scanStatus.data?.status.active ? "فحص الاستراحة يعمل في الخلفية" : "حالة آخر فحص"}</strong>
+              <div className="hint">{scanStatus.data?.status.message || "الفحص لا يوقف البث أو استخدام لوحة الإدارة."}</div>
+            </div>
+            {scanStatus.data?.status.active ? (
+              <button className="btn btn-sm btn-ghost" onClick={() => cancelScan.mutate()} disabled={cancelScan.isPending}>إيقاف</button>
+            ) : null}
+          </div>
+          {scanStatus.data?.status.active ? (
+            <progress
+              value={scanStatus.data.status.percent || 0}
+              max={100}
+              style={{ width: "100%", marginTop: 12 }}
+              aria-label="تقدم فحص الاستراحة"
+            />
+          ) : null}
+          <div className="row" style={{ marginTop: 10, color: "var(--text-muted)", fontSize: "0.84rem" }}>
+            <span>{scanStatus.data?.status.percent || 0}%</span>
+            <span>·</span>
+            <span>{formatNumber(scanStatus.data?.status.done || 0)} من {formatNumber(scanStatus.data?.status.total || 0)}</span>
+            {scanStatus.data?.status.queued ? <span className="badge">يوجد طلب فحص تالٍ</span> : null}
+          </div>
+          {scanStatus.data?.status.error ? <p className="hint" style={{ color: "var(--danger)", marginTop: 8 }}>{scanStatus.data.status.error}</p> : null}
+        </div>
+      ) : null}
+      <div className="card card-pad" style={{ marginBottom: 18 }}>
+        <div className="row-between">
+          <div>
+            <strong>تنزيل محتوى الاستراحة</strong>
+            <div className="hint">تحكم في ظهور زر التنزيل وحد السرعة لكل عملية تنزيل، من دون التأثير على تشغيل الفيديو.</div>
+          </div>
+          <label className="toggle-row">
+            <input
+              type="checkbox"
+              checked={libraryPolicy.data?.policy.downloadsEnabled !== false}
+              disabled={libraryPolicy.isLoading || updatePolicy.isPending}
+              onChange={(event) => updatePolicy.mutate({ downloadsEnabled: event.target.checked })}
+            />
+            <span>{libraryPolicy.data?.policy.downloadsEnabled !== false ? "مسموح" : "متوقف"}</span>
+          </label>
+        </div>
+        <div className="field" style={{ marginTop: 14, maxWidth: 360 }}>
+          <label htmlFor="library-download-rate">الحد الأقصى لسرعة التنزيل</label>
+          <select
+            id="library-download-rate"
+            className="input"
+            value={libraryPolicy.data?.policy.downloadRateBytesPerSecond || 0}
+            disabled={libraryPolicy.isLoading || updatePolicy.isPending || libraryPolicy.data?.policy.downloadsEnabled === false}
+            onChange={(event) => updatePolicy.mutate({ downloadRateBytesPerSecond: Number(event.target.value) })}
+          >
+            <option value={0}>بدون حد</option>
+            <option value={1024 * 1024}>1 ميجابايت/ثانية</option>
+            <option value={5 * 1024 * 1024}>5 ميجابايت/ثانية</option>
+            <option value={10 * 1024 * 1024}>10 ميجابايت/ثانية</option>
+            <option value={20 * 1024 * 1024}>20 ميجابايت/ثانية</option>
+            <option value={50 * 1024 * 1024}>50 ميجابايت/ثانية</option>
+          </select>
+          {updatePolicy.isError ? <span className="hint" style={{ color: "var(--danger)" }}>{(updatePolicy.error as Error).message}</span> : null}
+        </div>
+      </div>
       <div className="card card-pad" style={{ marginBottom: 18 }}>
         <div className="field">
           <label>مسار المجلد أو القرص</label>
@@ -119,12 +205,12 @@ export function AdminLibrarySources() {
         </div>
         <div className="row">
           <button className="btn btn-primary" onClick={() => add.mutate(path)} disabled={add.isPending || !path.trim()}>
-            {add.isPending ? "جارٍ الإضافة والفحص…" : "إضافة وفحص"}
+            {add.isPending ? "جارٍ الإضافة…" : "إضافة وبدء الفحص"}
           </button>
           <button className="btn btn-ghost" onClick={() => setAdding((v) => !v)}>
             {adding ? "إخفاء المتصفح" : "اختيار من المتصفح"}
           </button>
-          {add.isSuccess ? <span className="badge badge-on badge-dot">تمت الإضافة والفحص</span> : null}
+          {add.isSuccess ? <span className="badge badge-on badge-dot">تمت الإضافة وبدأ الفحص في الخلفية</span> : null}
           {add.isError ? <span className="badge badge-warn">{(add.error as Error).message}</span> : null}
         </div>
         {adding ? (

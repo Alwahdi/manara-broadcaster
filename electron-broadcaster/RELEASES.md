@@ -14,6 +14,15 @@ Packaged apps check for updates on startup and every 6 hours. The WIVA Agent
 window also includes a manual update check and install button when an update is
 ready.
 
+## v2.6.56
+
+- Moved library scanning and artwork enrichment into a background worker so startup, live playback, the admin panel, and viewer routes remain responsive while large folders are indexed.
+- Added incremental media signatures, batched database writes, stale-file cleanup, live scan progress/cancellation, books and documents, broader local artwork discovery, and progressive video thumbnails.
+- Added library download policy and rate controls, authenticated in-folder uploads, ten-second resume rewind, cleaner folder navigation, and removal of duplicated viewer search navigation.
+- Prevented transient HDMI audio mute events and stale WebRTC peer events from repeatedly restarting capture playback; sustained audio failure and crashed capture renderers now recover automatically.
+- Kept the desktop agent hidden until its renderer is ready and bundled critical home, live, library, and player screens in the initial viewer payload to avoid prolonged page preparation states.
+- Reduced IPTV playlist and segment wait times, bounded HLS retries, and made the HLS player asset retryable after an initial load failure while preserving coalesced single-ingest segment caching.
+
 ## Beta (pre-release) builds for pull requests
 
 Every pull request that targets the repository (from a branch in this repo, not a

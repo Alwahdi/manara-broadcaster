@@ -131,6 +131,7 @@ export interface MediaItem {
   title?: string;
   name?: string;
   kind?: string;
+  format?: string;
   category?: string;
   folder?: string;
   poster?: string;
@@ -138,6 +139,29 @@ export interface MediaItem {
   sourceId?: number;
   online?: boolean;
   [k: string]: unknown;
+}
+
+export interface LibraryScanStatus {
+  state: "idle" | "running" | "complete" | "error" | "cancelled" | string;
+  active: boolean;
+  queued?: boolean;
+  stage?: string;
+  done?: number;
+  total?: number;
+  percent?: number;
+  message?: string;
+  sourceId?: number | string | null;
+  startedAt?: number | null;
+  finishedAt?: number | null;
+  error?: string;
+  result?: {
+    addedOrUpdated?: number;
+    unchanged?: number;
+    removedMissing?: number;
+    books?: number;
+    documents?: number;
+    [k: string]: unknown;
+  } | null;
 }
 
 export interface Channel {
@@ -273,10 +297,16 @@ export interface ViewerState {
   watchLaterIds?: string[];
   history?: Array<{ mediaId: string; media?: MediaItem; position?: number; duration?: number; completed?: boolean }>;
   permissions?: { manageLibrary?: boolean };
+  libraryPolicy?: LibraryPolicy;
   broadcast?: Channel[];
   iptv?: Channel[];
   channels?: Channel[];
   [k: string]: unknown;
+}
+
+export interface LibraryPolicy {
+  downloadsEnabled: boolean;
+  downloadRateBytesPerSecond: number;
 }
 
 export interface Diagnostics {
@@ -377,6 +407,15 @@ export const api = {
     ),
   librarySourceRescan: (id: number | string) =>
     http.post<{ ok: boolean }>(`/api/admin/library/sources/${id}/rescan`),
+  libraryScanAll: () => http.post<{ ok: boolean }>("/api/admin/scan"),
+  libraryScanStatus: () =>
+    http.get<{ status: LibraryScanStatus }>("/api/admin/library/scan-status"),
+  libraryPolicy: () =>
+    http.get<{ policy: LibraryPolicy }>("/api/admin/library/policy"),
+  updateLibraryPolicy: (body: Partial<LibraryPolicy>) =>
+    http.put<{ ok: boolean; policy: LibraryPolicy }>("/api/admin/library/policy", body),
+  cancelLibraryScan: () =>
+    http.post<{ ok: boolean; status: LibraryScanStatus }>("/api/admin/library/scan-cancel"),
   librarySourceRelink: (id: number | string, path: string) =>
     http.post<{ ok: boolean }>(`/api/admin/library/sources/${id}/relink`, { path }),
   uploadLibraryFile: (

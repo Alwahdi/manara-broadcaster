@@ -97,6 +97,16 @@ function initials(value?: string) {
   return parts.slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "W";
 }
 
+export function mediaKindLabel(kind?: string) {
+  return ({
+    movie: "فيديو",
+    episode: "حلقة",
+    audio: "صوتيات",
+    book: "كتاب",
+    document: "مستند",
+  } as Record<string, string>)[String(kind || "")] || "محتوى";
+}
+
 export function MediaTile({ item }: { item: MediaItem }) {
   const title = item.title || item.name || "بدون عنوان";
   const online = item.online !== false;
@@ -114,7 +124,7 @@ export function MediaTile({ item }: { item: MediaItem }) {
             <div className="poster-fallback" aria-hidden>{initials(title)}</div>
           )}
           <span className="poster-shade" aria-hidden />
-          <span className="media-kind">{item.category || item.kind || "فيديو"}</span>
+          <span className="media-kind">{item.category || mediaKindLabel(item.kind)}</span>
           {!online ? <span className="offline-ribbon">غير متاح حاليًا</span> : null}
           <span className="poster-play" aria-hidden>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
@@ -124,7 +134,7 @@ export function MediaTile({ item }: { item: MediaItem }) {
         </div>
         <div className="tile-title truncate">{title}</div>
         <div className="tile-sub">
-          {item.category || item.kind || "فيديو"}
+          {item.category || mediaKindLabel(item.kind)}
           {item.durationSec ? ` · ${formatDuration(item.durationSec)}` : ""}
         </div>
       </AppLink>

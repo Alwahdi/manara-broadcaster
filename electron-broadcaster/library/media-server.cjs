@@ -24,6 +24,19 @@ const MIME = {
   '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.wav': 'audio/wav',
   '.flac': 'audio/flac', '.ogg': 'audio/ogg', '.aac': 'audio/aac',
   '.opus': 'audio/ogg',
+  '.pdf': 'application/pdf', '.epub': 'application/epub+zip',
+  '.mobi': 'application/x-mobipocket-ebook', '.azw': 'application/vnd.amazon.ebook',
+  '.azw3': 'application/vnd.amazon.ebook', '.cbz': 'application/vnd.comicbook+zip',
+  '.cbr': 'application/vnd.comicbook-rar', '.djvu': 'image/vnd.djvu',
+  '.txt': 'text/plain; charset=utf-8', '.md': 'text/markdown; charset=utf-8',
+  '.rtf': 'application/rtf', '.doc': 'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.odt': 'application/vnd.oasis.opendocument.text',
+  '.ppt': 'application/vnd.ms-powerpoint',
+  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  '.xls': 'application/vnd.ms-excel',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.csv': 'text/csv; charset=utf-8',
 };
 
 function send(res, status, body, headers = {}) {
@@ -220,6 +233,8 @@ function mediaType(item) {
   const ext = path.extname(item?.path || '').toLowerCase();
   if (['.mp3', '.m4a', '.wav', '.flac', '.ogg', '.aac', '.wma', '.opus'].includes(ext) || item?.kind === 'audio') return 'audio';
   if (['.mp4', '.m4v', '.webm', '.mov', '.ts'].includes(ext)) return 'video';
+  if (['.pdf', '.epub', '.mobi', '.azw', '.azw3', '.cbz', '.cbr', '.djvu'].includes(ext) || item?.kind === 'book') return 'book';
+  if (['.txt', '.md', '.rtf', '.doc', '.docx', '.odt', '.ppt', '.pptx', '.xls', '.xlsx', '.csv'].includes(ext) || item?.kind === 'document') return 'document';
   return 'unsupported';
 }
 
@@ -278,9 +293,25 @@ function findArtworkFile(item) {
     const candidates = [];
     for (const ext of ARTWORK_EXT) candidates.push(path.join(dir, base + ext), path.join(dir, base + '-poster' + ext), path.join(dir, base + '.poster' + ext));
     for (const name of FOLDER_ARTWORK_NAMES) for (const ext of ARTWORK_EXT) candidates.push(path.join(dir, name + ext));
-    return candidates.find((candidate) => {
+    const exact = candidates.find((candidate) => {
       try { return fs.existsSync(candidate) && fs.statSync(candidate).isFile(); } catch { return false; }
     }) || '';
+    if (exact) return exact;
+    try {
+      const images = fs.readdirSync(dir, { withFileTypes: true })
+        .filter((entry) => entry.isFile() && ARTWORK_EXT.includes(path.extname(entry.name).toLowerCase()))
+        .slice(0, 300)
+        .map((entry) => path.join(dir, entry.name));
+      images.sort((a, b) => {
+        const scoreA = folderArtworkScore(a, base) + artworkSizeScore(a);
+        const scoreB = folderArtworkScore(b, base) + artworkSizeScore(b);
+        if (scoreA !== scoreB) return scoreB - scoreA;
+        return path.basename(a).localeCompare(path.basename(b), undefined, { numeric: true });
+      });
+      return images[0] || '';
+    } catch {
+      return '';
+    }
   });
 }
 
@@ -306,8 +337,8 @@ function findFolderArtworkFile(folderPath) {
         .slice(0, 300)
         .map((entry) => path.join(dir, entry.name));
       images.sort((a, b) => {
-        const scoreA = folderArtworkScore(a, folderBase);
-        const scoreB = folderArtworkScore(b, folderBase);
+        const scoreA = folderArtworkScore(a, folderBase) + artworkSizeScore(a);
+        const scoreB = folderArtworkScore(b, folderBase) + artworkSizeScore(b);
         if (scoreA !== scoreB) return scoreB - scoreA;
         return path.basename(a).localeCompare(path.basename(b), undefined, { numeric: true });
       });
@@ -316,6 +347,16 @@ function findFolderArtworkFile(folderPath) {
       return '';
     }
   });
+}
+
+function artworkSizeScore(filePath) {
+  try {
+    const bytes = fs.statSync(filePath).size;
+    if (bytes < 1024) return -300;
+    return Math.min(90, Math.round(Math.log2(Math.max(1, bytes / 1024)) * 10));
+  } catch {
+    return -500;
+  }
 }
 
 function folderArtworkScore(filePath, folderBase = '') {
@@ -332,13 +373,13 @@ function folderArtworkScore(filePath, folderBase = '') {
 }
 
 function mediaPosterUrl(item) {
-  if (item?.poster_url) return localizeTmdbArtwork(item.poster_url);
-  return findArtworkFile(item) ? `/media-art/${item.id}/poster` : '';
+  if (findArtworkFile(item)) return `/media-art/${item.id}/poster`;
+  return item?.poster_url ? localizeTmdbArtwork(item.poster_url) : '';
 }
 
 function mediaBackdropUrl(item) {
-  if (item?.backdrop_url) return localizeTmdbArtwork(item.backdrop_url);
-  return findArtworkFile(item) ? `/media-art/${item.id}/poster` : '';
+  if (findArtworkFile(item)) return `/media-art/${item.id}/poster`;
+  return item?.backdrop_url ? localizeTmdbArtwork(item.backdrop_url) : '';
 }
 
 function localizeTmdbArtwork(value) {
@@ -400,6 +441,7 @@ function mediaPayload(item) {
     backdrop,
     backdropUrl: backdrop,
     durationSec: Number(item.duration || item.durationSec || 0) || 0,
+    format: path.extname(String(item.path || '')).toLowerCase(),
     online: mediaOnline(item),
   };
 }
@@ -679,6 +721,11 @@ const UPLOAD_KIND_BY_EXT = new Map([
   ['.mov', 'movie'], ['.avi', 'movie'], ['.ts', 'movie'],
   ['.mp3', 'audio'], ['.m4a', 'audio'], ['.wav', 'audio'], ['.flac', 'audio'],
   ['.ogg', 'audio'], ['.aac', 'audio'], ['.opus', 'audio'],
+  ['.pdf', 'book'], ['.epub', 'book'], ['.mobi', 'book'], ['.azw', 'book'], ['.azw3', 'book'],
+  ['.cbz', 'book'], ['.cbr', 'book'], ['.djvu', 'book'],
+  ['.txt', 'document'], ['.md', 'document'], ['.rtf', 'document'], ['.doc', 'document'],
+  ['.docx', 'document'], ['.odt', 'document'], ['.ppt', 'document'], ['.pptx', 'document'],
+  ['.xls', 'document'], ['.xlsx', 'document'], ['.csv', 'document'],
 ]);
 const UPLOAD_COMPANION_EXT = new Set([...ARTWORK_EXT, '.srt', '.vtt']);
 const MAX_LIBRARY_UPLOAD_BYTES = 20 * 1024 * 1024 * 1024;
@@ -760,6 +807,28 @@ function invalidateLibraryBrowseCache() {
   libraryBrowseVersion += 1;
   libraryBrowseCache.clear();
   libraryBrowseIndexCache = null;
+  artworkDiscoveryCache.clear();
+}
+
+function notifyLibraryChanged() {
+  invalidateLibraryBrowseCache();
+  webui.broadcast('library', { changed: true });
+}
+
+async function requestLibraryScan(options, request = {}) {
+  if (typeof options.startLibraryScan === 'function') {
+    return options.startLibraryScan(request);
+  }
+  const cfg = typeof options.getLibraryConfig === 'function' ? options.getLibraryConfig() : {};
+  const result = await scanner.scanAll({
+    tmdbKey: cfg.tmdbKey || '',
+    tmdbLang: cfg.tmdbLang || 'ar',
+    thumbnailDir: cfg.thumbnailDir || '',
+    sourceId: request.sourceId || null,
+    force: Boolean(request.force),
+  });
+  notifyLibraryChanged();
+  return { accepted: true, completed: true, status: { state: 'complete', active: false, result } };
 }
 
 function cachedLibraryBrowsePayload(query = {}) {
@@ -1220,6 +1289,7 @@ function viewerStatePayload(req, res, options = {}) {
     account: ctx.account,
     signedIn: ctx.signedIn,
     permissions: { manageLibrary: isAdminRequest(req, options) },
+    libraryPolicy: db.libraryPolicy(),
     ...liveChannelsPayload(options),
   };
 }
@@ -1276,7 +1346,32 @@ function denyFeature(req, res, options, feature) {
   return true;
 }
 
-function streamFile(req, res, filePath) {
+function downloadRateLimiter(bytesPerSecond) {
+  const rate = Math.max(1, Number(bytesPerSecond) || 1);
+  const startedAt = Date.now();
+  let sent = 0;
+  return new Transform({
+    transform(chunk, _encoding, callback) {
+      sent += chunk.length;
+      const expectedElapsed = (sent / rate) * 1000;
+      const delay = Math.max(0, expectedElapsed - (Date.now() - startedAt));
+      if (delay > 2) setTimeout(() => callback(null, chunk), delay);
+      else callback(null, chunk);
+    },
+  });
+}
+
+function pipeFileResponse(stream, res, { throttleBytesPerSecond = 0 } = {}) {
+  const stages = throttleBytesPerSecond > 0
+    ? [stream, downloadRateLimiter(throttleBytesPerSecond), res]
+    : [stream, res];
+  pipeline(...stages).catch(() => {
+    if (!res.headersSent) res.writeHead(500);
+    if (!res.writableEnded) res.end();
+  });
+}
+
+function streamFile(req, res, filePath, { download = false, downloadRateBytesPerSecond = 0 } = {}) {
   fs.stat(filePath, (err, stat) => {
     if (err) { res.writeHead(404); res.end('Not found'); return; }
     const ext = path.extname(filePath).toLowerCase();
@@ -1301,15 +1396,17 @@ function streamFile(req, res, filePath) {
         'Accept-Ranges': 'bytes',
         'Content-Length': end - start + 1,
         'Content-Type': type,
+        ...(download ? { 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(filePath))}` } : {}),
       });
-      fs.createReadStream(filePath, { start, end }).pipe(res);
+      pipeFileResponse(fs.createReadStream(filePath, { start, end }), res, { throttleBytesPerSecond: download ? downloadRateBytesPerSecond : 0 });
     } else {
       res.writeHead(200, {
         'Content-Length': stat.size,
         'Content-Type': type,
         'Accept-Ranges': 'bytes',
+        ...(download ? { 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(filePath))}` } : {}),
       });
-      fs.createReadStream(filePath).pipe(res);
+      pipeFileResponse(fs.createReadStream(filePath), res, { throttleBytesPerSecond: download ? downloadRateBytesPerSecond : 0 });
     }
   });
 }
@@ -1582,11 +1679,11 @@ function createHandler(options = {}) {
           excludePaths: normalizeExcludePaths(body.excludePaths || body.exclude_paths || [], validation.path),
           hideEmptyFolders: body.hideEmptyFolders !== false && body.hide_empty_folders !== false,
         });
-        const cfg = typeof options.getLibraryConfig === 'function' ? options.getLibraryConfig() : {};
-        const result = await scanner.scanAll({ tmdbKey: cfg.tmdbKey || '', tmdbLang: cfg.tmdbLang || 'ar', thumbnailDir: cfg.thumbnailDir || '' });
+        const source = db.listPaths().find((row) => String(row.path) === String(validation.path));
+        const scan = await requestLibraryScan(options, { reason: 'source-added', sourceId: source?.id || null });
         invalidateLibraryBrowseCache();
-        webui.broadcast('library', { path: validation.path, scanned: true });
-        return sendJson(res, 200, { ok: true, ...result, sources: librarySourcesPayload() });
+        webui.broadcast('library', { path: validation.path, scanStarted: true });
+        return sendJson(res, 200, { ok: true, scan, sources: librarySourcesPayload() });
       } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
     }
     let sourceMatch = /^\/api\/admin\/library\/sources\/(\d+)$/.exec(u.pathname);
@@ -1638,11 +1735,10 @@ function createHandler(options = {}) {
         const excludePath = normalizeExcludePaths([body.path || body.excludePath], current.path)[0];
         if (!excludePath) return sendJson(res, 400, { error: 'invalid_path', message: 'اختر مساراً لاستثنائه.' });
         const updated = db.addPathExclude(id, excludePath);
-        const cfg = typeof options.getLibraryConfig === 'function' ? options.getLibraryConfig() : {};
-        const result = await scanner.scanAll({ tmdbKey: cfg.tmdbKey || '', tmdbLang: cfg.tmdbLang || 'ar', thumbnailDir: cfg.thumbnailDir || '' });
+        const scan = await requestLibraryScan(options, { reason: 'exclude-added', sourceId: id });
         invalidateLibraryBrowseCache();
         webui.broadcast('library', { sourceId: id, excluded: true });
-        return sendJson(res, 200, { ok: true, ...result, source: updated, sources: librarySourcesPayload() });
+        return sendJson(res, 200, { ok: true, scan, source: updated, sources: librarySourcesPayload() });
       } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
     }
     if (sourceMatch && req.method === 'DELETE') {
@@ -1654,22 +1750,20 @@ function createHandler(options = {}) {
         const excludePath = normalizeExcludePaths([u.query.path || ''], current.path)[0];
         if (!excludePath) return sendJson(res, 400, { error: 'invalid_path', message: 'اختر مساراً لحذف الاستثناء.' });
         const updated = db.removePathExclude(id, excludePath);
-        const cfg = typeof options.getLibraryConfig === 'function' ? options.getLibraryConfig() : {};
-        const result = await scanner.scanAll({ tmdbKey: cfg.tmdbKey || '', tmdbLang: cfg.tmdbLang || 'ar', thumbnailDir: cfg.thumbnailDir || '' });
+        const scan = await requestLibraryScan(options, { reason: 'exclude-removed', sourceId: id });
         invalidateLibraryBrowseCache();
         webui.broadcast('library', { sourceId: id, included: true });
-        return sendJson(res, 200, { ok: true, ...result, source: updated, sources: librarySourcesPayload() });
+        return sendJson(res, 200, { ok: true, scan, source: updated, sources: librarySourcesPayload() });
       } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
     }
     sourceMatch = /^\/api\/admin\/library\/sources\/(\d+)\/rescan$/.exec(u.pathname);
     if (sourceMatch && req.method === 'POST') {
       if (!requireAdmin(req, res, options, adminBase)) return;
       try {
-        const cfg = typeof options.getLibraryConfig === 'function' ? options.getLibraryConfig() : {};
-        const result = await scanner.scanAll({ tmdbKey: cfg.tmdbKey || '', tmdbLang: cfg.tmdbLang || 'ar', thumbnailDir: cfg.thumbnailDir || '' });
-        invalidateLibraryBrowseCache();
-        webui.broadcast('library', { sourceId: Number(sourceMatch[1]) });
-        return sendJson(res, 200, { ok: true, ...result, sources: librarySourcesPayload() });
+        const sourceId = Number(sourceMatch[1]);
+        const scan = await requestLibraryScan(options, { reason: 'source-rescan', sourceId });
+        webui.broadcast('library', { sourceId, scanStarted: true });
+        return sendJson(res, 200, { ok: true, scan, sources: librarySourcesPayload() });
       } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
     }
     sourceMatch = /^\/api\/admin\/library\/sources\/(\d+)\/relink$/.exec(u.pathname);
@@ -2212,6 +2306,18 @@ function createHandler(options = {}) {
         return sendJson(res, 200, { theme: db.setMediaTheme(body) });
       } catch (e) { return sendJson(res, 500, { error: e.message }); }
     }
+    if (u.pathname === '/api/admin/library/policy' && req.method === 'GET') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      return sendJson(res, 200, { policy: db.libraryPolicy() });
+    }
+    if (u.pathname === '/api/admin/library/policy' && req.method === 'PUT') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      if (!sameOriginMutation(req)) return sendJson(res, 403, { ok: false, error: 'invalid_origin', message: 'تعذر التحقق من مصدر الطلب.' });
+      try {
+        const body = await parseJsonBody(req);
+        return sendJson(res, 200, { ok: true, policy: db.setLibraryPolicy(body) });
+      } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
+    }
     if (u.pathname === '/api/admin/library-paths' && req.method === 'POST') {
       if (!requireAdmin(req, res, options, adminBase)) return;
       try {
@@ -2239,12 +2345,24 @@ function createHandler(options = {}) {
     if (u.pathname === '/api/admin/scan' && req.method === 'POST') {
       if (!requireAdmin(req, res, options, adminBase)) return;
       try {
-        const cfg = typeof options.getLibraryConfig === 'function' ? options.getLibraryConfig() : {};
-        const result = await scanner.scanAll({ tmdbKey: cfg.tmdbKey || '', tmdbLang: cfg.tmdbLang || 'ar', thumbnailDir: cfg.thumbnailDir || '' });
-        invalidateLibraryBrowseCache();
-        webui.broadcast('library', { scanned: true });
-        return sendJson(res, 200, { ok: true, ...result });
+        const scan = await requestLibraryScan(options, { reason: 'admin-full-scan' });
+        webui.broadcast('library', { scanStarted: true });
+        return sendJson(res, 200, { ok: true, scan });
       } catch (e) { return sendJson(res, 500, { ok: false, error: e.message }); }
+    }
+    if (u.pathname === '/api/admin/library/scan-status' && req.method === 'GET') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      const status = typeof options.getLibraryScanStatus === 'function'
+        ? options.getLibraryScanStatus()
+        : { state: 'idle', active: false };
+      return sendJson(res, 200, { status });
+    }
+    if (u.pathname === '/api/admin/library/scan-cancel' && req.method === 'POST') {
+      if (!requireAdmin(req, res, options, adminBase)) return;
+      const result = typeof options.cancelLibraryScan === 'function'
+        ? await options.cancelLibraryScan()
+        : { ok: true, status: { state: 'idle', active: false } };
+      return sendJson(res, 200, result);
     }
     if (u.pathname === '/api/admin/library/upload' && req.method === 'POST') {
       if (!requireAdmin(req, res, options, adminBase)) return;
@@ -2303,7 +2421,8 @@ function createHandler(options = {}) {
           message: normalizeRelativePath(path.relative(root, target)),
         });
         webui.broadcast('library', { sourceId: source.id, path: relativeFolder, uploaded: fileName });
-        return sendJson(res, 200, { ok: true, name: fileName, bytes, media });
+        const scan = await requestLibraryScan(options, { reason: 'library-upload', sourceId: source.id });
+        return sendJson(res, 200, { ok: true, name: fileName, bytes, media, scan });
       } catch (e) {
         const status = e.message === 'file_exists' ? 409 : e.message === 'upload_too_large' ? 413 : 500;
         const message = e.message === 'file_exists'
@@ -2435,9 +2554,20 @@ function createHandler(options = {}) {
         const item = db.getMedia(parseInt(m[1], 10));
         if (!item) { res.writeHead(404); res.end(); return; }
         if (denyIfBlocked(req, res, { targetType: 'media', targetId: item.id, targetName: item.title })) return;
+        const wantsDownload = u.query.download === '1';
+        const policy = db.libraryPolicy();
+        if (wantsDownload && policy.downloadsEnabled === false) {
+          return sendJson(res, 403, { error: 'downloads_disabled', message: 'التنزيل غير متاح حاليًا.' });
+        }
         attachRequestAccounting(req, res, { action: 'media', targetType: 'media', targetId: item.id, targetName: item.title });
-        if (/^https?:\/\//i.test(item.remote_url || item.path || '')) return streamRemote(req, res, item.remote_url || item.path);
-        return streamFile(req, res, item.path);
+        if (/^https?:\/\//i.test(item.remote_url || item.path || '')) {
+          if (wantsDownload) return sendJson(res, 400, { error: 'remote_download_unavailable', message: 'تنزيل هذا المحتوى غير متاح حاليًا.' });
+          return streamRemote(req, res, item.remote_url || item.path);
+        }
+        return streamFile(req, res, item.path, {
+          download: wantsDownload,
+          downloadRateBytesPerSecond: wantsDownload ? policy.downloadRateBytesPerSecond : 0,
+        });
       } catch (e) { res.writeHead(500); res.end(String(e.message)); return; }
     }
     m = /^\/sub\/(\d+)$/.exec(u.pathname);
@@ -2520,4 +2650,4 @@ function start(port = 8788, options = {}) {
   return { server, port, close: () => new Promise(r => server.close(r)) };
 }
 
-module.exports = { start, createHandler };
+module.exports = { start, createHandler, notifyLibraryChanged };

@@ -10,6 +10,12 @@ const live = read('webui/src/screens/viewer/WatchChannel.tsx');
 const media = read('webui/src/screens/viewer/WatchMedia.tsx');
 const styles = read('webui/src/styles/layouts.css');
 const viewerUtils = read('webui/src/screens/viewer/viewer-utils.ts');
+const viewerLayout = read('webui/src/components/ViewerLayout.tsx');
+const libraryFolders = read('webui/src/screens/viewer/LibraryFolders.tsx');
+const adminLibrary = read('webui/src/screens/admin/LibrarySources.tsx');
+const broadcaster = read('server/broadcaster.html');
+const appShell = read('main.cjs');
+const wivaApp = read('webui/src/components/WivaApp.tsx');
 
 assert.doesNotMatch(live, /PlayerFitToolbar|live-player-video-(?:fit|fill|zoom)/);
 assert.doesNotMatch(media, /MediaFitToolbar|media-player-video-(?:fit|fill|zoom)/);
@@ -43,5 +49,24 @@ assert.match(live, /playError instanceof DOMException[\s\S]*?NotAllowedError[\s\
 assert.match(live, /startLevel:\s*0/);
 assert.match(live, /capLevelToPlayerSize:\s*true/);
 assert.match(live, /abrEwmaDefaultEstimate:\s*500_000/);
+assert.match(live, /hlsScriptPromise\s*=\s*null[\s\S]*?throw error/, 'HLS player asset can recover after an initial load failure');
+assert.match(live, /manifestLoadingTimeOut:\s*12000/, 'IPTV manifest loading fails clearly instead of waiting indefinitely');
+assert.match(live, /fragLoadingMaxRetry:\s*4/, 'IPTV segment retries remain bounded');
+assert.match(media, /position\s*-\s*10/, 'resume starts ten seconds before the saved position');
+assert.match(media, /\?download=1/, 'viewer download actions use the controlled download endpoint');
+assert.doesNotMatch(viewerLayout, /to:\s*["']\/search["']/, 'search is not duplicated in desktop or mobile navigation');
+assert.match(styles, /\.mobile-bottom-nav[\s\S]*?grid-template-columns:\s*repeat\(4,\s*1fr\)/, 'mobile navigation uses four balanced columns');
+assert.match(libraryFolders, /permissions\?\.manageLibrary/, 'folder upload controls require an authenticated admin session');
+assert.match(libraryFolders, /\.pdf,\.epub/, 'admin folder uploads include books and documents');
+assert.match(adminLibrary, /updateLibraryPolicy/, 'library download policy is managed from the admin dashboard');
+assert.doesNotMatch(broadcaster, /track\.onmute\s*=\s*\(\)\s*=>\s*scheduleAudioRestart/, 'transient HDMI mute does not restart capture');
+assert.doesNotMatch(broadcaster, /track\.enabled\s*!==\s*false\s*&&\s*!track\.muted/, 'live HDMI audio remains healthy during transient mute');
+assert.match(broadcaster, /AUDIO_MISSING_RESTART_MS\s*=\s*20000/, 'missing capture audio uses a sustained grace period');
+assert.match(broadcaster, /AUDIO_STALL_RESTART_MS\s*=\s*20000/, 'persistently muted HDMI audio recovers after a sustained grace period');
+assert.match(live, /pcRef\.current\s*!==\s*pc/, 'stale WebRTC peer events cannot trigger reconnect loops');
+assert.doesNotMatch(live, /track\.onmute[\s\S]{0,240}scheduleReconnect/, 'viewer does not rebuild video for a transient audio mute');
+assert.match(appShell, /show:\s*false[\s\S]*?ready-to-show/, 'agent window stays hidden until its renderer is ready');
+assert.match(appShell, /recoverBroadcaster[\s\S]*?render-process-gone/, 'capture renderer crashes recover without restarting WIVA');
+assert.match(wivaApp, /import \{ Live \} from "@\/screens\/viewer\/Live"/, 'primary live route is included in the initial viewer bundle');
 
 console.log('WIVA unified player UI tests passed');

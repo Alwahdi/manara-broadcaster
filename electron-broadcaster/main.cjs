@@ -19,7 +19,7 @@ const { verifyLicense, getHardwareId } = require('./licensing/verify.cjs');
 const { autoUpdater } = require('electron-updater');
 const QRCode = require('qrcode');
 const libraryDb = require('./library/db.cjs');
-const libraryScanner = require('./library/scanner.cjs');
+const { LibraryScanManager } = require('./library/scan-manager.cjs');
 const libraryServer = require('./library/media-server.cjs');
 const iptv = require('./library/iptv.cjs');
 const cloudIptv = require('./library/cloud-iptv.cjs');
@@ -620,6 +620,8 @@ let serverInfo = null;
 let mainWindow = null;
 let tray = null;
 let libraryReady = false;
+let libraryDbPath = null;
+let libraryScanManager = null;
 const channelBroadcasters = new Map();
 const channelBroadcasterIdleTimers = new Map();
 let lastDeviceSync = { state: 'idle', at: null, error: '' };
@@ -878,12 +880,44 @@ function startChannelBroadcaster(channel = {}) {
       backgroundThrottling: false,
     },
   });
+  let unresponsiveTimer = null;
+  const recoverBroadcaster = (reason) => {
+    if (app.isQuitting) return;
+    const current = channelBroadcasters.get(id);
+    if (current?.window !== win) return;
+    channelBroadcasters.delete(id);
+    console.warn('[WIVA] recovering channel broadcaster:', id, reason);
+    try { if (!win.isDestroyed()) win.destroy(); } catch {}
+    setTimeout(() => {
+      if (app.isQuitting || !serverInfo || !platformFeatureAllowed('channels')) return;
+      const stats = serverInfo.getStats?.()?.channels || [];
+      const hasViewers = stats.some((row) => String(row.id) === id && Number(row.viewers) > 0);
+      const latest = (libraryReady ? syncBroadcastChannelsFromDb({ persist: false }) : (settings.channels || []))
+        .find((row) => String(row.id) === id) || channel;
+      if (hasViewers || latest.autoStart) startChannelBroadcaster(latest);
+    }, 750);
+  };
   win.webContents.on('console-message', (_event, level, message) => {
     const prefix = `[WIVA channel ${id}]`;
     if (level >= 2) console.warn(prefix, message);
     else console.log(prefix, message);
   });
+  win.on('unresponsive', () => {
+    if (unresponsiveTimer) return;
+    unresponsiveTimer = setTimeout(() => {
+      unresponsiveTimer = null;
+      recoverBroadcaster('renderer remained unresponsive');
+    }, 15000);
+  });
+  win.on('responsive', () => {
+    if (unresponsiveTimer) clearTimeout(unresponsiveTimer);
+    unresponsiveTimer = null;
+  });
+  win.webContents.on('render-process-gone', (_event, details) => {
+    recoverBroadcaster(`renderer exited: ${details?.reason || 'unknown'}`);
+  });
   win.on('closed', () => {
+    if (unresponsiveTimer) clearTimeout(unresponsiveTimer);
     const current = channelBroadcasters.get(id);
     if (current?.window === win) channelBroadcasters.delete(id);
   });
@@ -1179,6 +1213,12 @@ function mediaServerOptions() {
     getIptvChannels: () => publicIptvChannels(),
     getBroadcastChannels: () => syncBroadcastChannelsFromDb({ persist: false }),
     getLibraryConfig: () => libraryScanConfig(),
+    startLibraryScan: (request = {}) => {
+      if (!libraryScanManager) throw new Error('Library scan service is not ready');
+      return libraryScanManager.start(request);
+    },
+    getLibraryScanStatus: () => libraryScanManager?.status() || { state: 'idle', active: false },
+    cancelLibraryScan: () => libraryScanManager?.cancel() || { ok: true, status: { state: 'idle', active: false } },
     getPlatformStatus: () => platform.status(),
     requestPlatformActivation,
     refreshPlatformStatus,
@@ -1468,6 +1508,9 @@ function createWindow(options = {}) {
     if (options.forceShow || shouldRevealWindowWhenReady) revealMainWindow();
     return mainWindow;
   }
+  const revealWhenReady = !!options.forceShow
+    || shouldRevealWindowWhenReady
+    || !(launchedAtBoot && settings.startMinimized);
   mainWindow = new BrowserWindow({
     width: 920,
     height: 720,
@@ -1477,7 +1520,7 @@ function createWindow(options = {}) {
     title: APP_NAME + ' Agent',
     icon: createAppIcon(),
     autoHideMenuBar: true,
-    show: !!options.forceShow || shouldRevealWindowWhenReady || !(launchedAtBoot && settings.startMinimized),
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -1485,7 +1528,7 @@ function createWindow(options = {}) {
     },
   });
   mainWindow.once('ready-to-show', () => {
-    if (options.forceShow || shouldRevealWindowWhenReady) revealMainWindow();
+    if (revealWhenReady || shouldRevealWindowWhenReady) revealMainWindow();
   });
   let unresponsiveReloadTimer = null;
   mainWindow.on('unresponsive', () => {
@@ -1518,6 +1561,7 @@ function createWindow(options = {}) {
   mainWindow.webContents.once('did-finish-load', () => {
     syncBroadcastChannelsFromDb({ persist: false });
     notifyStorageReady();
+    if ((revealWhenReady || shouldRevealWindowWhenReady) && !mainWindow.isVisible()) revealMainWindow();
   });
   mainWindow.on('closed', () => {
     if (unresponsiveReloadTimer) clearTimeout(unresponsiveReloadTimer);
@@ -1831,22 +1875,11 @@ ipcMain.handle('library-remove-path', (_e, id) => {
   libraryDb.removePath(id);
   return libraryDb.listPaths();
 });
-let scanInProgress = false;
 ipcMain.handle('library-scan', async () => {
-  if (scanInProgress) return { ok: false, error: 'scan in progress' };
-  scanInProgress = true;
   try {
-    const r = await libraryScanner.scanAll(
-      libraryScanConfig(),
-      (p) => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('library-scan-progress', p);
-        }
-      }
-    );
-    return { ok: true, ...r };
+    if (!libraryScanManager) return { ok: false, error: 'scan service is not ready' };
+    return { ok: true, ...libraryScanManager.start({ reason: 'desktop' }) };
   } catch (e) { return { ok: false, error: String(e.message || e) }; }
-  finally { scanInProgress = false; }
 });
 ipcMain.handle('library-list', (_e, opts) => libraryDb.listMedia(opts || {}));
 ipcMain.handle('library-get', (_e, id) => {
@@ -1957,9 +1990,24 @@ app.whenReady().then(async () => {
 
   // Initialize local media library DB + channel JSON store + HTTP streaming server
   try {
-    const dbPath = path.join(app.getPath('userData'), 'manara-library.db');
-    libraryDb.init(dbPath, { broadcast: settings.channels, iptv: settings.localIptvChannels });
+    libraryDbPath = path.join(app.getPath('userData'), 'manara-library.db');
+    libraryDb.init(libraryDbPath, { broadcast: settings.channels, iptv: settings.localIptvChannels });
     libraryReady = true;
+    libraryScanManager = new LibraryScanManager({
+      dbPath: libraryDbPath,
+      getScanOptions: () => libraryScanConfig(),
+      onStatus: (scanStatus) => {
+        if (scanStatus.stage === 'source_indexed' || scanStatus.stage === 'source_complete') {
+          libraryDb.notifyExternalChange();
+          if (typeof libraryServer.notifyLibraryChanged === 'function') libraryServer.notifyLibraryChanged();
+        }
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('library-scan-progress', scanStatus);
+      },
+      onComplete: () => {
+        libraryDb.notifyExternalChange();
+        if (typeof libraryServer.notifyLibraryChanged === 'function') libraryServer.notifyLibraryChanged();
+      },
+    });
     syncBroadcastChannelsFromDb();
     try {
       const d = libraryDb.diagnostics();
@@ -1980,6 +2028,18 @@ app.whenReady().then(async () => {
 
   createWindow();
   createTray();
+  let startupScanNeeded = false;
+  try {
+    startupScanNeeded = libraryReady && libraryDb.listPaths().some((source) => {
+      const lastScanAt = Number(source.last_scan_at || 0);
+      return source.status !== 'connected' || !lastScanAt || Date.now() - lastScanAt > 5 * 60 * 1000;
+    });
+  } catch (error) {
+    console.warn('[WIVA] startup library scan check skipped:', error?.message || error);
+  }
+  if (libraryScanManager && startupScanNeeded) {
+    setTimeout(() => libraryScanManager?.start({ reason: 'startup' }), 1500);
+  }
 
   // Initial license check + device-state recovery + periodic re-verification every 6h
   refreshLicense().then((status) => {
@@ -2026,6 +2086,7 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   app.isQuitting = true;
+  try { libraryScanManager?.close(); } catch {}
   try {
     if (libraryReady) refreshSettingsChannelMirror('before-quit');
     else saveSettings(settings);

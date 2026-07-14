@@ -9,6 +9,12 @@ import { ErrorState, LoadingState } from "@/components/States";
 import { ViewerLayout } from "@/components/ViewerLayout";
 import { api, type AgentState, type PlatformStatus } from "@/lib/api";
 import { queryClient } from "@/lib/queryClient";
+import { ViewerHome } from "@/screens/viewer/Home";
+import { Library } from "@/screens/viewer/Library";
+import { LibraryFolders } from "@/screens/viewer/LibraryFolders";
+import { Live } from "@/screens/viewer/Live";
+import { WatchChannel } from "@/screens/viewer/WatchChannel";
+import { WatchMedia } from "@/screens/viewer/WatchMedia";
 
 const AdminAdvanced = lazy(() => import("@/screens/admin/Advanced").then((m) => ({ default: m.AdminAdvanced })));
 const AdminBranding = lazy(() => import("@/screens/admin/Branding").then((m) => ({ default: m.AdminBranding })));
@@ -40,14 +46,8 @@ const SetupWelcome = lazy(() => import("@/screens/setup/Welcome").then((m) => ({
 
 const Account = lazy(() => import("@/screens/viewer/Account").then((m) => ({ default: m.Account })));
 const Favorites = lazy(() => import("@/screens/viewer/Favorites").then((m) => ({ default: m.Favorites })));
-const ViewerHome = lazy(() => import("@/screens/viewer/Home").then((m) => ({ default: m.ViewerHome })));
-const Library = lazy(() => import("@/screens/viewer/Library").then((m) => ({ default: m.Library })));
-const LibraryFolders = lazy(() => import("@/screens/viewer/LibraryFolders").then((m) => ({ default: m.LibraryFolders })));
-const Live = lazy(() => import("@/screens/viewer/Live").then((m) => ({ default: m.Live })));
 const LiveGuide = lazy(() => import("@/screens/viewer/LiveGuide").then((m) => ({ default: m.LiveGuide })));
 const Search = lazy(() => import("@/screens/viewer/Search").then((m) => ({ default: m.Search })));
-const WatchChannel = lazy(() => import("@/screens/viewer/WatchChannel").then((m) => ({ default: m.WatchChannel })));
-const WatchMedia = lazy(() => import("@/screens/viewer/WatchMedia").then((m) => ({ default: m.WatchMedia })));
 
 function adminPage(path: string) {
   if (path === "/admin" || path === "/admin/" || path === "/admin/dashboard") return <AdminDashboard />;

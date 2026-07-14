@@ -13,11 +13,14 @@ const viewerLayout = fs.readFileSync(path.join(root, 'webui/src/components/Viewe
 const signaling = fs.readFileSync(path.join(root, 'server/signaling.cjs'), 'utf8');
 
 assert.match(app, /import \{ lazy, Suspense,/);
-assert.match(app, /const ViewerHome = lazy\(/);
+assert.match(app, /import \{ ViewerHome \} from "@\/screens\/viewer\/Home"/);
+assert.match(app, /import \{ Live \} from "@\/screens\/viewer\/Live"/);
+assert.match(app, /import \{ WatchChannel \} from "@\/screens\/viewer\/WatchChannel"/);
 assert.match(app, /const AdminDashboard = lazy\(/);
 assert.match(app, /const SetupWelcome = lazy\(/);
 assert.match(app, /<Suspense fallback=\{loading\}>/);
-assert.doesNotMatch(app, /import \{[^\n]+\} from "@\/screens\//);
+assert.doesNotMatch(app, /import \{ AdminDashboard \} from "@\/screens\//);
+assert.doesNotMatch(app, /import \{ SetupWelcome \} from "@\/screens\//);
 
 assert.match(cloudIptv, /if \(refreshPromise\) return refreshPromise/);
 assert.match(cloudIptv, /refreshPromise = performRefresh\(licenseKey\)\.finally/);
@@ -30,6 +33,8 @@ assert.match(scanner, /existingByPath/);
 assert.doesNotMatch(scanner, /fs\.readdirSync/);
 
 assert.match(iptv, /HLS_VOD_PLAYLIST_CACHE_MS = 10 \* 60 \* 1000/);
+assert.match(iptv, /HLS_PLAYLIST_TIMEOUT_MS = 10000/);
+assert.match(iptv, /HLS_SEGMENT_TIMEOUT_MS = 15000/);
 assert.match(iptv, /playlistCacheLifetime/);
 assert.match(iptv, /effectiveTtlMs/);
 

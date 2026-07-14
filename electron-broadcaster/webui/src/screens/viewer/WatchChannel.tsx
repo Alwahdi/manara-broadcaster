@@ -127,20 +127,25 @@ function getHls() {
 function loadHlsScript() {
   if (getHls()) return Promise.resolve();
   if (hlsScriptPromise) return hlsScriptPromise;
-  hlsScriptPromise = new Promise((resolve, reject) => {
+  const attempt = new Promise<void>((resolve, reject) => {
     const existing = document.querySelector<HTMLScriptElement>('script[data-wiva-hls="true"]');
     if (existing) {
-      existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error("تعذر تحميل مشغل البث.")), { once: true });
-      return;
+      existing.remove();
     }
     const script = document.createElement("script");
     script.src = "/hls.min.js";
     script.async = true;
     script.dataset.wivaHls = "true";
     script.onload = () => resolve();
-    script.onerror = () => reject(new Error("تعذر تحميل مشغل البث."));
+    script.onerror = () => {
+      script.remove();
+      reject(new Error("تعذر تحميل مشغل البث."));
+    };
     document.head.appendChild(script);
+  });
+  hlsScriptPromise = attempt.catch((error) => {
+    hlsScriptPromise = null;
+    throw error;
   });
   return hlsScriptPromise;
 }
@@ -277,18 +282,18 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
         maxMaxBufferLength: 60,
         liveSyncDurationCount: 3,
         liveMaxLatencyDurationCount: 10,
-        manifestLoadingTimeOut: 25000,
-        manifestLoadingMaxRetry: 8,
-        manifestLoadingRetryDelay: 1000,
-        manifestLoadingMaxRetryTimeout: 12000,
-        levelLoadingTimeOut: 25000,
-        levelLoadingMaxRetry: 8,
-        levelLoadingRetryDelay: 1000,
-        levelLoadingMaxRetryTimeout: 12000,
-        fragLoadingTimeOut: 30000,
-        fragLoadingMaxRetry: 10,
-        fragLoadingRetryDelay: 800,
-        fragLoadingMaxRetryTimeout: 12000,
+        manifestLoadingTimeOut: 12000,
+        manifestLoadingMaxRetry: 3,
+        manifestLoadingRetryDelay: 600,
+        manifestLoadingMaxRetryTimeout: 4000,
+        levelLoadingTimeOut: 12000,
+        levelLoadingMaxRetry: 3,
+        levelLoadingRetryDelay: 600,
+        levelLoadingMaxRetryTimeout: 4000,
+        fragLoadingTimeOut: 15000,
+        fragLoadingMaxRetry: 4,
+        fragLoadingRetryDelay: 600,
+        fragLoadingMaxRetryTimeout: 6000,
       });
       hlsRef.current = hls;
       hls.loadSource(src);
@@ -454,8 +459,9 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
       clearRemoteTrackTimer();
       clearDisconnectTimer();
       clearQualityTimer();
-      try { pcRef.current?.close(); } catch {}
+      const previousPeer = pcRef.current;
       pcRef.current = null;
+      try { previousPeer?.close(); } catch {}
       if (videoRef.current) videoRef.current.srcObject = null;
       setReady(false);
     }
@@ -473,18 +479,16 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
       }, delay);
     }
 
-    function watchRemoteStream(remoteStream: MediaStream) {
+    function watchRemoteStream(remoteStream: MediaStream, pc: RTCPeerConnection) {
       clearRemoteTrackTimer();
       for (const track of remoteStream.getTracks()) {
-        track.onended = () => scheduleReconnect("انقطع الصوت أو الصورة مؤقتًا، نحاول إعادة التشغيل...", 1500);
+        track.onended = () => {
+          if (pcRef.current === pc) scheduleReconnect("انقطع الصوت أو الصورة مؤقتًا، نحاول إعادة التشغيل...", 1500);
+        };
         if (track.kind === "audio") {
-          track.onmute = () => {
-            if (remoteTrackTimer) return;
-            remoteTrackTimer = setTimeout(() => {
-              remoteTrackTimer = null;
-              scheduleReconnect("انقطع الصوت مؤقتًا، نحاول إعادة التشغيل...", 1800);
-            }, 4500);
-          };
+          // Capture-card audio can briefly report muted while the HDMI clock
+          // settles. The track normally resumes without rebuilding the video.
+          track.onmute = () => clearRemoteTrackTimer();
           track.onunmute = () => clearRemoteTrackTimer();
         }
       }
@@ -551,9 +555,10 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
           const pc = new RTCPeerConnection({ iceServers: [] });
           pcRef.current = pc;
           pc.ontrack = (ev) => {
+            if (pcRef.current !== pc) return;
             if (videoRef.current) {
               videoRef.current.srcObject = ev.streams[0];
-              watchRemoteStream(ev.streams[0]);
+              watchRemoteStream(ev.streams[0], pc);
               streamReady = true;
               clearStartupTimer();
               setReady(true);
@@ -562,12 +567,12 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
             }
           };
           pc.onicecandidate = (ev) => {
-            if (ev.candidate && ws.readyState === WebSocket.OPEN) {
+            if (pcRef.current === pc && ev.candidate && ws.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify({ type: "ice", candidate: ev.candidate }));
             }
           };
           pc.onconnectionstatechange = () => {
-            if (closed) return;
+            if (closed || pcRef.current !== pc) return;
             if (pc.connectionState === "connected") {
               clearDisconnectTimer();
               startAdaptiveQuality(pc, ws);
@@ -592,15 +597,18 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
             }
           };
           pc.oniceconnectionstatechange = () => {
-            if (closed) return;
+            if (closed || pcRef.current !== pc) return;
             if (pc.iceConnectionState === "failed") {
               scheduleReconnect("انقطع الاتصال مؤقتًا، نحاول إعادة التشغيل...", 1800);
             }
           };
           await pc.setRemoteDescription({ type: "offer", sdp: msg.sdp });
+          if (pcRef.current !== pc) return;
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
-          ws.send(JSON.stringify({ type: "answer", sdp: answer.sdp }));
+          if (pcRef.current === pc && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "answer", sdp: answer.sdp }));
+          }
           return;
         }
         if (msg.type === "ice" && pcRef.current && msg.candidate) {

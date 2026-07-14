@@ -15,6 +15,7 @@ let Database;
 try { Database = require('better-sqlite3'); } catch (e) { Database = null; }
 
 let _db = null;
+let _dbPath = null;
 let _mediaRevision = 1;
 
 function bumpMediaRevision() {
@@ -23,6 +24,11 @@ function bumpMediaRevision() {
 
 function mediaRevision() {
   return _mediaRevision;
+}
+
+function notifyExternalChange() {
+  if (!_db && _dbPath) loadMediaFallback(_dbPath, { replace: true });
+  bumpMediaRevision();
 }
 
 // ---------- Channel JSON store (independent of sqlite) ----------
@@ -144,6 +150,8 @@ function saveChannelsFile() {
 // ---------- Media library (sqlite preferred, JSON fallback) ----------
 let _mediaFallbackPath = null;
 let _mediaFallback = { media_items: [], library_paths: [], watch_progress: {}, subtitles: [] };
+let _mediaFallbackBatchDepth = 0;
+let _mediaFallbackDirty = false;
 function normalizePathList(value) {
   let raw = value;
   if (typeof raw === 'string') {
@@ -178,11 +186,14 @@ function publicLibraryPath(row = {}) {
     hideEmptyFolders,
   };
 }
-function loadMediaFallback(dbPath) {
+function loadMediaFallback(dbPath, { replace = false } = {}) {
   _mediaFallbackPath = dbPath + '.media.json';
   try {
     if (fs.existsSync(_mediaFallbackPath)) {
-      _mediaFallback = { ..._mediaFallback, ...JSON.parse(fs.readFileSync(_mediaFallbackPath, 'utf8')) };
+      const stored = JSON.parse(fs.readFileSync(_mediaFallbackPath, 'utf8'));
+      _mediaFallback = replace
+        ? { media_items: [], library_paths: [], watch_progress: {}, subtitles: [], ...stored }
+        : { ..._mediaFallback, ...stored };
     }
     if (!_mediaFallback.watch_progress || typeof _mediaFallback.watch_progress !== 'object') _mediaFallback.watch_progress = {};
     if (!Array.isArray(_mediaFallback.subtitles)) _mediaFallback.subtitles = [];
@@ -198,12 +209,30 @@ function loadMediaFallback(dbPath) {
 }
 function saveMediaFallback() {
   if (!_mediaFallbackPath) return;
+  if (_mediaFallbackBatchDepth > 0) {
+    _mediaFallbackDirty = true;
+    return;
+  }
   try {
     writeJsonAtomic(_mediaFallbackPath, _mediaFallback);
   } catch (e) { console.error('[WIVA] media fallback write failed:', e.message); }
 }
 
+function withMediaFallbackBatch(callback) {
+  _mediaFallbackBatchDepth += 1;
+  try {
+    return callback();
+  } finally {
+    _mediaFallbackBatchDepth -= 1;
+    if (_mediaFallbackBatchDepth === 0 && _mediaFallbackDirty) {
+      _mediaFallbackDirty = false;
+      saveMediaFallback();
+    }
+  }
+}
+
 function init(dbPath, seed = {}) {
+  _dbPath = dbPath;
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   // Channels file lives next to the db, but is independent of sqlite.
   _channelsPath = path.join(path.dirname(dbPath), 'manara-channels.json');
@@ -256,6 +285,8 @@ function init(dbPath, seed = {}) {
       source_path TEXT,
       source_label TEXT,
       relative_path TEXT,
+      modified_at INTEGER,
+      file_signature TEXT,
       added_at INTEGER NOT NULL,
       scanned_at INTEGER NOT NULL
     );
@@ -284,6 +315,8 @@ function init(dbPath, seed = {}) {
       'ALTER TABLE media_items ADD COLUMN source_path TEXT',
       'ALTER TABLE media_items ADD COLUMN source_label TEXT',
       'ALTER TABLE media_items ADD COLUMN relative_path TEXT',
+      'ALTER TABLE media_items ADD COLUMN modified_at INTEGER',
+      'ALTER TABLE media_items ADD COLUMN file_signature TEXT',
       'ALTER TABLE library_paths ADD COLUMN label TEXT',
       'ALTER TABLE library_paths ADD COLUMN status TEXT NOT NULL DEFAULT "connected"',
       'ALTER TABLE library_paths ADD COLUMN last_scan_at INTEGER',
@@ -455,6 +488,8 @@ function upsertMedia(item) {
 	        source_path: item.source_path ?? existing.source_path ?? null,
 	        source_label: item.source_label ?? existing.source_label ?? null,
 	        relative_path: item.relative_path ?? existing.relative_path ?? null,
+	        modified_at: item.modified_at ?? existing.modified_at ?? null,
+	        file_signature: item.file_signature ?? existing.file_signature ?? null,
 	        scanned_at: now,
       });
       saveMediaFallback();
@@ -484,6 +519,8 @@ function upsertMedia(item) {
       source_path: item.source_path ?? null,
       source_label: item.source_label ?? null,
       relative_path: item.relative_path ?? null,
+      modified_at: item.modified_at ?? null,
+      file_signature: item.file_signature ?? null,
       added_at: now,
       scanned_at: now,
     });
@@ -496,28 +533,37 @@ function upsertMedia(item) {
 	  if (existing) {
 	    db().prepare(`UPDATE media_items SET kind=?, title=?, year=?, season=?, episode=?, tmdb_id=?,
 	      poster_url=?, backdrop_url=?, overview=?, rating=?, duration=?, size=?,
-	      section=?, folder=?, remote_url=?, source_id=?, source_path=?, source_label=?, relative_path=?, scanned_at=? WHERE id=?`).run(
+	      section=?, folder=?, remote_url=?, source_id=?, source_path=?, source_label=?, relative_path=?, modified_at=?, file_signature=?, scanned_at=? WHERE id=?`).run(
 	      item.kind, item.title, item.year ?? null, item.season ?? null, item.episode ?? null,
 	      item.tmdb_id ?? null, item.poster_url ?? null, item.backdrop_url ?? null,
 	      item.overview ?? null, item.rating ?? null, item.duration ?? null, item.size ?? null,
 	      item.section ?? null, item.folder ?? null, item.remote_url ?? null,
 	      item.source_id ?? null, item.source_path ?? null, item.source_label ?? null, item.relative_path ?? null,
+	      item.modified_at ?? null, item.file_signature ?? null,
 	      now, existing.id);
 	    bumpMediaRevision();
 	    return existing.id;
 	  }
 	  const r = db().prepare(`INSERT INTO media_items
-	    (path, kind, title, year, season, episode, tmdb_id, poster_url, backdrop_url, overview, rating, duration, size, section, folder, remote_url, source_id, source_path, source_label, relative_path, added_at, scanned_at)
-	    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+	    (path, kind, title, year, season, episode, tmdb_id, poster_url, backdrop_url, overview, rating, duration, size, section, folder, remote_url, source_id, source_path, source_label, relative_path, modified_at, file_signature, added_at, scanned_at)
+	    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
 	    item.path, item.kind, item.title, item.year ?? null, item.season ?? null, item.episode ?? null,
 	    item.tmdb_id ?? null, item.poster_url ?? null, item.backdrop_url ?? null,
 	    item.overview ?? null, item.rating ?? null, item.duration ?? null, item.size ?? null,
 	    item.section ?? null, item.folder ?? null, item.remote_url ?? null,
 	    item.source_id ?? null, item.source_path ?? null, item.source_label ?? null, item.relative_path ?? null,
+	    item.modified_at ?? null, item.file_signature ?? null,
 	    now, now);
 	  bumpMediaRevision();
 	  return r.lastInsertRowid;
 	}
+
+function upsertMediaBatch(items = []) {
+  const rows = Array.isArray(items) ? items : [];
+  if (!rows.length) return [];
+  if (!_db) return withMediaFallbackBatch(() => rows.map((item) => upsertMedia(item)));
+  return db().transaction((batch) => batch.map((item) => upsertMedia(item)))(rows);
+}
 function listMedia({ kind, q, limit = 200 } = {}) {
   if (!_db) {
     const query = String(q || '').trim().toLowerCase();
@@ -557,7 +603,7 @@ function updateMedia(id, patch = {}) {
   if (!cur) return null;
   const clean = {
     title: String(patch.title ?? cur.title ?? '').trim() || cur.title,
-    kind: ['movie', 'episode', 'audio'].includes(patch.kind) ? patch.kind : cur.kind,
+    kind: ['movie', 'episode', 'audio', 'book', 'document'].includes(patch.kind) ? patch.kind : cur.kind,
     year: patch.year === '' || patch.year == null ? null : Number(patch.year) || null,
     season: patch.season === '' || patch.season == null ? null : Number(patch.season) || null,
     episode: patch.episode === '' || patch.episode == null ? null : Number(patch.episode) || null,
@@ -676,7 +722,7 @@ function deleteMissing(existingPaths) {
   bumpMediaRevision();
 	}
 function deleteMissingForSource(sourceId, existingPaths = []) {
-  if (!sourceId) return;
+  if (!sourceId) return 0;
   if (!_db) {
     const keep = new Set(existingPaths || []);
     const removedIds = new Set();
@@ -694,23 +740,32 @@ function deleteMissingForSource(sourceId, existingPaths = []) {
     }
     saveMediaFallback();
     bumpMediaRevision();
-    return;
+    return removedIds.size;
   }
   if (!existingPaths.length) {
+    const count = Number(db().prepare('SELECT COUNT(*) AS count FROM media_items WHERE source_id = ?').get(sourceId)?.count || 0);
     db().prepare('DELETE FROM subtitles WHERE media_id IN (SELECT id FROM media_items WHERE source_id = ?)').run(sourceId);
     db().prepare('DELETE FROM watch_progress WHERE media_id IN (SELECT id FROM media_items WHERE source_id = ?)').run(sourceId);
     db().prepare('DELETE FROM media_items WHERE source_id = ?').run(sourceId);
     bumpMediaRevision();
-    return;
+    return count;
   }
-  const placeholders = existingPaths.map(() => '?').join(',');
-  const staleIds = db().prepare(`SELECT id FROM media_items WHERE source_id = ? AND path NOT IN (${placeholders})`).all(sourceId, ...existingPaths).map((row) => row.id);
-  if (!staleIds.length) return;
-  const stalePlaceholders = staleIds.map(() => '?').join(',');
-  db().prepare(`DELETE FROM subtitles WHERE media_id IN (${stalePlaceholders})`).run(...staleIds);
-  db().prepare(`DELETE FROM watch_progress WHERE media_id IN (${stalePlaceholders})`).run(...staleIds);
-  db().prepare(`DELETE FROM media_items WHERE id IN (${stalePlaceholders})`).run(...staleIds);
+  const keep = new Set(existingPaths.map(String));
+  const staleIds = db().prepare('SELECT id, path FROM media_items WHERE source_id = ?').all(sourceId)
+    .filter((row) => !keep.has(String(row.path)))
+    .map((row) => row.id);
+  if (!staleIds.length) return 0;
+  db().transaction((ids) => {
+    for (let offset = 0; offset < ids.length; offset += 400) {
+      const chunk = ids.slice(offset, offset + 400);
+      const placeholders = chunk.map(() => '?').join(',');
+      db().prepare(`DELETE FROM subtitles WHERE media_id IN (${placeholders})`).run(...chunk);
+      db().prepare(`DELETE FROM watch_progress WHERE media_id IN (${placeholders})`).run(...chunk);
+      db().prepare(`DELETE FROM media_items WHERE id IN (${placeholders})`).run(...chunk);
+    }
+  })(staleIds);
   bumpMediaRevision();
+  return staleIds.length;
 }
 function setProgress(mediaId, position, duration) {
   if (!_db) {
@@ -736,6 +791,8 @@ function addSubtitle(mediaId, lang, p, label) {
     saveMediaFallback();
     return;
   }
+  const existing = db().prepare('SELECT id FROM subtitles WHERE media_id = ? AND path = ?').get(mediaId, p);
+  if (existing) return existing.id;
   db().prepare('INSERT INTO subtitles (media_id, lang, path, label) VALUES (?,?,?,?)').run(mediaId, lang, p, label || null);
 }
 function listSubtitles(mediaId) {
@@ -765,6 +822,10 @@ let _adminState = {
     accent2: '#14b8a6',
     direction: 'rtl',
   },
+  libraryPolicy: {
+    downloadsEnabled: true,
+    downloadRateBytesPerSecond: 0,
+  },
 };
 
 function normalizeAdminState(raw = {}) {
@@ -788,6 +849,10 @@ function normalizeAdminState(raw = {}) {
     logs: Array.isArray(raw.logs) ? raw.logs.slice(-600) : [],
     blockedMessage,
     mediaTheme,
+    libraryPolicy: {
+      downloadsEnabled: raw.libraryPolicy?.downloadsEnabled !== false,
+      downloadRateBytesPerSecond: normalizeDownloadRate(raw.libraryPolicy?.downloadRateBytesPerSecond),
+    },
   };
 }
 
@@ -1190,6 +1255,29 @@ function setMediaTheme(patch = {}) {
   return mediaTheme();
 }
 
+function libraryPolicy() {
+  return { ..._adminState.libraryPolicy };
+}
+
+function normalizeDownloadRate(value) {
+  const rate = Number(value) || 0;
+  if (rate <= 0) return 0;
+  return Math.max(64 * 1024, Math.min(100 * 1024 * 1024, rate));
+}
+
+function setLibraryPolicy(patch = {}) {
+  _adminState.libraryPolicy = {
+    downloadsEnabled: patch.downloadsEnabled === undefined
+      ? _adminState.libraryPolicy.downloadsEnabled !== false
+      : Boolean(patch.downloadsEnabled),
+    downloadRateBytesPerSecond: patch.downloadRateBytesPerSecond === undefined
+      ? normalizeDownloadRate(_adminState.libraryPolicy.downloadRateBytesPerSecond)
+      : normalizeDownloadRate(patch.downloadRateBytesPerSecond),
+  };
+  saveAdminState();
+  return libraryPolicy();
+}
+
 function touchSession({ ip, userAgent, path: requestPath, targetType, targetId, targetName } = {}) {
   const key = cleanSessionKey(ip);
   const now = Date.now();
@@ -1477,6 +1565,7 @@ function diagnostics() {
     iptvCount: _channels.iptv.length,
     lastChannelSaveError: _lastChannelSaveError,
     sqliteAvailable: !!_db,
+    databasePath: _dbPath,
     mediaFallbackPath: _mediaFallbackPath,
     adminStatePath: _adminStatePath,
   };
@@ -1484,9 +1573,9 @@ function diagnostics() {
 
 module.exports = {
   init, diagnostics, reloadChannelsFromDisk,
-  mediaRevision,
+  mediaRevision, notifyExternalChange,
   listPaths, addPath, removePath, updatePathStatus, updatePath, setPathExcludes, addPathExclude, removePathExclude,
-  upsertMedia, listMedia, getMedia, updateMedia, removeMedia, mediaStats, deleteMissing, deleteMissingForSource,
+  upsertMedia, upsertMediaBatch, listMedia, getMedia, updateMedia, removeMedia, mediaStats, deleteMissing, deleteMissingForSource,
   setProgress, addSubtitle, listSubtitles, getSubtitle,
   listIptv, getIptv, addIptv, updateIptv, removeIptv,
   listBroadcastChannels, upsertBroadcastChannel, setBroadcastChannels, removeBroadcastChannel,
@@ -1495,7 +1584,7 @@ module.exports = {
   createViewerAccount, authenticateViewerAccount, viewerAccountBySession, clearViewerAccountSession,
   createViewerProfile, createOrUpdateViewerProfile, authenticateViewerProfile,
   listViewerAccounts, addViewerMessage, listViewerMessages, listViewerMessagesForViewer, updateViewerMessageStatus,
-  mediaTheme, setMediaTheme,
+  mediaTheme, setMediaTheme, libraryPolicy, setLibraryPolicy,
   listBlocks, addBlock, removeBlock, isBlocked, blockedMessage, setBlockedMessage,
   replaceAllChannels, exportChannels,
 };
