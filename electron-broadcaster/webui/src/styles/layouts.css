@@ -3403,6 +3403,7 @@ button.folder-card {
   object-fit: contain;
   object-position: center;
   background: #000;
+  transform: rotate(var(--wiva-video-rotation, 0deg)) scale(var(--wiva-video-scale, 1));
   transform-origin: center;
   will-change: transform;
   touch-action: pan-y;
@@ -3622,7 +3623,8 @@ button.folder-card {
   flex-wrap: wrap;
 }
 .wiva-player:fullscreen,
-.wiva-player:-webkit-full-screen {
+.wiva-player:-webkit-full-screen,
+.wiva-player.is-pseudo-fullscreen {
   width: 100vw !important;
   height: 100vh !important;
   max-width: none !important;
@@ -3634,16 +3636,35 @@ button.folder-card {
   aspect-ratio: auto;
   background: #000;
 }
+.wiva-player.is-pseudo-fullscreen {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 10000;
+}
+body.wiva-player-fullscreen-open {
+  overflow: hidden;
+}
+body.wiva-player-fullscreen-open main {
+  animation: none !important;
+  transform: none !important;
+}
+body.wiva-player-fullscreen-open .player-stage {
+  isolation: auto;
+}
 .wiva-player:fullscreen::after,
 .wiva-player:-webkit-full-screen::after,
+.wiva-player.is-pseudo-fullscreen::after,
 .wiva-player:fullscreen .player-chrome-top,
-.wiva-player:-webkit-full-screen .player-chrome-top {
+.wiva-player:-webkit-full-screen .player-chrome-top,
+.wiva-player.is-pseudo-fullscreen .player-chrome-top {
   display: none;
 }
 .wiva-player:fullscreen .live-player-video,
 .wiva-player:fullscreen .media-player-video,
 .wiva-player:-webkit-full-screen .live-player-video,
-.wiva-player:-webkit-full-screen .media-player-video {
+.wiva-player:-webkit-full-screen .media-player-video,
+.wiva-player.is-pseudo-fullscreen .live-player-video,
+.wiva-player.is-pseudo-fullscreen .media-player-video {
   width: 100%;
   height: 100%;
   max-width: none;
@@ -3651,11 +3672,30 @@ button.folder-card {
   object-fit: contain;
   touch-action: none;
 }
+.wiva-player[data-rotation="90"] .live-player-video,
+.wiva-player[data-rotation="90"] .media-player-video,
+.wiva-player[data-rotation="270"] .live-player-video,
+.wiva-player[data-rotation="270"] .media-player-video {
+  width: 100vh;
+  width: 100dvh;
+  height: 100vw;
+  max-width: none;
+  max-height: none;
+  inset: 50% auto auto 50%;
+  translate: -50% -50%;
+}
 .wiva-player:fullscreen .wiva-player-controls,
-.wiva-player:-webkit-full-screen .wiva-player-controls {
+.wiva-player:-webkit-full-screen .wiva-player-controls,
+.wiva-player.is-pseudo-fullscreen .wiva-player-controls {
   padding-right: max(18px, env(safe-area-inset-right));
   padding-bottom: max(16px, env(safe-area-inset-bottom));
   padding-left: max(18px, env(safe-area-inset-left));
+}
+
+@media (min-width: 721px) {
+  .player-rotate-btn {
+    display: none;
+  }
 }
 
 @media (max-width: 720px) {

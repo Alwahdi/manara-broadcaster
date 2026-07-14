@@ -14,6 +14,12 @@ Packaged apps check for updates on startup and every 6 hours. The WIVA Agent
 window also includes a manual update check and install button when an update is
 ready.
 
+## v2.6.60
+
+- Adds an in-player mobile rotation control and automatic landscape orientation when fullscreen is supported, with a full-viewport fallback that keeps WIVA controls available on restricted browsers.
+- Fixes pseudo-fullscreen stacking so the viewer header, page transitions, and mobile navigation cannot cover the video or intercept player controls.
+- Verifies capture quality changes remain isolated per viewer and extends signaling load coverage through 500 and 1,000 simulated viewers.
+
 ## v2.6.59
 
 - Reuses persistent upstream HTTP/HTTPS connections for IPTV playlists, segments, and raw streams, reducing repeated connection setup latency without keeping unwatched channels active.

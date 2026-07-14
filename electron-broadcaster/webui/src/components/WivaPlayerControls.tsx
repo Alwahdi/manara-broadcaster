@@ -5,6 +5,7 @@ import {
   Pause,
   PictureInPicture2,
   Play,
+  RotateCw,
   Settings,
   Volume2,
   VolumeX,
@@ -14,6 +15,12 @@ type Props = {
   videoRef: RefObject<HTMLVideoElement | null>;
   live?: boolean;
   settings?: ReactNode;
+};
+
+type PlayerRotation = 0 | 90 | 180 | 270;
+
+type LockableScreenOrientation = ScreenOrientation & {
+  lock?: (orientation: "landscape" | "portrait") => Promise<void>;
 };
 
 function formatTime(value: number) {
@@ -42,6 +49,7 @@ export function WivaPlayerControls({ videoRef, live = false, settings }: Props) 
   const [controlsVisible, setControlsVisible] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const [rotation, setRotation] = useState<PlayerRotation>(0);
   const [pipAvailable, setPipAvailable] = useState(false);
   const [seekFeedback, setSeekFeedback] = useState<"forward" | "back" | null>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -49,6 +57,7 @@ export function WivaPlayerControls({ videoRef, live = false, settings }: Props) 
   const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
   const controlsVisibleRef = useRef(true);
   const audioInitializedRef = useRef(false);
+  const orientationLockedRef = useRef(false);
 
   const canAutoHide = useCallback(() => (
     typeof window !== "undefined"
@@ -95,16 +104,81 @@ export function WivaPlayerControls({ videoRef, live = false, settings }: Props) 
     video.muted = next === 0;
   }, [videoRef]);
 
+  const applyRotation = useCallback((next: PlayerRotation) => {
+    const shell = getPlayerShell(videoRef.current);
+    if (!shell) return;
+    shell.dataset.rotation = String(next);
+    shell.style.setProperty("--wiva-video-rotation", `${next}deg`);
+    setRotation(next);
+  }, [videoRef]);
+
+  const unlockOrientation = useCallback(() => {
+    if (!orientationLockedRef.current) return;
+    try { window.screen.orientation?.unlock?.(); } catch {}
+    orientationLockedRef.current = false;
+  }, []);
+
+  const exitPseudoFullscreen = useCallback((shell: HTMLElement) => {
+    shell.classList.remove("is-pseudo-fullscreen");
+    document.body.classList.remove("wiva-player-fullscreen-open");
+    setFullscreen(false);
+    applyRotation(0);
+    unlockOrientation();
+  }, [applyRotation, unlockOrientation]);
+
+  const enterFullscreen = useCallback(async (autoRotate = true) => {
+    const video = videoRef.current;
+    const shell = getPlayerShell(video);
+    if (!video || !shell) return;
+    let nativeFullscreen = false;
+    try {
+      if (shell.requestFullscreen) {
+        await shell.requestFullscreen();
+        nativeFullscreen = true;
+      }
+    } catch {}
+    if (!nativeFullscreen) {
+      shell.classList.add("is-pseudo-fullscreen");
+      document.body.classList.add("wiva-player-fullscreen-open");
+      setFullscreen(true);
+    }
+    const mobilePortrait = window.innerWidth <= 900 && window.matchMedia("(orientation: portrait)").matches;
+    const landscapeVideo = !video.videoWidth || !video.videoHeight || video.videoWidth >= video.videoHeight;
+    if (!autoRotate || !mobilePortrait || !landscapeVideo) return;
+    const orientation = window.screen.orientation as LockableScreenOrientation | undefined;
+    try {
+      if (orientation?.lock) {
+        await orientation.lock("landscape");
+        orientationLockedRef.current = true;
+        return;
+      }
+    } catch {}
+    applyRotation(90);
+  }, [applyRotation, videoRef]);
+
   const toggleFullscreen = useCallback(async () => {
     const video = videoRef.current;
     const shell = getPlayerShell(video);
     if (!video || !shell) return;
     try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else if (shell.requestFullscreen) await shell.requestFullscreen();
-      else (video as HTMLVideoElement & { webkitEnterFullscreen?: () => void }).webkitEnterFullscreen?.();
+      if (shell.classList.contains("is-pseudo-fullscreen")) exitPseudoFullscreen(shell);
+      else if (document.fullscreenElement) await document.exitFullscreen();
+      else await enterFullscreen(true);
     } catch {}
-  }, [videoRef]);
+  }, [enterFullscreen, exitPseudoFullscreen, videoRef]);
+
+  const toggleRotation = useCallback(async () => {
+    const video = videoRef.current;
+    const shell = getPlayerShell(video);
+    if (!video || !shell) return;
+    if (!document.fullscreenElement && !shell.classList.contains("is-pseudo-fullscreen")) {
+      await enterFullscreen(false);
+    }
+    unlockOrientation();
+    const next = (rotation === 270 ? 0 : rotation + 90) as PlayerRotation;
+    applyRotation(next);
+    revealControls(true);
+  }, [applyRotation, enterFullscreen, revealControls, rotation, unlockOrientation, videoRef]);
 
   const togglePictureInPicture = useCallback(async () => {
     const video = videoRef.current;
@@ -204,15 +278,17 @@ export function WivaPlayerControls({ videoRef, live = false, settings }: Props) 
     const onFullscreen = () => {
       const active = document.fullscreenElement === shell;
       setFullscreen(active);
-      if (!active) {
-        video.style.transform = "";
+      if (!active && !shell.classList.contains("is-pseudo-fullscreen")) {
+        applyRotation(0);
+        video.style.removeProperty("--wiva-video-scale");
+        unlockOrientation();
         setSettingsOpen(false);
       }
       revealControls(true);
     };
     const resetZoom = () => {
       zoomScale = 1;
-      video.style.transform = "";
+      video.style.removeProperty("--wiva-video-scale");
       setSettingsOpen(false);
     };
     const onTouchStart = (event: TouchEvent) => {
@@ -231,7 +307,7 @@ export function WivaPlayerControls({ videoRef, live = false, settings }: Props) 
         event.touches[0].clientY - event.touches[1].clientY,
       );
       zoomScale = Math.max(1, Math.min(2, pinchStartScale * (distance / pinchStartDistance)));
-      video.style.transform = zoomScale === 1 ? "" : `scale(${zoomScale})`;
+      video.style.setProperty("--wiva-video-scale", String(zoomScale));
     };
     const onTouchEnd = (event: TouchEvent) => {
       const wasPinching = pinchStartDistance > 0;
@@ -302,7 +378,14 @@ export function WivaPlayerControls({ videoRef, live = false, settings }: Props) 
       document.removeEventListener("fullscreenchange", onFullscreen);
       document.removeEventListener("pointerdown", onDocumentPointerDown);
     };
-  }, [canAutoHide, changeVolume, clearHideTimer, live, revealControls, settingsOpen, toggleFullscreen, toggleMute, togglePlayback, videoRef]);
+  }, [applyRotation, canAutoHide, changeVolume, clearHideTimer, live, revealControls, settingsOpen, toggleFullscreen, toggleMute, togglePlayback, unlockOrientation, videoRef]);
+
+  useEffect(() => () => {
+    const shell = getPlayerShell(videoRef.current);
+    shell?.classList.remove("is-pseudo-fullscreen");
+    document.body.classList.remove("wiva-player-fullscreen-open");
+    unlockOrientation();
+  }, [unlockOrientation, videoRef]);
 
   return (
     <div
@@ -368,6 +451,9 @@ export function WivaPlayerControls({ videoRef, live = false, settings }: Props) 
             </div>
           ) : null}
           {pipAvailable ? <button type="button" className="player-icon-btn player-pip-btn" onClick={togglePictureInPicture} title="صورة داخل صورة" aria-label="صورة داخل صورة"><PictureInPicture2 size={19} /></button> : null}
+          <button type="button" className="player-icon-btn player-rotate-btn" onClick={toggleRotation} title="تدوير الفيديو" aria-label={`تدوير الفيديو، الزاوية الحالية ${rotation} درجة`}>
+            <RotateCw size={19} />
+          </button>
           <button type="button" className="player-icon-btn" onClick={toggleFullscreen} title={fullscreen ? "الخروج من ملء الشاشة" : "ملء الشاشة"} aria-label={fullscreen ? "الخروج من ملء الشاشة" : "الدخول إلى ملء الشاشة"}>
             {fullscreen ? <Minimize size={19} /> : <Maximize size={19} />}
           </button>

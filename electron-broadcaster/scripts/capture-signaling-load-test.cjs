@@ -53,6 +53,7 @@ async function main() {
   while (!signaling.address()) await delay(10);
   const url = `ws://127.0.0.1:${signaling.address().port}/ws`;
   const sockets = [];
+  const viewerIds = [];
   const broadcasterMessages = [];
   let broadcaster;
   const rssBefore = process.memoryUsage().rss;
@@ -73,7 +74,8 @@ async function main() {
       sockets.push(viewer);
       const registered = waitForMessage(viewer, 'viewer-id');
       viewer.send(JSON.stringify({ type: 'register-viewer', channelId: channel.id, quality: index % 3 === 0 ? '480' : index % 3 === 1 ? '720' : '1080' }));
-      await registered;
+      const registration = await registered;
+      viewerIds[index] = String(registration.id);
     }));
 
     const elapsedMs = Date.now() - startedAt;
@@ -88,6 +90,13 @@ async function main() {
     sockets[0].send(JSON.stringify({ type: 'set-quality', quality: '720' }));
     const qualityMessage = await qualityChanged;
     assert.equal(qualityMessage.quality, '720', 'viewer can change HDMI quality without reconnecting');
+    assert.equal(String(qualityMessage.from), viewerIds[0], 'quality change is scoped to the requesting viewer');
+
+    const secondQualityChanged = waitForMessage(broadcaster, 'set-quality');
+    sockets[1].send(JSON.stringify({ type: 'set-quality', quality: '480' }));
+    const secondQualityMessage = await secondQualityChanged;
+    assert.equal(secondQualityMessage.quality, '480', 'another viewer keeps an independent HDMI quality');
+    assert.equal(String(secondQualityMessage.from), viewerIds[1], 'second quality change is scoped to the second viewer');
 
     const rssGrowthMb = Math.max(0, process.memoryUsage().rss - rssBefore) / (1024 * 1024);
     console.log(JSON.stringify({
