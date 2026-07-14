@@ -14,6 +14,12 @@ Packaged apps check for updates on startup and every 6 hours. The WIVA Agent
 window also includes a manual update check and install button when an update is
 ready.
 
+## v2.6.58
+
+- Stabilizes automatic HDMI quality with repeated-loss confirmation, sustained recovery checks, and a 45-second upgrade cooldown so video does not bounce between 480p and 720p.
+- Adds hysteresis to broadcaster capacity protection: viewer load must cross a higher threshold to reduce quality and a lower threshold to restore it, preventing join/leave oscillation.
+- Makes IPTV adaptive bitrate upgrades more conservative by using longer bandwidth estimates while retaining fast degradation when playback is at risk.
+
 ## v2.6.57
 
 - Streams HLS segment bytes to viewers as they arrive instead of waiting for the complete upstream segment, reducing IPTV black-screen and first-frame delay.

@@ -275,6 +275,11 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
         startLevel: 0,
         capLevelToPlayerSize: true,
         abrEwmaDefaultEstimate: 500_000,
+        abrEwmaFastLive: 6,
+        abrEwmaSlowLive: 18,
+        abrBandWidthFactor: 0.8,
+        abrBandWidthUpFactor: 0.6,
+        abrMaxWithRealBitrate: true,
         maxStarvationDelay: 2,
         maxLoadingDelay: 3,
         backBufferLength: 30,
@@ -398,6 +403,9 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
     let startupTimer: ReturnType<typeof setTimeout> | null = null;
     let streamReady = false;
     let previousPackets = { received: 0, lost: 0 };
+    let weakQualitySamples = 0;
+    let stableQualitySamples = 0;
+    let lastAutomaticQualityChangeAt = 0;
 
     function clearRetry() {
       if (retry) clearTimeout(retry);
@@ -428,7 +436,11 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
       clearQualityTimer();
       clearStartupTimer();
       qualityTimer = setInterval(async () => {
-        if (qualityModeRef.current !== "auto" || pc.connectionState !== "connected") return;
+        if (qualityModeRef.current !== "auto" || pc.connectionState !== "connected") {
+          weakQualitySamples = 0;
+          stableQualitySamples = 0;
+          return;
+        }
         try {
           const report = await pc.getStats();
           let received = 0;
@@ -446,9 +458,31 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
           previousPackets = { received, lost };
           const total = receivedDelta + lostDelta;
           const lossRate = total ? lostDelta / total : 0;
-          const next = lossRate > 0.04 || jitter > 0.12 ? "480" : recommendedCaptureQuality();
+          const weak = lossRate > 0.05 || jitter > 0.14;
+          const severelyWeak = lossRate > 0.12 || jitter > 0.25;
+          if (weak) {
+            weakQualitySamples += 1;
+            stableQualitySamples = 0;
+          } else {
+            stableQualitySamples += 1;
+            weakQualitySamples = 0;
+          }
+          const now = Date.now();
+          let next = qualityRef.current;
+          if ((severelyWeak || weakQualitySamples >= 2) && qualityRef.current !== "480") {
+            next = "480";
+          } else if (
+            stableQualitySamples >= 6
+            && qualityRef.current === "480"
+            && now - lastAutomaticQualityChangeAt >= 45_000
+          ) {
+            next = recommendedCaptureQuality();
+          }
           if (next !== qualityRef.current && ws.readyState === WebSocket.OPEN) {
             qualityRef.current = next;
+            lastAutomaticQualityChangeAt = now;
+            weakQualitySamples = 0;
+            stableQualitySamples = 0;
             ws.send(JSON.stringify({ type: "set-quality", quality: next }));
           }
         } catch {}

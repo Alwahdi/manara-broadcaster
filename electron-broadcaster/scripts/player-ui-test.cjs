@@ -49,6 +49,8 @@ assert.match(live, /playError instanceof DOMException[\s\S]*?NotAllowedError[\s\
 assert.match(live, /startLevel:\s*0/);
 assert.match(live, /capLevelToPlayerSize:\s*true/);
 assert.match(live, /abrEwmaDefaultEstimate:\s*500_000/);
+assert.match(live, /abrEwmaSlowLive:\s*18/, 'IPTV automatic quality uses a stable long bandwidth estimate');
+assert.match(live, /abrBandWidthUpFactor:\s*0\.6/, 'IPTV automatic quality upgrades conservatively to avoid oscillation');
 assert.match(live, /hlsScriptPromise\s*=\s*null[\s\S]*?throw error/, 'HLS player asset can recover after an initial load failure');
 assert.match(live, /manifestLoadingTimeOut:\s*12000/, 'IPTV manifest loading fails clearly instead of waiting indefinitely');
 assert.match(live, /fragLoadingMaxRetry:\s*4/, 'IPTV segment retries remain bounded');
@@ -63,10 +65,14 @@ assert.doesNotMatch(broadcaster, /track\.onmute\s*=\s*\(\)\s*=>\s*scheduleAudioR
 assert.doesNotMatch(broadcaster, /track\.enabled\s*!==\s*false\s*&&\s*!track\.muted/, 'live HDMI audio remains healthy during transient mute');
 assert.match(broadcaster, /AUDIO_MISSING_RESTART_MS\s*=\s*20000/, 'missing capture audio uses a sustained grace period');
 assert.match(broadcaster, /AUDIO_STALL_RESTART_MS\s*=\s*20000/, 'persistently muted HDMI audio recovers after a sustained grace period');
-assert.match(broadcaster, /viewerCount\s*>\s*36/, 'capture sender load has a heavy-viewer capacity threshold');
+assert.match(broadcaster, /viewerCount\s*>=\s*40/, 'capture sender load has a heavy-viewer capacity threshold');
+assert.match(broadcaster, /viewerCount\s*<=\s*30/, 'capture capacity uses a lower recovery threshold to prevent quality oscillation');
 assert.match(broadcaster, /scheduleCapacityRetune\(\)/, 'capture senders are retuned when viewer load changes');
 assert.match(live, /pcRef\.current\s*!==\s*pc/, 'stale WebRTC peer events cannot trigger reconnect loops');
 assert.doesNotMatch(live, /track\.onmute[\s\S]{0,240}scheduleReconnect/, 'viewer does not rebuild video for a transient audio mute');
+assert.match(live, /weakQualitySamples\s*>=\s*2/, 'automatic capture quality requires repeated weak samples before degrading');
+assert.match(live, /stableQualitySamples\s*>=\s*6/, 'automatic capture quality waits for sustained stability before upgrading');
+assert.match(live, /45_000/, 'automatic capture quality has a recovery cooldown');
 assert.match(appShell, /show:\s*false[\s\S]*?ready-to-show/, 'agent window stays hidden until its renderer is ready');
 assert.match(appShell, /recoverBroadcaster[\s\S]*?render-process-gone/, 'capture renderer crashes recover without restarting WIVA');
 assert.match(wivaApp, /import \{ Live \} from "@\/screens\/viewer\/Live"/, 'primary live route is included in the initial viewer bundle');

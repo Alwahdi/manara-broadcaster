@@ -34,6 +34,7 @@ let audioMissingSince = 0;
 let audioMutedSince = 0;
 let restarting = false;
 let capacityRetuneTimer = null;
+let capacityTier = 'normal';
 const AUDIO_MISSING_RESTART_MS = 20000;
 const AUDIO_STALL_RESTART_MS = 20000;
 const HEALTH_CHECK_MS = 2500;
@@ -70,11 +71,11 @@ function targetQuality() {
   };
 }
 
-function viewerQuality(value, viewerCount = 1) {
+function viewerQuality(value, tier = capacityTier) {
   const mode = ['auto', '1080', '720', '480'].includes(String(value || '')) ? String(value) : 'auto';
   const source = targetQuality();
-  const crowded = viewerCount > 12;
-  const heavilyCrowded = viewerCount > 36;
+  const crowded = tier === 'crowded' || tier === 'heavy';
+  const heavilyCrowded = tier === 'heavy';
   const requestedHeight = heavilyCrowded ? 480 : (mode === '1080' ? 1080 : mode === '480' ? 480 : 720);
   const height = Math.min(source.height, requestedHeight);
   const scaleResolutionDownBy = Math.max(1, source.height / height);
@@ -407,13 +408,13 @@ async function ensureStream() {
   return stream;
 }
 
-async function tuneSender(sender, track, requestedQuality = 'auto', viewerCount = peers.size || 1) {
+async function tuneSender(sender, track, requestedQuality = 'auto', tier = capacityTier) {
   if (!sender || !track || typeof sender.getParameters !== 'function' || typeof sender.setParameters !== 'function') return;
   const quality = targetQuality();
   const params = sender.getParameters() || {};
   params.encodings = Array.isArray(params.encodings) && params.encodings.length ? params.encodings : [{}];
   if (track.kind === 'video') {
-    const profile = viewerQuality(requestedQuality, viewerCount);
+    const profile = viewerQuality(requestedQuality, tier);
     params.degradationPreference = 'maintain-framerate';
     params.encodings[0] = {
       ...params.encodings[0],
@@ -430,14 +431,34 @@ async function tuneSender(sender, track, requestedQuality = 'auto', viewerCount 
   try { await sender.setParameters(params); } catch (error) { log('sender tuning skipped:', track.kind, error.message); }
 }
 
+function nextCapacityTier(viewerCount) {
+  if (capacityTier === 'heavy') {
+    if (viewerCount <= 8) return 'normal';
+    if (viewerCount <= 30) return 'crowded';
+    return 'heavy';
+  }
+  if (capacityTier === 'crowded') {
+    if (viewerCount >= 40) return 'heavy';
+    if (viewerCount <= 8) return 'normal';
+    return 'crowded';
+  }
+  if (viewerCount >= 40) return 'heavy';
+  if (viewerCount >= 16) return 'crowded';
+  return 'normal';
+}
+
 function scheduleCapacityRetune() {
   if (capacityRetuneTimer) clearTimeout(capacityRetuneTimer);
   capacityRetuneTimer = setTimeout(() => {
     capacityRetuneTimer = null;
     const viewerCount = Math.max(1, peers.size);
+    const nextTier = nextCapacityTier(viewerCount);
+    if (nextTier === capacityTier) return;
+    capacityTier = nextTier;
+    log('capture capacity tier:', capacityTier, 'viewers=', viewerCount);
     for (const [id, pc] of peers) {
       const quality = peerQualities.get(id) || 'auto';
-      Promise.all(pc.getSenders().map((sender) => tuneSender(sender, sender.track, quality, viewerCount)))
+      Promise.all(pc.getSenders().map((sender) => tuneSender(sender, sender.track, quality, capacityTier)))
         .catch((error) => log('capacity retune failed:', error.message));
     }
   }, 250);
@@ -488,7 +509,7 @@ async function offerToViewer(viewerId, requestedQuality = 'auto') {
   peerQualities.set(id, requestedQuality);
   for (const track of localStream.getTracks()) {
     const sender = pc.addTrack(track, localStream);
-    await tuneSender(sender, track, requestedQuality, peers.size);
+    await tuneSender(sender, track, requestedQuality, capacityTier);
     if (peers.get(id) !== pc) return;
   }
   pc.onicecandidate = (event) => {
@@ -515,7 +536,7 @@ async function applyViewerQuality(viewerId, requestedQuality) {
   const pc = peers.get(id);
   if (!pc) return;
   peerQualities.set(id, requestedQuality);
-  await Promise.all(pc.getSenders().map((sender) => tuneSender(sender, sender.track, requestedQuality, peers.size)));
+  await Promise.all(pc.getSenders().map((sender) => tuneSender(sender, sender.track, requestedQuality, capacityTier)));
 }
 
 function restartSoon() {
