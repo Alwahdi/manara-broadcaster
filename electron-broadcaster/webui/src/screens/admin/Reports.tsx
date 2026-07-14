@@ -27,10 +27,14 @@ const REPORT_LABELS: Record<string, string> = {
   iptvCacheHits: "نجاحات كاش IPTV",
   iptvCacheMisses: "طلبات كاش جديدة",
   iptvCacheHitRate: "نسبة كاش IPTV",
+  iptvAverageUpstreamTtfbMs: "متوسط استجابة مزود IPTV",
+  iptvMaxUpstreamTtfbMs: "أعلى استجابة لمزود IPTV",
+  iptvMaxSegmentFirstByteMs: "أعلى زمن لأول بيانات فيديو",
 };
 
 function reportValue(key: string, value: number) {
   if (key.toLowerCase().includes("bytes")) return formatBytes(value);
+  if (key.toLowerCase().endsWith("ms")) return `${formatNumber(value)} ms`;
   if (key.toLowerCase().includes("rate")) return `${formatNumber(value)}%`;
   return formatNumber(value);
 }

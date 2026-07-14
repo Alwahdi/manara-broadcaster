@@ -14,6 +14,12 @@ Packaged apps check for updates on startup and every 6 hours. The WIVA Agent
 window also includes a manual update check and install button when an update is
 ready.
 
+## v2.6.59
+
+- Reuses persistent upstream HTTP/HTTPS connections for IPTV playlists, segments, and raw streams, reducing repeated connection setup latency without keeping unwatched channels active.
+- Adds provider response and first-video-byte latency measurements to IPTV runtime metrics and Arabic admin reports, making slow sources distinguishable from LAN delivery issues.
+- Extends IPTV regression coverage to verify playlist and segment requests share one keep-alive connection while concurrent viewers still share one upstream segment request.
+
 ## v2.6.58
 
 - Stabilizes automatic HDMI quality with repeated-loss confirmation, sustained recovery checks, and a 45-second upgrade cooldown so video does not bounce between 480p and 720p.

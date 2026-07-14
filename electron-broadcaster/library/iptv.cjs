@@ -25,6 +25,21 @@ const HLS_RESOURCE_CACHE = new Map(); // key -> { expiresAt, value, promise, cha
 const HLS_SEGMENT_STREAMS = new Map(); // key -> one upstream segment streamed to many LAN clients
 const HLS_URI_TOKENS = new Map(); // token -> { url, channelId, expiresAt }
 
+const HTTP_AGENT = new http.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 1000,
+  maxSockets: 64,
+  maxFreeSockets: 16,
+  scheduling: 'lifo',
+});
+const HTTPS_AGENT = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 1000,
+  maxSockets: 64,
+  maxFreeSockets: 16,
+  scheduling: 'lifo',
+});
+
 const DEFAULT_BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36';
 const UA = { 'User-Agent': DEFAULT_BROWSER_UA };
 const IDLE_MS = 5000;
@@ -48,6 +63,8 @@ const HLS_SEGMENT_TIMEOUT_MS = 15000;
 const MAX_REDIRECTS = 5;
 
 function libFor(u) { return u.startsWith('https') ? https : http; }
+
+function agentFor(u) { return u.startsWith('https') ? HTTPS_AGENT : HTTP_AGENT; }
 
 function isHls(url) { return /\.m3u8(\?|$)/i.test(url); }
 
@@ -77,6 +94,8 @@ function metrics(id, type = 'unknown') {
       errors: 0,
       lastError: '',
       lastStatusCode: 0,
+      lastUpstreamTtfbMs: 0,
+      lastSegmentFirstByteMs: 0,
       rateEvents: [],
       hlsViewers: new Map(),
     };
@@ -159,6 +178,8 @@ function snapshotMetrics(id) {
     errors: m.errors,
     lastError: m.lastError,
     lastStatusCode: m.lastStatusCode,
+    lastUpstreamTtfbMs: m.lastUpstreamTtfbMs,
+    lastSegmentFirstByteMs: m.lastSegmentFirstByteMs,
     lastActivityAt: m.lastActivityAt,
     uptimeMs: Date.now() - m.startedAt,
   };
@@ -407,7 +428,9 @@ function startHlsSegmentStream(channel, targetUrl, headers, ttlMs, timeoutMs, po
   HLS_SEGMENT_STREAMS.set(key, entry);
   (async () => {
     try {
+      const startedAt = Date.now();
       const up = await fetchUpstream(targetUrl, headers, 0, timeoutMs);
+      m.lastUpstreamTtfbMs = Date.now() - startedAt;
       entry.statusCode = up.statusCode || 200;
       entry.headers = up.headers || {};
       resolveReady(entry);
@@ -429,6 +452,7 @@ function startHlsSegmentStream(channel, targetUrl, headers, ttlMs, timeoutMs, po
           entry.chunks = [];
         }
         addBytes(channel.id, chunk.length, 0);
+        if (entry.bytes === chunk.length) m.lastSegmentFirstByteMs = Date.now() - startedAt;
         resolveFirstData(entry);
         for (const subscriber of entry.subscribers) queueSegmentChunk(entry, subscriber, chunk);
         const blocked = limitExceeded(channel, policy);
@@ -550,7 +574,9 @@ function startTsUpstream(channel, s, policy = {}, targetUrl = channel.url, redir
   m.upstreamOpen = true;
   const u = new URL(targetUrl);
   console.log('[IPTV][TS] open upstream', channel.id, u.host);
-  const req = libFor(targetUrl).get(targetUrl, { headers: upstreamHeaders(channel) }, (up) => {
+  const startedAt = Date.now();
+  const req = libFor(targetUrl).get(targetUrl, { headers: upstreamHeaders(channel), agent: agentFor(targetUrl) }, (up) => {
+    m.lastUpstreamTtfbMs = Date.now() - startedAt;
     if ([301, 302, 303, 307, 308].includes(up.statusCode || 0) && up.headers.location && redirects < MAX_REDIRECTS) {
       const nextUrl = redirectUrl(targetUrl, up.headers.location);
       try { up.resume(); } catch {}
@@ -653,7 +679,7 @@ function serveTs(channel, req, res, policy = {}) {
 // ---- HLS proxy ----
 function fetchUpstream(targetUrl, headers = UA, redirects = 0, timeoutMs = UPSTREAM_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
-    const req = libFor(targetUrl).get(targetUrl, { headers }, (up) => {
+    const req = libFor(targetUrl).get(targetUrl, { headers, agent: agentFor(targetUrl) }, (up) => {
       if ([301, 302, 303, 307, 308].includes(up.statusCode || 0) && up.headers.location && redirects < MAX_REDIRECTS) {
         const nextUrl = redirectUrl(targetUrl, up.headers.location);
         try { up.resume(); } catch {}
@@ -794,7 +820,9 @@ async function fetchCachedHlsResource(channel, targetUrl, headers, ttlMs, staleM
   m.upstreamRequests += 1;
   m.upstreamOpen = true;
   const promise = (async () => {
+    const startedAt = Date.now();
     const up = await fetchUpstream(targetUrl, headers, 0, timeoutMs);
+    m.lastUpstreamTtfbMs = Date.now() - startedAt;
     const body = up.statusCode && up.statusCode >= 400 ? Buffer.alloc(0) : await readAll(up);
     if (up.statusCode && up.statusCode >= 400) {
       try { up.resume(); } catch {}

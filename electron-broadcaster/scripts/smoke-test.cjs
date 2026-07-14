@@ -816,6 +816,9 @@ async function main() {
     const reports = await res.json();
     assert.equal(typeof reports.totalMedia, 'number', 'reports expose numeric metrics');
     assert.equal(typeof reports.activeSessions, 'number');
+    assert.equal(typeof reports.iptvAverageUpstreamTtfbMs, 'number', 'reports expose average IPTV provider latency');
+    assert.equal(typeof reports.iptvMaxUpstreamTtfbMs, 'number', 'reports expose maximum IPTV provider latency');
+    assert.equal(typeof reports.iptvMaxSegmentFirstByteMs, 'number', 'reports expose IPTV first-video-byte latency');
 
     // Seed an access log with Arabic text so the CSV export exercises escaping
     // and UTF-8 handling exactly as a real viewing report would.

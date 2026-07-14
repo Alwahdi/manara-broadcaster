@@ -1859,6 +1859,14 @@ function createHandler(options = {}) {
         acc.iptvErrors += Number(row.errors) || 0;
         acc.iptvCacheHits += Number(row.cacheHits) || 0;
         acc.iptvCacheMisses += Number(row.cacheMisses) || 0;
+        const ttfb = Number(row.lastUpstreamTtfbMs) || 0;
+        const firstByte = Number(row.lastSegmentFirstByteMs) || 0;
+        if (ttfb > 0) {
+          acc.iptvMeasuredChannels += 1;
+          acc.iptvUpstreamTtfbTotalMs += ttfb;
+          acc.iptvMaxUpstreamTtfbMs = Math.max(acc.iptvMaxUpstreamTtfbMs, ttfb);
+        }
+        if (firstByte > 0) acc.iptvMaxSegmentFirstByteMs = Math.max(acc.iptvMaxSegmentFirstByteMs, firstByte);
         return acc;
       }, {
         activeIptvViewers: 0,
@@ -1869,8 +1877,17 @@ function createHandler(options = {}) {
         iptvErrors: 0,
         iptvCacheHits: 0,
         iptvCacheMisses: 0,
+        iptvMeasuredChannels: 0,
+        iptvUpstreamTtfbTotalMs: 0,
+        iptvMaxUpstreamTtfbMs: 0,
+        iptvMaxSegmentFirstByteMs: 0,
       });
       const cacheTotal = iptvTotals.iptvCacheHits + iptvTotals.iptvCacheMisses;
+      const iptvAverageUpstreamTtfbMs = iptvTotals.iptvMeasuredChannels
+        ? Math.round(iptvTotals.iptvUpstreamTtfbTotalMs / iptvTotals.iptvMeasuredChannels)
+        : 0;
+      delete iptvTotals.iptvUpstreamTtfbTotalMs;
+      delete iptvTotals.iptvMeasuredChannels;
       return sendJson(res, 200, {
         totalMedia: stats.total || stats.count || 0,
         totalMovies: stats.movies || 0,
@@ -1880,6 +1897,7 @@ function createHandler(options = {}) {
         totalRequests: logs.length,
         sources: librarySourcesPayload().length,
         ...iptvTotals,
+        iptvAverageUpstreamTtfbMs,
         iptvCacheHitRate: cacheTotal ? Math.round((iptvTotals.iptvCacheHits / cacheTotal) * 100) : 0,
         stats,
         iptv: iptvRows,

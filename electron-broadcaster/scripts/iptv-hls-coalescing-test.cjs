@@ -18,9 +18,11 @@ async function main() {
   let segmentHits = 0;
   let firstSegmentChunkAt = 0;
   let upstreamBroken = false;
+  const upstreamSockets = new Set();
   const segmentBody = Buffer.alloc(256 * 1024, 7);
 
   const upstream = http.createServer((req, res) => {
+    upstreamSockets.add(req.socket.remotePort);
     if (upstreamBroken) {
       res.writeHead(503, { 'Content-Type': 'text/plain' });
       res.end('temporarily unavailable');
@@ -139,6 +141,9 @@ async function main() {
     );
     assert.ok(status.cacheHits >= 1, 'metrics record a cache hit after the first segment load');
     assert.ok(status.hlsTokenEntries >= 1, 'metrics expose active HLS token entries');
+    assert.ok(status.lastUpstreamTtfbMs >= 0, 'metrics expose the latest upstream response latency');
+    assert.ok(status.lastSegmentFirstByteMs > 0, 'metrics expose segment first-byte latency');
+    assert.equal(upstreamSockets.size, 1, 'playlist and segment requests reuse one keep-alive upstream connection');
     console.log(JSON.stringify({
       viewers: VIEWERS,
       upstreamSegmentRequests: segmentHits,
