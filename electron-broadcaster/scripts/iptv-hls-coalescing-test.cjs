@@ -16,6 +16,7 @@ function close(server) {
 async function main() {
   let playlistHits = 0;
   let segmentHits = 0;
+  let firstSegmentChunkAt = 0;
   let upstreamBroken = false;
   const segmentBody = Buffer.alloc(256 * 1024, 7);
 
@@ -44,7 +45,9 @@ async function main() {
       segmentHits += 1;
       setTimeout(() => {
         res.writeHead(200, { 'Content-Type': 'video/mp2t', 'Content-Length': segmentBody.length });
-        res.end(segmentBody);
+        firstSegmentChunkAt = Date.now();
+        res.write(segmentBody.subarray(0, segmentBody.length / 2));
+        setTimeout(() => res.end(segmentBody.subarray(segmentBody.length / 2)), 850);
       }, 150);
       return;
     }
@@ -89,13 +92,31 @@ async function main() {
     const segmentUrl = new URL(segmentPath, proxyBase).toString();
     const rssBefore = process.memoryUsage().rss;
     const startedAt = Date.now();
+    let firstProxyChunkAt = 0;
     const responses = await Promise.all(Array.from({ length: VIEWERS }, () => fetch(segmentUrl)));
     assert.deepEqual(responses.map((res) => res.status), Array(VIEWERS).fill(200));
-    const bodies = await Promise.all(responses.map((res) => res.arrayBuffer()));
+    const bodyLengths = await Promise.all(responses.map(async (res, index) => {
+      if (index !== 0) {
+        let total = 0;
+        for await (const chunk of res.body) total += chunk.byteLength;
+        return total;
+      }
+      const reader = res.body.getReader();
+      let total = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!firstProxyChunkAt) firstProxyChunkAt = Date.now();
+        total += value.byteLength;
+      }
+      return total;
+    }));
     const elapsedMs = Date.now() - startedAt;
     const rssGrowthMb = Math.max(0, process.memoryUsage().rss - rssBefore) / (1024 * 1024);
-    assert.ok(bodies.every((body) => body.byteLength === segmentBody.length), 'all viewers receive the full segment');
+    assert.ok(bodyLengths.every((length) => length === segmentBody.length), 'all viewers receive the full segment');
     assert.equal(segmentHits, 1, 'concurrent viewers for one HLS segment must coalesce to one upstream request');
+    assert.ok(firstProxyChunkAt > 0, 'proxy sends the first segment bytes to viewers');
+    assert.ok(firstProxyChunkAt - firstSegmentChunkAt < 350, 'proxy must stream the first bytes instead of waiting for the complete upstream segment');
     assert.ok(rssGrowthMb <= MAX_RSS_GROWTH_MB, `RSS growth ${rssGrowthMb.toFixed(1)}MB exceeded ${MAX_RSS_GROWTH_MB}MB`);
 
     const cached = await fetch(segmentUrl);

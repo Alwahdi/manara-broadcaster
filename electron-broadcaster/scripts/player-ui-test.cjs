@@ -63,6 +63,8 @@ assert.doesNotMatch(broadcaster, /track\.onmute\s*=\s*\(\)\s*=>\s*scheduleAudioR
 assert.doesNotMatch(broadcaster, /track\.enabled\s*!==\s*false\s*&&\s*!track\.muted/, 'live HDMI audio remains healthy during transient mute');
 assert.match(broadcaster, /AUDIO_MISSING_RESTART_MS\s*=\s*20000/, 'missing capture audio uses a sustained grace period');
 assert.match(broadcaster, /AUDIO_STALL_RESTART_MS\s*=\s*20000/, 'persistently muted HDMI audio recovers after a sustained grace period');
+assert.match(broadcaster, /viewerCount\s*>\s*36/, 'capture sender load has a heavy-viewer capacity threshold');
+assert.match(broadcaster, /scheduleCapacityRetune\(\)/, 'capture senders are retuned when viewer load changes');
 assert.match(live, /pcRef\.current\s*!==\s*pc/, 'stale WebRTC peer events cannot trigger reconnect loops');
 assert.doesNotMatch(live, /track\.onmute[\s\S]{0,240}scheduleReconnect/, 'viewer does not rebuild video for a transient audio mute');
 assert.match(appShell, /show:\s*false[\s\S]*?ready-to-show/, 'agent window stays hidden until its renderer is ready');

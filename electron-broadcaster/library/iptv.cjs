@@ -22,6 +22,7 @@ const TS_CHANNELS = new Map(); // id -> { clients:Set<res>, upstreamReq, idleTim
 const HLS_IDLE = new Map();    // id -> { lastHit, idleTimer }
 const METRICS = new Map();     // id -> detailed transfer/viewer counters
 const HLS_RESOURCE_CACHE = new Map(); // key -> { expiresAt, value, promise, channelId, bytes }
+const HLS_SEGMENT_STREAMS = new Map(); // key -> one upstream segment streamed to many LAN clients
 const HLS_URI_TOKENS = new Map(); // token -> { url, channelId, expiresAt }
 
 const DEFAULT_BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36';
@@ -259,6 +260,239 @@ function writeBufferToClient(channel, res, body) {
     res.once('close', () => finish(false));
     pump();
   });
+}
+
+function hlsResourceKey(channel, targetUrl, headers = {}) {
+  const rangeKey = headers?.Range || headers?.range || '';
+  return `${channel.id}|${rangeKey}|${targetUrl}`;
+}
+
+function freshHlsCacheValue(channel, targetUrl, headers = {}) {
+  const key = hlsResourceKey(channel, targetUrl, headers);
+  const entry = HLS_RESOURCE_CACHE.get(key);
+  if (!entry?.value || entry.expiresAt <= Date.now()) return null;
+  metrics(channel.id, 'hls').cacheHits += 1;
+  HLS_RESOURCE_CACHE.delete(key);
+  HLS_RESOURCE_CACHE.set(key, entry);
+  return { key, value: { ...entry.value, fromCache: true } };
+}
+
+function waitForDrain(res) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error('slow client'));
+    }, SLOW_CLIENT_DRAIN_MS);
+    const cleanup = () => {
+      clearTimeout(timer);
+      res.off('drain', onDrain);
+      res.off('close', onClose);
+    };
+    const onDrain = () => { cleanup(); resolve(); };
+    const onClose = () => { cleanup(); reject(new Error('client closed')); };
+    res.once('drain', onDrain);
+    res.once('close', onClose);
+  });
+}
+
+function finishSegmentSubscriber(entry, subscriber, error = null) {
+  if (subscriber.finished) return;
+  subscriber.finished = true;
+  entry.subscribers.delete(subscriber);
+  if (error) {
+    if (error.message === 'slow client') metrics(entry.channel.id).slowClientsDropped += 1;
+    try { subscriber.res.destroy(error); } catch {}
+  } else {
+    try { subscriber.res.end(); } catch {}
+  }
+  subscriber.resolve(!error);
+}
+
+async function flushSegmentSubscriber(entry, subscriber) {
+  if (subscriber.flushing || subscriber.finished) return;
+  subscriber.flushing = true;
+  try {
+    while (!subscriber.finished) {
+      const chunk = subscriber.queue.shift();
+      if (!chunk) {
+        if (entry.done) finishSegmentSubscriber(entry, subscriber, entry.error);
+        break;
+      }
+      subscriber.queuedBytes -= chunk.length;
+      if (subscriber.res.destroyed || subscriber.res.writableEnded) {
+        finishSegmentSubscriber(entry, subscriber, new Error('client closed'));
+        break;
+      }
+      const ok = subscriber.res.write(chunk);
+      addBytes(entry.channel.id, 0, chunk.length);
+      if (!ok) await waitForDrain(subscriber.res);
+    }
+  } catch (error) {
+    finishSegmentSubscriber(entry, subscriber, error);
+  } finally {
+    subscriber.flushing = false;
+    if (!subscriber.finished && (subscriber.queue.length || entry.done)) {
+      setImmediate(() => flushSegmentSubscriber(entry, subscriber));
+    }
+  }
+}
+
+function queueSegmentChunk(entry, subscriber, chunk) {
+  if (subscriber.finished) return;
+  subscriber.queue.push(chunk);
+  subscriber.queuedBytes += chunk.length;
+  if (subscriber.queuedBytes > SLOW_CLIENT_MAX_BUFFER_BYTES) {
+    finishSegmentSubscriber(entry, subscriber, new Error('slow client'));
+    return;
+  }
+  flushSegmentSubscriber(entry, subscriber);
+}
+
+function segmentResponseHeaders(upstreamHeaders = {}) {
+  const headers = {
+    'Content-Type': upstreamHeaders['content-type'] || 'video/mp2t',
+    'Cache-Control': 'no-cache',
+    'Access-Control-Allow-Origin': '*',
+  };
+  if (upstreamHeaders['content-range']) headers['Content-Range'] = upstreamHeaders['content-range'];
+  if (upstreamHeaders['accept-ranges']) headers['Accept-Ranges'] = upstreamHeaders['accept-ranges'];
+  return headers;
+}
+
+function attachSegmentSubscriber(entry, res) {
+  return new Promise((resolve) => {
+    const subscriber = { res, resolve, queue: [], queuedBytes: 0, flushing: false, finished: false };
+    entry.subscribers.add(subscriber);
+    res.once('close', () => {
+      if (!subscriber.finished) finishSegmentSubscriber(entry, subscriber, new Error('client closed'));
+    });
+    try { res.writeHead(entry.statusCode || 200, segmentResponseHeaders(entry.headers)); }
+    catch (error) { finishSegmentSubscriber(entry, subscriber, error); return; }
+    for (const chunk of entry.chunks) queueSegmentChunk(entry, subscriber, chunk);
+    if (entry.done) flushSegmentSubscriber(entry, subscriber);
+  });
+}
+
+function startHlsSegmentStream(channel, targetUrl, headers, ttlMs, timeoutMs, policy = {}) {
+  const key = hlsResourceKey(channel, targetUrl, headers);
+  const existing = HLS_SEGMENT_STREAMS.get(key);
+  if (existing) {
+    metrics(channel.id, 'hls').cacheCoalesced += 1;
+    return existing;
+  }
+  const m = metrics(channel.id, 'hls');
+  m.cacheMisses += 1;
+  m.upstreamRequests += 1;
+  m.upstreamOpen = true;
+  let resolveReady;
+  let resolveFirstData;
+  let resolveDone;
+  const entry = {
+    key,
+    channel,
+    targetUrl,
+    headers: {},
+    statusCode: 0,
+    chunks: [],
+    bytes: 0,
+    cacheable: true,
+    replayAvailable: true,
+    subscribers: new Set(),
+    done: false,
+    error: null,
+    ready: new Promise((resolve) => { resolveReady = resolve; }),
+    firstData: new Promise((resolve) => { resolveFirstData = resolve; }),
+    completion: new Promise((resolve) => { resolveDone = resolve; }),
+  };
+  HLS_SEGMENT_STREAMS.set(key, entry);
+  (async () => {
+    try {
+      const up = await fetchUpstream(targetUrl, headers, 0, timeoutMs);
+      entry.statusCode = up.statusCode || 200;
+      entry.headers = up.headers || {};
+      resolveReady(entry);
+      if (entry.statusCode >= 400) {
+        try { up.resume(); } catch {}
+        return;
+      }
+      for await (const value of up) {
+        const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value);
+        entry.bytes += chunk.length;
+        if (entry.replayAvailable && entry.bytes <= HLS_CACHEABLE_MAX_BYTES) {
+          entry.chunks.push(chunk);
+        } else if (entry.replayAvailable) {
+          // Existing viewers already have the earlier chunks queued. Stop
+          // retaining an oversized segment so one provider response cannot
+          // consume unbounded RAM; a late viewer will start a fresh request.
+          entry.cacheable = false;
+          entry.replayAvailable = false;
+          entry.chunks = [];
+        }
+        addBytes(channel.id, chunk.length, 0);
+        resolveFirstData(entry);
+        for (const subscriber of entry.subscribers) queueSegmentChunk(entry, subscriber, chunk);
+        const blocked = limitExceeded(channel, policy);
+        if (blocked) throw new Error(blocked.message);
+      }
+      if (entry.bytes && entry.cacheable) {
+        const body = Buffer.concat(entry.chunks, entry.bytes);
+        HLS_RESOURCE_CACHE.set(key, {
+          expiresAt: Date.now() + ttlMs,
+          staleUntil: Date.now() + ttlMs + HLS_SEGMENT_STALE_MS,
+          value: { statusCode: entry.statusCode, headers: entry.headers, body },
+          channelId: String(channel.id),
+          bytes: body.length,
+        });
+        pruneHlsCache();
+      }
+    } catch (error) {
+      entry.error = error;
+      markError(channel.id, error.message || String(error));
+    } finally {
+      resolveReady(entry);
+      resolveFirstData(entry);
+      entry.done = true;
+      HLS_SEGMENT_STREAMS.delete(key);
+      for (const subscriber of entry.subscribers) flushSegmentSubscriber(entry, subscriber);
+      resolveDone(entry);
+    }
+  })();
+  return entry;
+}
+
+async function streamHlsSegment(channel, targetUrl, headers, ttlMs, timeoutMs, req, res, policy = {}) {
+  const cached = freshHlsCacheValue(channel, targetUrl, headers);
+  if (cached) return { streamed: false, value: cached.value };
+  const entry = startHlsSegmentStream(channel, targetUrl, headers, ttlMs, timeoutMs, policy);
+  await entry.ready;
+  if (entry.statusCode >= 400) {
+    await entry.completion;
+    return { streamed: false, value: { statusCode: entry.statusCode, headers: entry.headers, body: Buffer.alloc(0) } };
+  }
+  await entry.firstData;
+  if (!entry.replayAvailable) {
+    await entry.completion;
+    return streamHlsSegment(channel, targetUrl, headers, ttlMs, timeoutMs, req, res, policy);
+  }
+  const contentType = entry.headers['content-type'] || '';
+  const firstChunk = entry.chunks[0] || Buffer.alloc(0);
+  if (isHls(targetUrl) || /mpegurl|vnd\.apple\.mpegurl/i.test(contentType) || firstChunk.slice(0, 512).toString('utf8').trimStart().startsWith('#EXTM3U')) {
+    await entry.completion;
+    return {
+      streamed: false,
+      value: {
+        statusCode: entry.statusCode || 200,
+        headers: entry.headers,
+        body: Buffer.concat(entry.chunks, entry.bytes),
+        fromCache: false,
+      },
+    };
+  }
+  if (!entry.bytes && entry.done) {
+    return { streamed: false, value: { statusCode: entry.statusCode || 200, headers: entry.headers, body: Buffer.alloc(0) } };
+  }
+  await attachSegmentSubscriber(entry, res);
+  return { streamed: true };
 }
 
 function formatLimitBytes(bytes) {
@@ -692,14 +926,19 @@ async function prefetchFirstHlsResource(channel, body, playlistUrl, policy = {},
   const playlist = isHls(targetUrl);
   const ttl = playlist ? HLS_PLAYLIST_CACHE_MS : HLS_SEGMENT_CACHE_MS;
   const staleTtl = playlist ? HLS_PLAYLIST_STALE_MS : HLS_SEGMENT_STALE_MS;
-  const up = await fetchCachedHlsResource(
-    channel,
-    targetUrl,
-    upstreamHeaders(channel),
-    ttl,
-    staleTtl,
-    playlist ? HLS_PLAYLIST_TIMEOUT_MS : HLS_SEGMENT_TIMEOUT_MS,
-  );
+  if (!playlist) {
+    const entry = startHlsSegmentStream(
+      channel,
+      targetUrl,
+      upstreamHeaders(channel),
+      ttl,
+      HLS_SEGMENT_TIMEOUT_MS,
+      policy,
+    );
+    await entry.completion;
+    return;
+  }
+  const up = await fetchCachedHlsResource(channel, targetUrl, upstreamHeaders(channel), ttl, staleTtl, HLS_PLAYLIST_TIMEOUT_MS);
   if (up.statusCode >= 400 || !up.body?.length) return;
   if (!up.fromCache) addBytes(channel.id, up.body.length, 0);
   if (isPlaylistResponse(targetUrl, up.headers?.['content-type'] || '', up.body)) {
@@ -784,14 +1023,15 @@ async function serveHlsSegment(channel, segUrl, baseProxyUrl, req, res, policy =
     const extra = req.headers.range ? { Range: req.headers.range } : {};
     const ttl = isHls(segUrl) ? HLS_PLAYLIST_CACHE_MS : HLS_SEGMENT_CACHE_MS;
     const staleTtl = isHls(segUrl) ? HLS_PLAYLIST_STALE_MS : HLS_SEGMENT_STALE_MS;
-    const up = await fetchCachedHlsResource(
-      channel,
-      segUrl,
-      upstreamHeaders(channel, extra),
-      ttl,
-      staleTtl,
-      isHls(segUrl) ? HLS_PLAYLIST_TIMEOUT_MS : HLS_SEGMENT_TIMEOUT_MS,
-    );
+    const requestHeaders = upstreamHeaders(channel, extra);
+    let up;
+    if (isHls(segUrl)) {
+      up = await fetchCachedHlsResource(channel, segUrl, requestHeaders, ttl, staleTtl, HLS_PLAYLIST_TIMEOUT_MS);
+    } else {
+      const outcome = await streamHlsSegment(channel, segUrl, requestHeaders, ttl, HLS_SEGMENT_TIMEOUT_MS, req, res, policy);
+      if (outcome.streamed) return;
+      up = outcome.value;
+    }
     if (up.statusCode && up.statusCode >= 400) {
       const message = explainHttp(up.statusCode, segUrl);
       markError(channel.id, message, up.statusCode);

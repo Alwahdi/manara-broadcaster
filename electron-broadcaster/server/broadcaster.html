@@ -21,6 +21,7 @@ function readConfig() {
 
 const config = readConfig();
 const peers = new Map();
+const peerQualities = new Map();
 const peerCloseTimers = new Map();
 const peerOfferGenerations = new Map();
 let ws = null;
@@ -32,6 +33,7 @@ let healthTimer = null;
 let audioMissingSince = 0;
 let audioMutedSince = 0;
 let restarting = false;
+let capacityRetuneTimer = null;
 const AUDIO_MISSING_RESTART_MS = 20000;
 const AUDIO_STALL_RESTART_MS = 20000;
 const HEALTH_CHECK_MS = 2500;
@@ -68,17 +70,20 @@ function targetQuality() {
   };
 }
 
-function viewerQuality(value) {
+function viewerQuality(value, viewerCount = 1) {
   const mode = ['auto', '1080', '720', '480'].includes(String(value || '')) ? String(value) : 'auto';
   const source = targetQuality();
-  const requestedHeight = mode === '1080' ? 1080 : mode === '480' ? 480 : 720;
+  const crowded = viewerCount > 12;
+  const heavilyCrowded = viewerCount > 36;
+  const requestedHeight = heavilyCrowded ? 480 : (mode === '1080' ? 1080 : mode === '480' ? 480 : 720);
   const height = Math.min(source.height, requestedHeight);
   const scaleResolutionDownBy = Math.max(1, source.height / height);
   const targetBitrate = mode === '1080' ? 8000 : mode === '480' ? 1500 : mode === '720' ? 3500 : 3000;
+  const capacityBitrate = heavilyCrowded ? 1000 : crowded ? 2200 : targetBitrate;
   return {
     mode,
-    maxBitrate: Math.min(source.bitrateKbps, targetBitrate) * 1000,
-    maxFramerate: mode === '480' ? Math.min(source.fps, 30) : source.fps,
+    maxBitrate: Math.min(source.bitrateKbps, targetBitrate, capacityBitrate) * 1000,
+    maxFramerate: heavilyCrowded ? Math.min(source.fps, 24) : (mode === '480' ? Math.min(source.fps, 30) : source.fps),
     scaleResolutionDownBy,
   };
 }
@@ -402,13 +407,13 @@ async function ensureStream() {
   return stream;
 }
 
-async function tuneSender(sender, track, requestedQuality = 'auto') {
+async function tuneSender(sender, track, requestedQuality = 'auto', viewerCount = peers.size || 1) {
   if (!sender || !track || typeof sender.getParameters !== 'function' || typeof sender.setParameters !== 'function') return;
   const quality = targetQuality();
   const params = sender.getParameters() || {};
   params.encodings = Array.isArray(params.encodings) && params.encodings.length ? params.encodings : [{}];
   if (track.kind === 'video') {
-    const profile = viewerQuality(requestedQuality);
+    const profile = viewerQuality(requestedQuality, viewerCount);
     params.degradationPreference = 'maintain-framerate';
     params.encodings[0] = {
       ...params.encodings[0],
@@ -425,6 +430,19 @@ async function tuneSender(sender, track, requestedQuality = 'auto') {
   try { await sender.setParameters(params); } catch (error) { log('sender tuning skipped:', track.kind, error.message); }
 }
 
+function scheduleCapacityRetune() {
+  if (capacityRetuneTimer) clearTimeout(capacityRetuneTimer);
+  capacityRetuneTimer = setTimeout(() => {
+    capacityRetuneTimer = null;
+    const viewerCount = Math.max(1, peers.size);
+    for (const [id, pc] of peers) {
+      const quality = peerQualities.get(id) || 'auto';
+      Promise.all(pc.getSenders().map((sender) => tuneSender(sender, sender.track, quality, viewerCount)))
+        .catch((error) => log('capacity retune failed:', error.message));
+    }
+  }, 250);
+}
+
 function closePeer(id) {
   const key = String(id);
   const closeTimer = peerCloseTimers.get(key);
@@ -435,7 +453,9 @@ function closePeer(id) {
     peers.delete(key);
     try { pc.close(); } catch {}
   }
+  peerQualities.delete(key);
   peerOfferGenerations.set(key, (peerOfferGenerations.get(key) || 0) + 1);
+  scheduleCapacityRetune();
 }
 
 function clearPeerClose(id) {
@@ -465,9 +485,10 @@ async function offerToViewer(viewerId, requestedQuality = 'auto') {
   if (peerOfferGenerations.get(id) !== generation || !ws || ws.readyState !== WebSocket.OPEN) return;
   const pc = new RTCPeerConnection({ iceServers: [] });
   peers.set(id, pc);
+  peerQualities.set(id, requestedQuality);
   for (const track of localStream.getTracks()) {
     const sender = pc.addTrack(track, localStream);
-    await tuneSender(sender, track, requestedQuality);
+    await tuneSender(sender, track, requestedQuality, peers.size);
     if (peers.get(id) !== pc) return;
   }
   pc.onicecandidate = (event) => {
@@ -486,12 +507,15 @@ async function offerToViewer(viewerId, requestedQuality = 'auto') {
   if (peers.get(id) === pc && ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'offer', to: id, sdp: offer.sdp }));
   }
+  scheduleCapacityRetune();
 }
 
 async function applyViewerQuality(viewerId, requestedQuality) {
-  const pc = peers.get(String(viewerId || ''));
+  const id = String(viewerId || '');
+  const pc = peers.get(id);
   if (!pc) return;
-  await Promise.all(pc.getSenders().map((sender) => tuneSender(sender, sender.track, requestedQuality)));
+  peerQualities.set(id, requestedQuality);
+  await Promise.all(pc.getSenders().map((sender) => tuneSender(sender, sender.track, requestedQuality, peers.size)));
 }
 
 function restartSoon() {

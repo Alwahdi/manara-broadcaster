@@ -14,6 +14,13 @@ Packaged apps check for updates on startup and every 6 hours. The WIVA Agent
 window also includes a manual update check and install button when an update is
 ready.
 
+## v2.6.57
+
+- Streams HLS segment bytes to viewers as they arrive instead of waiting for the complete upstream segment, reducing IPTV black-screen and first-frame delay.
+- Preserves one upstream request for concurrent viewers, replays already received chunks to late joiners, bounds retained segment memory, and disconnects slow LAN clients independently.
+- Extends the HLS regression test to verify first-byte streaming and validates one-ingest delivery with 20, 100, 500, and 1,000 simulated concurrent viewers.
+- Makes HDMI capture quality capacity-aware: the broadcaster retunes active senders as viewer load changes and reduces bitrate, resolution, and frame rate under heavy load instead of allowing unbounded encoder pressure.
+
 ## v2.6.56
 
 - Moved library scanning and artwork enrichment into a background worker so startup, live playback, the admin panel, and viewer routes remain responsive while large folders are indexed.
