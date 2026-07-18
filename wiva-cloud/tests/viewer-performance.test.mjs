@@ -40,6 +40,9 @@ test("viewer mobile experience has route feedback, safe-area navigation, and swi
   assert.match(styles, /safe-area-inset-bottom/);
   assert.match(styles, /scroll-snap-type:\s*inline mandatory/);
   assert.match(section, /media-rail/);
+  assert.match(styles, /min-width:\s*641px\) and \(max-width:\s*860px/);
+  assert.match(styles, /\.viewer-shell\s*\{[^}]*overflow-x:\s*clip/);
+  assert.match(styles, /\.viewer-route-frame\s*\{[^}]*overflow-x:\s*clip/);
 });
 
 test("viewer home and account use a direct app-first information architecture", () => {

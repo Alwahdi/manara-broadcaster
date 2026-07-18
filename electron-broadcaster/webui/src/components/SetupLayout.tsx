@@ -21,24 +21,26 @@ export function SetupLayout({ children }: { children: ReactNode }) {
     <div className="setup">
       <a href="#main" className="skip-link">تخطَّ إلى المحتوى</a>
       <aside className="setup-rail">
-        <div className="brand" style={{ marginBottom: 24 }}>
+        <div className="brand setup-brand">
           <img src={logo} alt="" className="brand-logo" />
           <span>{brand}</span>
         </div>
-        {SETUP_STEPS.map((step, i) => {
-          const state = i === currentIndex ? "active" : i < currentIndex ? "done" : "";
-          return (
-            <AppLink
-              key={step.to}
-              href={step.to}
-              className={`step ${state}`}
-              aria-current={i === currentIndex ? "step" : undefined}
-            >
-              <span className="step-num">{i < currentIndex ? "✓" : i + 1}</span>
-              <span>{step.label}</span>
-            </AppLink>
-          );
-        })}
+        <nav className="setup-steps" aria-label="خطوات الإعداد">
+          {SETUP_STEPS.map((step, i) => {
+            const state = i === currentIndex ? "active" : i < currentIndex ? "done" : "";
+            return (
+              <AppLink
+                key={step.to}
+                href={step.to}
+                className={`step ${state}`}
+                aria-current={i === currentIndex ? "step" : undefined}
+              >
+                <span className="step-num">{i < currentIndex ? "✓" : i + 1}</span>
+                <span>{step.label}</span>
+              </AppLink>
+            );
+          })}
+        </nav>
       </aside>
       <main id="main" className="setup-body">
         {children}

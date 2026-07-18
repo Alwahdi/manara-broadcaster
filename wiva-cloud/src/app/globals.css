@@ -716,6 +716,60 @@ select { appearance: none; }
   .content-manager-grid { grid-template-columns: 1fr; }
 }
 
+/* Keep the primary destinations reachable on tablets.  Previously the desktop
+   navigation disappeared at 860px while the bottom dock only appeared below
+   640px, leaving a 220px-wide breakpoint with no navigation at all. */
+@media (min-width: 641px) and (max-width: 860px) {
+  .viewer-shell { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
+  .mobile-nav {
+    position: fixed;
+    z-index: 60;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    left: 50%;
+    width: min(560px, calc(100% - 32px));
+    min-height: 66px;
+    padding: 6px;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px;
+    transform: translateX(-50%);
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 22px;
+    background: rgba(13,18,28,.88);
+    box-shadow: 0 20px 64px rgba(0,0,0,.58), inset 0 1px rgba(255,255,255,.07);
+    backdrop-filter: blur(26px) saturate(150%);
+    -webkit-backdrop-filter: blur(26px) saturate(150%);
+  }
+  .mobile-nav a {
+    min-width: 0;
+    min-height: 52px;
+    position: relative;
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: 2px;
+    padding: 4px;
+    border-radius: 16px;
+    color: var(--dim);
+    font-size: .65rem;
+    font-weight: 700;
+  }
+  .mobile-nav a.active {
+    color: var(--text);
+    background: linear-gradient(145deg, rgba(255,255,255,.09), rgba(255,255,255,.035));
+    box-shadow: inset 0 1px rgba(255,255,255,.07);
+  }
+  .mobile-nav-icon {
+    width: 34px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+  }
+  .mobile-nav a svg { width: 20px; height: 20px; }
+  .mobile-nav a.active .mobile-nav-icon { color: var(--brand-soft); background: rgba(216,198,158,.105); }
+}
+
 @media (max-width: 640px) {
   .container { padding-inline: 16px; }
   .viewer-shell { padding-bottom: calc(82px + env(safe-area-inset-bottom)); }
@@ -997,7 +1051,9 @@ body::before {
 ::selection { color: #0b1018; background: rgba(216, 198, 158, .92); }
 button, a { -webkit-tap-highlight-color: rgba(216, 198, 158, .14); }
 
-.viewer-shell { position: relative; isolation: isolate; }
+.viewer-shell { position: relative; isolation: isolate; overflow-x: clip; max-width: 100%; }
+.viewer-shell > main,
+.viewer-route-frame { max-width: 100%; overflow-x: clip; }
 .viewer-header {
   border-bottom-color: rgba(255,255,255,.075);
   background: rgba(8, 11, 18, .72);

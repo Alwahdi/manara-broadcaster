@@ -11,6 +11,10 @@ const tmdb = fs.readFileSync(path.join(root, 'library/tmdb.cjs'), 'utf8');
 const liveStatus = fs.readFileSync(path.join(root, 'webui/src/hooks/useLiveStatus.ts'), 'utf8');
 const viewerLayout = fs.readFileSync(path.join(root, 'webui/src/components/ViewerLayout.tsx'), 'utf8');
 const signaling = fs.readFileSync(path.join(root, 'server/signaling.cjs'), 'utf8');
+const layouts = fs.readFileSync(path.join(root, 'webui/src/styles/layouts.css'), 'utf8');
+const theme = fs.readFileSync(path.join(root, 'webui/src/styles/theme.css'), 'utf8');
+const setupLayout = fs.readFileSync(path.join(root, 'webui/src/components/SetupLayout.tsx'), 'utf8');
+const adminLayout = fs.readFileSync(path.join(root, 'webui/src/components/AdminLayout.tsx'), 'utf8');
 
 assert.match(app, /import \{ lazy, Suspense,/);
 assert.match(app, /import \{ ViewerHome \} from "@\/screens\/viewer\/Home"/);
@@ -45,5 +49,12 @@ assert.doesNotMatch(liveStatus, /path\.replace\([\s\S]*?\/api\/live\/ws/);
 assert.match(liveStatus, /wsPath \? connectWs : connectSse/);
 assert.doesNotMatch(viewerLayout, /<LiveIndicator/);
 assert.match(signaling, /\/api\\\/live/);
+assert.match(theme, /--bg-0:\s*#080b12/);
+assert.match(theme, /--gold:\s*#d8c69e/);
+assert.match(layouts, /\.mobile-bottom-nav[\s\S]*?safe-area-inset-bottom/);
+assert.match(layouts, /@media \(max-width:\s*860px\)[\s\S]*?\.setup-steps[\s\S]*?overflow-x:\s*auto/);
+assert.match(setupLayout, /className="setup-steps"/);
+assert.match(adminLayout, /type LucideIcon/);
+assert.doesNotMatch(adminLayout, /📊|🩺|📺|🎥|🛰️|🎬|💾|🗂️/);
 
 console.log('WIVA web UI performance safeguards passed');
