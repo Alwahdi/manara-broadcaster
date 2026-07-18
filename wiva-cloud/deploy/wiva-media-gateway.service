@@ -9,6 +9,7 @@ User=wiva-media
 Group=wiva-media
 WorkingDirectory=/opt/wiva-cloud-repo/wiva-cloud
 EnvironmentFile=/etc/wiva-cloud-gateway.env
+Environment=WIVA_FFMPEG_PATH=/usr/bin/ffmpeg
 ExecStart=/usr/bin/node scripts/local-media-gateway.mjs
 Restart=always
 RestartSec=3

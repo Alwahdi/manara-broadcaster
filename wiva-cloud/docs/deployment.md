@@ -53,6 +53,11 @@ an existing default Nginx site remains untouched. Replace
 `__WIVA_MEDIA_HOST__`, enable the site, and terminate TLS with a valid
 certificate before exposing playback to the web portal.
 
+Install the operating system's current FFmpeg package before enabling the
+service. The unit deliberately uses `/usr/bin/ffmpeg`; older binaries bundled
+for local development can fail against modern IPTV origins even when the same
+provider works with a current FFmpeg release.
+
 The reverse proxy must forward `X-Forwarded-Proto` and `X-Forwarded-Host`.
 Otherwise generated HLS segment URLs can be downgraded to HTTP and blocked as
 mixed content by mobile browsers.
