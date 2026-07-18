@@ -7,6 +7,6 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "قنوات وأفلام ومسلسلات في مكان واحد.",
     start_url: "/", display: "standalone", orientation: "any",
     background_color: "#070910", theme_color: "#070910", lang: "ar", dir: "rtl",
-    icons: [{ src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" }, { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "maskable" }],
+    icons: [{ src: "/brand-icon", sizes: "128x72", type: "image/png", purpose: "any" }],
   };
 }

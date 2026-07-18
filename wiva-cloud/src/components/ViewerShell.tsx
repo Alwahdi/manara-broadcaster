@@ -1,14 +1,8 @@
 import Link from "next/link";
-import { Clapperboard, Film, Home, LogIn, Radio, Search, Tv2, UserRound } from "lucide-react";
+import { LogIn, Search, Tv2, UserRound } from "lucide-react";
 import { BrandMark } from "@/components/BrandMark";
+import { ViewerNavigation } from "@/components/ViewerNavigation";
 import { currentViewerAccount } from "@/lib/auth";
-
-const nav = [
-  { href: "/", label: "الرئيسية", icon: Home },
-  { href: "/live", label: "مباشر", icon: Radio },
-  { href: "/movies", label: "أفلام", icon: Film },
-  { href: "/series", label: "مسلسلات", icon: Clapperboard },
-];
 
 export async function ViewerShell({ children }: { children: React.ReactNode }) {
   const viewer = await currentViewerAccount();
@@ -17,9 +11,7 @@ export async function ViewerShell({ children }: { children: React.ReactNode }) {
       <header className="viewer-header">
         <div className="viewer-header-inner">
           <Link href="/" className="brand-link"><BrandMark /></Link>
-          <nav className="desktop-nav" aria-label="التنقل الرئيسي">
-            {nav.map(({ href, label }) => <Link key={href} href={href}>{label}</Link>)}
-          </nav>
+          <ViewerNavigation accountHref={viewer ? "/account" : "/login"} />
           <div className="header-actions">
             <Link href="/search" className="icon-button" aria-label="بحث"><Search size={20} /></Link>
             <Link href={viewer ? "/account" : "/login"} className="account-button">
@@ -30,12 +22,7 @@ export async function ViewerShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
       <main>{children}</main>
-      <nav className="mobile-nav" aria-label="التنقل السريع">
-        {nav.map(({ href, label, icon: Icon }) => (
-          <Link key={href} href={href}><Icon size={20} /><span>{label}</span></Link>
-        ))}
-        <Link href={viewer ? "/account" : "/login"}><UserRound size={20} /><span>حسابي</span></Link>
-      </nav>
+      <ViewerNavigation mobile accountHref={viewer ? "/account" : "/login"} />
       <footer className="viewer-footer">
         <BrandMark compact />
         <p>كل قنواتك وأفلامك ومسلسلاتك في مكان واحد.</p>

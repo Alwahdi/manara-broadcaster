@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   title: { default: brandName(), template: `%s | ${brandName()}` },
   description: "قنوات مباشرة وأفلام ومسلسلات في تجربة عربية سهلة وسريعة.",
   applicationName: brandName(), manifest: "/manifest.webmanifest",
-  icons: { icon: [{ url: "/icon.svg", type: "image/svg+xml" }], shortcut: "/icon.svg", apple: "/icon.svg" },
+  icons: { icon: [{ url: "/brand-icon", type: "image/png" }], shortcut: "/brand-icon", apple: "/brand-icon" },
   appleWebApp: { capable: true, title: brandName(), statusBarStyle: "black-translucent" },
 };
 

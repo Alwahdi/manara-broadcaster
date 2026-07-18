@@ -1,15 +1,14 @@
 import Link from "next/link";
 import { ArrowLeft, CirclePlay, Globe2, Radio, ShieldCheck, Sparkles } from "lucide-react";
 import { CatalogSection } from "@/components/Section";
-import { listAssets } from "@/lib/db";
+import { listViewerAssets } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const assets = await listAssets();
-  const live = assets.filter((asset) => asset.kind === "live").slice(0, 5);
-  const movies = assets.filter((asset) => asset.kind === "movie").slice(0, 5);
-  const series = assets.filter((asset) => asset.kind === "series").slice(0, 5);
+  const [live, movies, series] = await Promise.all([
+    listViewerAssets("live"), listViewerAssets("movie"), listViewerAssets("series"),
+  ]);
   return (
     <>
       <section className="hero">

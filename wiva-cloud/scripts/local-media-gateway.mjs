@@ -23,7 +23,9 @@ const MAX_CACHE_BYTES = 128 * 1024 * 1024;
 const MAX_CACHE_ENTRIES = 320;
 const MAX_RESOURCE_BYTES = 28 * 1024 * 1024;
 const VOD_INITIAL_BYTES = 512 * 1024;
-const VOD_CHUNK_BYTES = 8 * 1024 * 1024;
+// Smaller ranges make random seeking responsive on ordinary mobile links. The
+// shared LRU cache still coalesces viewers watching the same title.
+const VOD_CHUNK_BYTES = 2 * 1024 * 1024;
 const MAX_VOD_CACHE_BYTES = 128 * 1024 * 1024;
 const MAX_VOD_SPOOL_BYTES = Number(process.env.WIVA_MAX_VOD_SPOOL_BYTES || 8 * 1024 * 1024 * 1024);
 const MAX_VOD_SPOOL_TOTAL_BYTES = Number(process.env.WIVA_MAX_VOD_SPOOL_TOTAL_BYTES || 16 * 1024 * 1024 * 1024);
@@ -406,10 +408,10 @@ async function ensureLiveIngest(channel, ingestKey = channel.assetId) {
   // mobile clients while still keeping channel startup responsive.
   const hlsTime = vod ? "6" : "2";
   const hlsArgs = vod
-    ? ["-hls_list_size", "0", "-hls_playlist_type", "event", "-hls_flags", "append_list+independent_segments+program_date_time"]
+    ? ["-hls_list_size", "0", "-hls_playlist_type", "event", "-hls_flags", "append_list+independent_segments+program_date_time+temp_file"]
     : ["-hls_list_size", "24", "-hls_delete_threshold", "8", "-hls_flags", copyInput
-      ? "delete_segments+append_list+omit_endlist+program_date_time"
-      : "delete_segments+append_list+omit_endlist+program_date_time+independent_segments"];
+      ? "delete_segments+append_list+omit_endlist+program_date_time+temp_file"
+      : "delete_segments+append_list+omit_endlist+program_date_time+independent_segments+temp_file"];
   const args = [
     "-hide_banner", "-loglevel", "error", "-nostdin",
     "-rw_timeout", "15000000", "-reconnect", "1", "-reconnect_streamed", "1",
@@ -418,8 +420,8 @@ async function ensureLiveIngest(channel, ingestKey = channel.assetId) {
     "-map", "0:v:0?", "-map", "0:a:0?",
     // Preserve already browser-safe H.264/AAC feeds without re-encoding. Only
     // normalize MPEG-2/MP2-style feeds once at the shared ingest for mobile.
-    ...codecArgs,
-    "-f", "hls", "-hls_time", hlsTime, ...hlsArgs,
+    ...codecArgs, "-max_muxing_queue_size", "2048", "-avoid_negative_ts", "make_non_negative",
+    "-f", "hls", "-hls_time", hlsTime, "-hls_allow_cache", "1", ...hlsArgs,
     "-hls_segment_filename", join(dir, "seg-%08d.ts"), join(dir, "index.m3u8"),
   ];
   const child = spawn(FFMPEG_PATH, args, { stdio: ["ignore", "ignore", "pipe"] });

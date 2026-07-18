@@ -190,7 +190,7 @@ test("movies and episodes use a seekable bounded shared range cache", () => {
   const player = readFileSync(join(root, "src/components/PlayerClient.tsx"), "utf8");
   assert.match(grants, /asset\.kind === "live" \? "index\.m3u8" : "media"/);
   assert.match(gateway, /VOD_INITIAL_BYTES = 512 \* 1024/);
-  assert.match(gateway, /VOD_CHUNK_BYTES = 8 \* 1024 \* 1024/);
+  assert.match(gateway, /VOD_CHUNK_BYTES = 2 \* 1024 \* 1024/);
   assert.match(gateway, /MAX_VOD_CACHE_BYTES = 128 \* 1024 \* 1024/);
   assert.match(gateway, /state\.queue\.catch\(\(\) => \{\}\)\.then/);
   assert.match(gateway, /state\.pending\.has\(index\)/);
@@ -202,14 +202,14 @@ test("movies and episodes use a seekable bounded shared range cache", () => {
   assert.match(player, /!live && duration > 0/);
   assert.match(player, /video\.currentTime = Math\.max/);
   assert.match(player, /player-live-badge/);
-  assert.match(player, /ahead < 5/);
-  assert.match(player, /setInterval\(recoverLivePlayback, 250\)/);
+  assert.match(player, /ahead < tuning\.liveStartBuffer/);
+  assert.match(player, /setInterval\(recoverLivePlayback, 450\)/);
   assert.doesNotMatch(player, /onWaiting[\s\S]{0,220}setState\("loading"\)/);
   assert.match(player, /Hls\.Events\.BUFFER_APPENDED/);
-  assert.match(player, /maxLiveSyncPlaybackRate: 1\.05/);
+  assert.match(player, /maxLiveSyncPlaybackRate: 1\.04/);
   assert.match(gateway, /channel\.deliveryMode !== "transcode"/);
   assert.doesNotMatch(gateway, /split_by_time/);
-  assert.match(player, /ahead >= 2\.5/);
+  assert.match(player, /ahead >= tuning\.vodStartBuffer/);
   assert.match(player, /media\.preload = "auto"/);
   assert.match(gateway, /MAX_VOD_SPOOL_TOTAL_BYTES/);
   assert.match(gateway, /startVodSpool/);
@@ -262,17 +262,32 @@ test("viewer player supports polished fullscreen gestures and hides technical co
   const home = readFileSync(join(root, "src/app/(viewer)/page.tsx"), "utf8");
   const live = readFileSync(join(root, "src/app/(viewer)/live/page.tsx"), "utf8");
   const catalog = readFileSync(join(root, "src/components/CatalogPage.tsx"), "utf8");
-  const icon = readFileSync(join(root, "src/app/icon.svg"), "utf8");
+  const brandAssets = readFileSync(join(root, "src/lib/brand-assets.ts"), "utf8");
   const manifest = readFileSync(join(root, "src/app/manifest.ts"), "utf8");
   assert.match(player, /onDoubleClick=\{handleVideoDoubleClick\}/);
   assert.match(player, /toggleFullscreen\(\)/);
   assert.match(player, /player-buffering/);
   assert.match(player, /navigator\.mediaSession/);
-  assert.match(icon, /url\(#gold\)/);
-  assert.match(manifest, /maskable/);
+  const encodedWordmark = brandAssets.match(/WIVA_WORDMARK_BASE64 = "([^"]+)"/)?.[1];
+  assert.deepEqual(Buffer.from(encodedWordmark || "", "base64"), readFileSync(join(root, "../electron-broadcaster/assets/wiva-logo-128.png")));
+  assert.match(manifest, /brand-icon/);
   for (const publicCopy of [home, live, catalog]) {
     assert.doesNotMatch(publicCopy, /بوابة وسائط|إدخال مشترك|المصادر المرخّصة|لوحة الإدارة/);
   }
+});
+
+test("viewer catalog is bounded and playback adapts without exposing partial live segments", () => {
+  const database = readFileSync(join(root, "src/lib/db.ts"), "utf8");
+  const player = readFileSync(join(root, "src/components/PlayerClient.tsx"), "utf8");
+  const gateway = readFileSync(join(root, "scripts/local-media-gateway.mjs"), "utf8");
+  assert.match(database, /listViewerCatalog/);
+  assert.match(database, /pageSize = Math\.min\(60/);
+  assert.match(database, /limit \$\{pageSize\} offset \$\{offset\}/);
+  assert.match(player, /playbackTuning/);
+  assert.match(player, /capLevelToPlayerSize: true/);
+  assert.match(player, /liveStartBuffer: constrained \? 5 : 3\.2/);
+  assert.match(gateway, /program_date_time\+temp_file/);
+  assert.match(gateway, /max_muxing_queue_size/);
 });
 
 test("LAN viewer mutations preserve the browser HTTP origin in development", () => {

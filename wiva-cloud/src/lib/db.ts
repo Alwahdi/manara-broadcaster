@@ -70,6 +70,78 @@ export async function listAssets(kind?: AssetKind, includeDisabled = false) {
   return (rows as Record<string, unknown>[]).map(assetFromRow);
 }
 
+export async function listViewerAssets(kind: AssetKind, limit = 5) {
+  const safeLimit = Math.min(60, Math.max(1, Math.floor(limit)));
+  if (!databaseConfigured()) return isDemoMode() ? demoAssets.filter((item) => item.kind === kind).slice(0, safeLimit) : [];
+  const query = sql(); const tenant = tenantId();
+  const rows = await query`
+    select a.* from wiva_cloud_assets a
+    join wiva_cloud_providers p on p.id = a.provider_id and p.tenant_id = a.tenant_id
+    where a.tenant_id = ${tenant} and a.kind = ${kind} and (${kind !== "series"} or a.parent_asset_id is null)
+      and a.is_active = true and p.status = 'active' and p.redistribution_attested = true
+    order by a.is_featured desc, a.sort_order, a.title
+    limit ${safeLimit}
+  `;
+  return (rows as Record<string, unknown>[]).map(assetFromRow);
+}
+
+export async function listViewerCatalog(kind: AssetKind, options: { page?: number; pageSize?: number; category?: string; search?: string } = {}) {
+  const pageSize = Math.min(60, Math.max(12, Math.floor(options.pageSize || 30)));
+  const page = Math.max(1, Math.floor(options.page || 1));
+  const category = String(options.category || "").trim().slice(0, 120);
+  const search = String(options.search || "").trim().slice(0, 120);
+  if (!databaseConfigured()) {
+    const filtered = (isDemoMode() ? demoAssets : []).filter((item) => item.kind === kind && (!category || item.category === category) && (!search || `${item.title} ${item.category}`.toLocaleLowerCase("ar").includes(search.toLocaleLowerCase("ar"))));
+    const categories = [...new Set((isDemoMode() ? demoAssets : []).filter((item) => item.kind === kind).map((item) => item.category).filter(Boolean))];
+    return { items: filtered.slice((page - 1) * pageSize, page * pageSize), total: filtered.length, categories, page, pageSize };
+  }
+  const query = sql(); const tenant = tenantId(); const offset = (page - 1) * pageSize; const pattern = `%${search}%`;
+  const [rows, counts, categoryRows] = await Promise.all([
+    query`
+      select a.* from wiva_cloud_assets a
+      join wiva_cloud_providers p on p.id = a.provider_id and p.tenant_id = a.tenant_id
+      where a.tenant_id = ${tenant} and a.kind = ${kind} and (${kind !== "series"} or a.parent_asset_id is null)
+        and a.is_active = true and p.status = 'active' and p.redistribution_attested = true
+        and (${category} = '' or a.category = ${category})
+        and (${search} = '' or a.title ilike ${pattern} or a.category ilike ${pattern})
+      order by a.is_featured desc, a.sort_order, a.title limit ${pageSize} offset ${offset}
+    `,
+    query`
+      select count(*)::int as total from wiva_cloud_assets a
+      join wiva_cloud_providers p on p.id = a.provider_id and p.tenant_id = a.tenant_id
+      where a.tenant_id = ${tenant} and a.kind = ${kind} and (${kind !== "series"} or a.parent_asset_id is null)
+        and a.is_active = true and p.status = 'active' and p.redistribution_attested = true
+        and (${category} = '' or a.category = ${category})
+        and (${search} = '' or a.title ilike ${pattern} or a.category ilike ${pattern})
+    `,
+    query`
+      select distinct a.category from wiva_cloud_assets a
+      join wiva_cloud_providers p on p.id = a.provider_id and p.tenant_id = a.tenant_id
+      where a.tenant_id = ${tenant} and a.kind = ${kind} and a.is_active = true
+        and p.status = 'active' and p.redistribution_attested = true and a.category <> ''
+      order by a.category limit 80
+    `,
+  ]);
+  return {
+    items: (rows as Record<string, unknown>[]).map(assetFromRow), total: Number(counts[0]?.total || 0),
+    categories: categoryRows.map((row) => String(row.category || "")).filter(Boolean), page, pageSize,
+  };
+}
+
+export async function searchViewerAssets(search: string, limit = 48) {
+  const value = search.trim().slice(0, 120); if (!value) return [];
+  if (!databaseConfigured()) return (isDemoMode() ? demoAssets : []).filter((asset) => `${asset.title} ${asset.category}`.toLocaleLowerCase("ar").includes(value.toLocaleLowerCase("ar"))).slice(0, limit);
+  const query = sql(); const tenant = tenantId(); const pattern = `%${value}%`; const safeLimit = Math.min(60, Math.max(1, limit));
+  const rows = await query`
+    select a.* from wiva_cloud_assets a
+    join wiva_cloud_providers p on p.id = a.provider_id and p.tenant_id = a.tenant_id
+    where a.tenant_id = ${tenant} and a.is_active = true and p.status = 'active' and p.redistribution_attested = true
+      and (a.title ilike ${pattern} or a.category ilike ${pattern}) and (a.kind <> 'series' or a.parent_asset_id is null)
+    order by a.is_featured desc, a.sort_order, a.title limit ${safeLimit}
+  `;
+  return (rows as Record<string, unknown>[]).map(assetFromRow);
+}
+
 export async function listSeriesEpisodes(parentId: string, includeDisabled = false) {
   const query = sql();
   const rows = includeDisabled

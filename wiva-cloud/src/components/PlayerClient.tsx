@@ -9,6 +9,20 @@ import { CSSProperties, MouseEvent as ReactMouseEvent, useCallback, useEffect, u
 
 type State = "idle" | "loading" | "ready" | "playing" | "paused" | "error" | "blocked" | "paywall";
 
+type NetworkInfo = { effectiveType?: string; saveData?: boolean; downlink?: number };
+
+function playbackTuning() {
+  const connection = (navigator as Navigator & { connection?: NetworkInfo }).connection;
+  const constrained = connection?.saveData === true || /(^|-)2g$/.test(connection?.effectiveType || "") || (connection?.downlink || 10) < 1.5;
+  return {
+    liveStartBuffer: constrained ? 5 : 3.2,
+    liveRecoveryBuffer: constrained ? 4.5 : 2.8,
+    vodStartBuffer: constrained ? 2.4 : 1.2,
+    liveSyncCount: constrained ? 4 : 3,
+    bandwidthEstimate: constrained ? 900_000 : 5_000_000,
+  };
+}
+
 function formatTime(value: number) {
   if (!Number.isFinite(value) || value < 0) return "0:00";
   const seconds = Math.floor(value % 60).toString().padStart(2, "0");
@@ -97,24 +111,45 @@ export function PlayerClient({ assetId, title, active }: { assetId: string; titl
         }, Number(payload.previewEndsAt) - Date.now());
       }
       if (isLive && Hls.isSupported()) {
-        const hls = new Hls({ enableWorker: true, lowLatencyMode: false, startFragPrefetch: true, liveSyncDurationCount: 4, liveMaxLatencyDurationCount: 12, maxLiveSyncPlaybackRate: 1.05, maxBufferLength: 45, maxMaxBufferLength: 90, backBufferLength: 30, fragLoadingMaxRetry: 10, manifestLoadingMaxRetry: 6 });
+        const tuning = playbackTuning();
+        const hls = new Hls({
+          enableWorker: true, lowLatencyMode: false, startFragPrefetch: true,
+          liveSyncDurationCount: tuning.liveSyncCount, liveMaxLatencyDurationCount: tuning.liveSyncCount + 6,
+          maxLiveSyncPlaybackRate: 1.04, maxBufferLength: 36, maxMaxBufferLength: 60, backBufferLength: 12,
+          maxBufferHole: .5, highBufferWatchdogPeriod: 3, nudgeMaxRetry: 5,
+          fragLoadingMaxRetry: 10, manifestLoadingMaxRetry: 8,
+          capLevelToPlayerSize: true, capLevelOnFPSDrop: true,
+          abrEwmaDefaultEstimate: tuning.bandwidthEstimate, abrBandWidthFactor: .85, abrBandWidthUpFactor: .7,
+        });
         hlsRef.current = hls; hls.loadSource(url); hls.attachMedia(video);
-        let started = false; let recoveryAttempts = 0;
+        let started = false; let networkRecoveries = 0; let mediaRecoveries = 0;
         const startWhenBuffered = () => {
           if (started || !video.buffered.length) return;
           const ahead = video.buffered.end(video.buffered.length - 1) - video.currentTime;
-          if (ahead < 5) return;
+          if (ahead < tuning.liveStartBuffer) return;
           started = true; void resume();
         };
+        const fallback = setTimeout(() => {
+          if (!started && video.buffered.length && video.buffered.end(video.buffered.length - 1) - video.currentTime > 1) { started = true; void resume(); }
+        }, 6_000);
+        startupCleanupRef.current = () => clearTimeout(fallback);
         hls.on(Hls.Events.MANIFEST_PARSED, () => setMessage("لحظات ويبدأ البث…"));
         hls.on(Hls.Events.BUFFER_APPENDED, startWhenBuffered);
+        hls.on(Hls.Events.FRAG_LOADED, () => { networkRecoveries = 0; startWhenBuffered(); });
         hls.on(Hls.Events.ERROR, (_event, data) => {
           if (!data.fatal) return;
-          if (recoveryAttempts < 2 && data.type === ErrorTypes.NETWORK_ERROR) { recoveryAttempts += 1; setMessage("نعيد الاتصال…"); setTimeout(() => hls.startLoad(), 600 * recoveryAttempts); return; }
-          if (recoveryAttempts < 2 && data.type === ErrorTypes.MEDIA_ERROR) { recoveryAttempts += 1; setMessage("نعيد ضبط الصورة…"); hls.recoverMediaError(); return; }
+          if (networkRecoveries < 4 && data.type === ErrorTypes.NETWORK_ERROR) {
+            networkRecoveries += 1; setMessage("نعيد الاتصال…"); hls.stopLoad();
+            setTimeout(() => hls.startLoad(-1), Math.min(2_400, 400 * 2 ** (networkRecoveries - 1))); return;
+          }
+          if (mediaRecoveries < 3 && data.type === ErrorTypes.MEDIA_ERROR) {
+            mediaRecoveries += 1; setMessage("نعيد ضبط الصورة…");
+            if (mediaRecoveries === 2) hls.swapAudioCodec(); hls.recoverMediaError(); return;
+          }
           setMessage("تعذر استمرار البث الآن. حاول مرة أخرى."); setState("error"); hls.destroy();
         });
       } else {
+        const tuning = playbackTuning();
         const media = video;
         media.src = url; media.preload = "auto"; setMessage("لحظات ويبدأ الفيديو…");
         let fallback: ReturnType<typeof setTimeout> | null = null;
@@ -128,11 +163,11 @@ export function PlayerClient({ assetId, title, active }: { assetId: string; titl
         function startWhenReady() {
           if (!media.buffered.length) return;
           const ahead = media.buffered.end(media.buffered.length - 1) - media.currentTime;
-          if (ahead >= 2.5 || media.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) start();
+          if (ahead >= tuning.vodStartBuffer || media.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) start();
         }
         startupCleanupRef.current = cleanup;
         for (const event of ["progress", "canplay", "canplaythrough", "loadeddata"]) media.addEventListener(event, startWhenReady);
-        fallback = setTimeout(start, 5_000);
+        fallback = setTimeout(start, 3_500);
         media.load(); startWhenReady();
       }
     } catch (error) { setMessage(error instanceof Error ? error.message : "تعذر تشغيل المحتوى"); setState("error"); }
@@ -226,7 +261,7 @@ export function PlayerClient({ assetId, title, active }: { assetId: string; titl
     const recoverLivePlayback = () => {
       if (!live || !video.buffered.length) return;
       const ahead = video.buffered.end(video.buffered.length - 1) - video.currentTime;
-      if (ahead < 4 || video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) return;
+      if (ahead < playbackTuning().liveRecoveryBuffer || video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) return;
       if (liveRecoveryTimerRef.current) clearInterval(liveRecoveryTimerRef.current);
       liveRecoveryTimerRef.current = null;
       // A waiting event does not mean the user paused. Keep the player visible
@@ -237,11 +272,11 @@ export function PlayerClient({ assetId, title, active }: { assetId: string; titl
     };
     const onWaiting = () => {
       if (bufferingTimerRef.current) clearTimeout(bufferingTimerRef.current);
-      bufferingTimerRef.current = setTimeout(() => setBuffering(true), 320);
+      bufferingTimerRef.current = setTimeout(() => setBuffering(true), 520);
       if (live) {
         setMessage("لحظات ويعود البث…");
         recoverLivePlayback();
-        if (!liveRecoveryTimerRef.current) liveRecoveryTimerRef.current = setInterval(recoverLivePlayback, 250);
+        if (!liveRecoveryTimerRef.current) liveRecoveryTimerRef.current = setInterval(recoverLivePlayback, 450);
       } else setMessage("جارٍ الانتقال إلى الموضع المطلوب…");
     };
     const onCanPlay = () => { clearBuffering(); if (live) recoverLivePlayback(); else setMessage(""); };
@@ -261,7 +296,7 @@ export function PlayerClient({ assetId, title, active }: { assetId: string; titl
     };
     for (const name of ["timeupdate", "durationchange", "loadedmetadata", "progress", "seeking", "seeked"]) video.addEventListener(name, sync);
     video.addEventListener("progress", recoverLivePlayback);
-    video.addEventListener("loadedmetadata", restoreProgress); video.addEventListener("playing", onPlaying); video.addEventListener("pause", onPause); video.addEventListener("waiting", onWaiting); video.addEventListener("canplay", onCanPlay); video.addEventListener("ended", onEnded); video.addEventListener("error", onMediaError); video.addEventListener("volumechange", onVolume);
+    video.addEventListener("loadedmetadata", restoreProgress); video.addEventListener("playing", onPlaying); video.addEventListener("pause", onPause); video.addEventListener("waiting", onWaiting); video.addEventListener("stalled", onWaiting); video.addEventListener("canplay", onCanPlay); video.addEventListener("ended", onEnded); video.addEventListener("error", onMediaError); video.addEventListener("volumechange", onVolume);
     document.addEventListener("fullscreenchange", onFullscreen); shell.addEventListener("keydown", onKey);
     return () => {
       for (const name of ["timeupdate", "durationchange", "loadedmetadata", "progress", "seeking", "seeked"]) video.removeEventListener(name, sync);
@@ -270,7 +305,7 @@ export function PlayerClient({ assetId, title, active }: { assetId: string; titl
       liveRecoveryTimerRef.current = null;
       if (bufferingTimerRef.current) clearTimeout(bufferingTimerRef.current);
       bufferingTimerRef.current = null;
-      video.removeEventListener("loadedmetadata", restoreProgress); video.removeEventListener("playing", onPlaying); video.removeEventListener("pause", onPause); video.removeEventListener("waiting", onWaiting); video.removeEventListener("canplay", onCanPlay); video.removeEventListener("ended", onEnded); video.removeEventListener("error", onMediaError); video.removeEventListener("volumechange", onVolume);
+      video.removeEventListener("loadedmetadata", restoreProgress); video.removeEventListener("playing", onPlaying); video.removeEventListener("pause", onPause); video.removeEventListener("waiting", onWaiting); video.removeEventListener("stalled", onWaiting); video.removeEventListener("canplay", onCanPlay); video.removeEventListener("ended", onEnded); video.removeEventListener("error", onMediaError); video.removeEventListener("volumechange", onVolume);
       document.removeEventListener("fullscreenchange", onFullscreen); shell.removeEventListener("keydown", onKey);
     };
   }, [assetId, live, revealControls, seekBy, toggleFullscreen, togglePlayback]);
@@ -283,7 +318,7 @@ export function PlayerClient({ assetId, title, active }: { assetId: string; titl
 
   return (
     <div ref={shellRef} className={`player-stage wiva-cloud-player ${controlsVisible ? "controls-visible" : "controls-hidden"}`} tabIndex={0} onPointerMove={() => revealControls(!playing)} onPointerDown={() => revealControls(!playing)}>
-      <video ref={videoRef} playsInline disablePictureInPicture={false} controlsList="nodownload" onClick={handleVideoClick} onDoubleClick={handleVideoDoubleClick} />
+      <video ref={videoRef} playsInline disablePictureInPicture={false} controlsList="nodownload" aria-label={title} onClick={handleVideoClick} onDoubleClick={handleVideoDoubleClick} />
       {showStartup ? <div className="player-overlay">
         {state === "paywall" ? <LockKeyhole size={38} /> : state === "blocked" ? <LockKeyhole size={38} /> : state === "error" ? <AlertTriangle size={38} /> : state === "loading" ? <LoaderCircle className="spin" size={42} /> : <Play size={44} fill="currentColor" />}
         <h2>{state === "paywall" ? "تابع المشاهدة" : state === "blocked" ? "المحتوى غير متاح" : state === "error" ? "تعذر بدء التشغيل" : state === "loading" ? "جارٍ تجهيز التشغيل…" : state === "ready" ? "الفيديو جاهز" : "جاهز للمشاهدة"}</h2>
