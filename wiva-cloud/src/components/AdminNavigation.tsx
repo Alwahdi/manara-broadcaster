@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { Clapperboard, LayoutDashboard, ServerCog, UsersRound } from "lucide-react";
+import { CalendarDays, Clapperboard, LayoutDashboard, ServerCog, UsersRound } from "lucide-react";
 import { usePathname } from "next/navigation";
 
 const items = [
   { href: "/admin", label: "نظرة عامة", icon: LayoutDashboard },
   { href: "/admin/providers", label: "المزوّدون", icon: ServerCog },
   { href: "/admin/channels", label: "المحتوى", icon: Clapperboard },
+  { href: "/admin/schedule", label: "المباريات", icon: CalendarDays },
   { href: "/admin/viewers", label: "المشاهدون", icon: UsersRound },
 ];
 

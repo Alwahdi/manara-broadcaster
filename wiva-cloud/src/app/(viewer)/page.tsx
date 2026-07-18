@@ -1,18 +1,20 @@
 import Link from "next/link";
 import { Clapperboard, Film, Radio, Search } from "lucide-react";
 import { CatalogSection } from "@/components/Section";
+import { MatchScheduleSection } from "@/components/MatchScheduleSection";
 import { listViewerAssets } from "@/lib/db";
-import { listContinueWatching, listViewerFavorites } from "@/lib/db";
+import { listContinueWatching, listPublicMatchSchedule, listViewerFavorites } from "@/lib/db";
 import { currentViewerAccount } from "@/lib/auth";
 
 export const revalidate = 20;
 
 export default async function HomePage() {
   const viewer = await currentViewerAccount();
-  const [live, movies, series, continueWatching, favorites] = await Promise.all([
+  const [live, movies, series, continueWatching, favorites, matchSchedule] = await Promise.all([
     listViewerAssets("live"), listViewerAssets("movie"), listViewerAssets("series"),
     viewer ? listContinueWatching(viewer.id) : Promise.resolve([]),
     viewer ? listViewerFavorites(viewer.id) : Promise.resolve([]),
+    listPublicMatchSchedule(),
   ]);
   return (
     <>
@@ -27,6 +29,7 @@ export default async function HomePage() {
           <Link href="/series" className="home-destination"><span><Clapperboard /></span><strong>المسلسلات</strong><small>تصفح المسلسلات</small></Link>
         </div>
       </section>
+      <MatchScheduleSection matches={matchSchedule} />
       {continueWatching.length ? <CatalogSection title="تابع المشاهدة" description="أكمل من حيث توقفت" href="/account" assets={continueWatching} /> : null}
       {favorites.length ? <CatalogSection title="المفضلة" description="المحتوى الذي حفظته" href="/account" assets={favorites} /> : null}
       <CatalogSection title="مباشر الآن" description="اختر قناة وابدأ المشاهدة" href="/live" assets={live} />

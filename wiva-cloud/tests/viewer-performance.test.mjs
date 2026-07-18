@@ -89,3 +89,20 @@ test("admin dashboard prioritizes operational queues instead of architecture cop
   assert.match(dashboard, /طلبات التجديد/);
   assert.doesNotMatch(dashboard, /كيف يصل المحتوى إلى المشاهد/);
 });
+
+test("match schedule is structured information rather than a fake playable channel", () => {
+  const schema = source("db/schema.sql");
+  const database = source("src/lib/db.ts");
+  const home = source("src/app/(viewer)/page.tsx");
+  const schedule = source("src/components/MatchScheduleSection.tsx");
+  const adminRoute = source("src/app/api/admin/schedule/route.ts");
+  const validation = source("src/lib/match-schedule.ts");
+  assert.match(schema, /create table if not exists wiva_cloud_match_schedule/);
+  assert.match(database, /ends_at > now\(\) - interval '15 minutes'/);
+  assert.match(home, /MatchScheduleSection/);
+  assert.match(schedule, /جدول المباريات/);
+  assert.doesNotMatch(schedule, /href=|\/watch\//);
+  assert.match(adminRoute, /requireAdminRequest/);
+  assert.match(adminRoute, /assertSameOrigin/);
+  assert.match(validation, /endsAt\.getTime\(\) - startsAt\.getTime\(\)/);
+});

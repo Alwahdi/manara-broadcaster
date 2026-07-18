@@ -74,6 +74,24 @@ alter table wiva_cloud_assets add column if not exists metadata_review text not 
 create index if not exists wiva_cloud_assets_parent_idx on wiva_cloud_assets(tenant_id, parent_asset_id, season_number, episode_number);
 create index if not exists wiva_cloud_assets_public_idx on wiva_cloud_assets(tenant_id, kind, is_active, is_restricted, is_playable);
 
+create table if not exists wiva_cloud_match_schedule (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references wiva_cloud_tenants(id) on delete cascade,
+  home_team text not null,
+  away_team text not null,
+  competition text not null default '',
+  channel_name text not null default '',
+  starts_at timestamptz not null,
+  ends_at timestamptz not null,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check (ends_at > starts_at)
+);
+
+create index if not exists wiva_cloud_match_schedule_public_idx
+  on wiva_cloud_match_schedule(tenant_id, is_active, starts_at);
+
 -- Safe migration for previously imported provider metadata. Explicitly restricted
 -- titles are hidden from public pages until an administrator reviews them.
 update wiva_cloud_assets
@@ -190,6 +208,10 @@ for each row execute function wiva_cloud_set_updated_at();
 
 drop trigger if exists wiva_cloud_assets_updated_at on wiva_cloud_assets;
 create trigger wiva_cloud_assets_updated_at before update on wiva_cloud_assets
+for each row execute function wiva_cloud_set_updated_at();
+
+drop trigger if exists wiva_cloud_match_schedule_updated_at on wiva_cloud_match_schedule;
+create trigger wiva_cloud_match_schedule_updated_at before update on wiva_cloud_match_schedule
 for each row execute function wiva_cloud_set_updated_at();
 
 drop trigger if exists wiva_cloud_viewers_updated_at on wiva_cloud_viewers;

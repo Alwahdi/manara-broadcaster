@@ -4,7 +4,7 @@ import postgres from "postgres";
 import { demoAssets } from "@/lib/demo";
 import { normalizeProviderTitle, prepareCatalogItem } from "@/lib/catalog-safety";
 import { databaseConfigured, isDemoMode, tenantId } from "@/lib/env";
-import type { AssetKind, CatalogAsset, PaymentRequestSummary, ProviderCatalogItem, ProviderSeriesEpisode, ProviderSummary, ViewerActivity, ViewerIdentity, ViewerSessionSummary, ViewerSummary } from "@/lib/types";
+import type { AssetKind, CatalogAsset, MatchScheduleEntry, PaymentRequestSummary, ProviderCatalogItem, ProviderSeriesEpisode, ProviderSummary, ViewerActivity, ViewerIdentity, ViewerSessionSummary, ViewerSummary } from "@/lib/types";
 
 const globalForDb = globalThis as typeof globalThis & {
   wivaLocalSql?: ReturnType<typeof postgres>;
@@ -47,6 +47,84 @@ function assetFromRow(row: Record<string, unknown>): CatalogAsset {
     seasonNumber: row.season_number == null ? null : Number(row.season_number),
     episodeNumber: row.episode_number == null ? null : Number(row.episode_number),
   };
+}
+
+function matchScheduleFromRow(row: Record<string, unknown>): MatchScheduleEntry {
+  return {
+    id: String(row.id),
+    homeTeam: String(row.home_team || ""),
+    awayTeam: String(row.away_team || ""),
+    competition: String(row.competition || ""),
+    channelName: String(row.channel_name || ""),
+    startsAt: new Date(String(row.starts_at)).toISOString(),
+    endsAt: new Date(String(row.ends_at)).toISOString(),
+    isActive: Boolean(row.is_active),
+    createdAt: new Date(String(row.created_at)).toISOString(),
+    updatedAt: new Date(String(row.updated_at)).toISOString(),
+  };
+}
+
+export async function listPublicMatchSchedule(limit = 8) {
+  if (!databaseConfigured()) return [];
+  const safeLimit = Math.min(20, Math.max(1, Math.floor(limit)));
+  const query = sql();
+  const rows = await query`
+    select * from wiva_cloud_match_schedule
+    where tenant_id = ${tenantId()} and is_active = true
+      and ends_at > now() - interval '15 minutes'
+      and starts_at < now() + interval '30 days'
+    order by starts_at asc limit ${safeLimit}
+  `;
+  return (rows as Record<string, unknown>[]).map(matchScheduleFromRow);
+}
+
+export async function listMatchSchedule() {
+  if (!databaseConfigured()) return [];
+  const query = sql();
+  const rows = await query`
+    select * from wiva_cloud_match_schedule
+    where tenant_id = ${tenantId()} and ends_at > now() - interval '30 days'
+    order by starts_at asc limit 250
+  `;
+  return (rows as Record<string, unknown>[]).map(matchScheduleFromRow);
+}
+
+export async function createMatchSchedule(input: Omit<MatchScheduleEntry, "id" | "createdAt" | "updatedAt">) {
+  const query = sql();
+  const rows = await query`
+    insert into wiva_cloud_match_schedule
+      (tenant_id, home_team, away_team, competition, channel_name, starts_at, ends_at, is_active)
+    values
+      (${tenantId()}, ${input.homeTeam}, ${input.awayTeam}, ${input.competition}, ${input.channelName}, ${input.startsAt}, ${input.endsAt}, ${input.isActive})
+    returning id
+  `;
+  return String(rows[0].id);
+}
+
+export async function updateMatchSchedule(id: string, input: Partial<Omit<MatchScheduleEntry, "id" | "createdAt" | "updatedAt">>) {
+  const query = sql();
+  const rows = await query`
+    update wiva_cloud_match_schedule set
+      home_team = coalesce(${input.homeTeam ?? null}, home_team),
+      away_team = coalesce(${input.awayTeam ?? null}, away_team),
+      competition = coalesce(${input.competition ?? null}, competition),
+      channel_name = coalesce(${input.channelName ?? null}, channel_name),
+      starts_at = coalesce(${input.startsAt ?? null}, starts_at),
+      ends_at = coalesce(${input.endsAt ?? null}, ends_at),
+      is_active = coalesce(${input.isActive ?? null}, is_active)
+    where tenant_id = ${tenantId()} and id = ${id}
+    returning id
+  `;
+  return Boolean(rows[0]);
+}
+
+export async function deleteMatchSchedule(id: string) {
+  const query = sql();
+  const rows = await query`
+    delete from wiva_cloud_match_schedule where tenant_id = ${tenantId()} and id = ${id}
+    returning id
+  `;
+  return Boolean(rows[0]);
 }
 
 export async function listAssets(kind?: AssetKind, includeDisabled = false) {

@@ -112,3 +112,16 @@ export type PaymentRequestSummary = {
   createdAt: string;
   reviewedAt: string | null;
 };
+
+export type MatchScheduleEntry = {
+  id: string;
+  homeTeam: string;
+  awayTeam: string;
+  competition: string;
+  channelName: string;
+  startsAt: string;
+  endsAt: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
