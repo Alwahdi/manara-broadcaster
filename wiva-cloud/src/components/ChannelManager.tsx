@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, CheckCircle2, Clapperboard, Eye, EyeOff, LoaderCircle, Plus, Power, Search, Trash2 } from "lucide-react";
+import { Check, CheckCircle2, CircleAlert, Clapperboard, Eye, EyeOff, LoaderCircle, Plus, Power, RotateCcw, Search, Trash2 } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
 import type { AssetKind, CatalogAsset, ProviderSummary } from "@/lib/types";
 
@@ -8,6 +8,7 @@ export function ChannelManager({ initial, providers }: { initial: CatalogAsset[]
   const [assets, setAssets] = useState(initial);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
+  const [messageTone, setMessageTone] = useState<"success" | "error">("success");
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState<AssetKind | "">("");
   const [category, setCategory] = useState("");
@@ -27,8 +28,8 @@ export function ChannelManager({ initial, providers }: { initial: CatalogAsset[]
     try {
       const response = await fetch("/api/admin/assets", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(Object.fromEntries(data.entries())) });
       const payload = await response.json(); if (!response.ok) throw new Error(payload.error);
-      setAssets(payload.assets); form.reset(); setMessage("تمت الإضافة بحالة غير مفعّلة. اختبر بوابة الوسائط ثم فعّل العنصر.");
-    } catch (error) { setMessage(error instanceof Error ? error.message : "تعذر الحفظ"); }
+      setAssets(payload.assets); form.reset(); setMessageTone("success"); setMessage("تمت الإضافة بحالة غير مفعّلة. اختبر التشغيل ثم انشر العنصر.");
+    } catch (error) { setMessageTone("error"); setMessage(error instanceof Error ? error.message : "تعذر الحفظ"); }
     finally { setPending(false); }
   }
 
@@ -36,8 +37,8 @@ export function ChannelManager({ initial, providers }: { initial: CatalogAsset[]
     setPending(true); setMessage("");
     try {
       const response = await fetch(`/api/admin/assets/${asset.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ active: !asset.isActive }) });
-      const payload = await response.json(); if (!response.ok) throw new Error(payload.error); setAssets(payload.assets);
-    } catch (error) { setMessage(error instanceof Error ? error.message : "تعذر تغيير الحالة"); }
+      const payload = await response.json(); if (!response.ok) throw new Error(payload.error); setAssets(payload.assets); setMessageTone("success"); setMessage(`تم ${asset.isActive ? "إخفاء" : "نشر"} «${asset.title}».`);
+    } catch (error) { setMessageTone("error"); setMessage(error instanceof Error ? error.message : "تعذر تغيير الحالة"); }
     finally { setPending(false); }
   }
 
@@ -47,8 +48,8 @@ export function ChannelManager({ initial, providers }: { initial: CatalogAsset[]
     try {
       const response = await fetch("/api/admin/assets/bulk", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ ids: [...selected], active }) });
       const payload = await response.json(); if (!response.ok) throw new Error(payload.error);
-      setAssets(payload.assets); setSelected(new Set()); setMessage(`تم ${active ? "نشر" : "إخفاء"} ${payload.updated} عنصر.`);
-    } catch (error) { setMessage(error instanceof Error ? error.message : "تعذر تعديل العناصر"); }
+      setAssets(payload.assets); setSelected(new Set()); setMessageTone("success"); setMessage(`تم ${active ? "نشر" : "إخفاء"} ${payload.updated} عنصر.`);
+    } catch (error) { setMessageTone("error"); setMessage(error instanceof Error ? error.message : "تعذر تعديل العناصر"); }
     finally { setPending(false); }
   }
 
@@ -61,25 +62,28 @@ export function ChannelManager({ initial, providers }: { initial: CatalogAsset[]
       const payload = await response.json(); if (!response.ok) throw new Error(payload.error);
       setAssets(payload.assets);
       setSelected((current) => { const next = new Set(current); next.delete(asset.id); return next; });
-      setMessage(`تم حذف «${asset.title}»${detail}.`);
-    } catch (error) { setMessage(error instanceof Error ? error.message : "تعذر حذف المحتوى"); }
+      setMessageTone("success"); setMessage(`تم حذف «${asset.title}»${detail}.`);
+    } catch (error) { setMessageTone("error"); setMessage(error instanceof Error ? error.message : "تعذر حذف المحتوى"); }
     finally { setPending(false); }
   }
 
   function toggleSelected(id: string) { setSelected((current) => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; }); }
   function toggleVisible() { setSelected((current) => { const next = new Set(current); for (const asset of visible) allVisibleSelected ? next.delete(asset.id) : next.add(asset.id); return next; }); }
+  function clearFilters() { setQuery(""); setKind(""); setCategory(""); setStatus(""); }
+  const filtersActive = Boolean(query || kind || category || status);
 
   return <div className="manager-grid content-manager-grid">
     <section className="ops-card">
-      <div className="ops-card-heading"><div><Clapperboard /><span><h2>القنوات والمكتبة</h2><p>ابحث وحدد ثم انشر أو أوقف عدة عناصر دفعة واحدة.</p></span></div><span className="count-badge">{visible.length}</span></div>
+      <div className="ops-card-heading"><div><Clapperboard /><span><h2>القنوات والمكتبة</h2><p>ابحث وحدد ثم انشر أو أوقف عدة عناصر دفعة واحدة.</p></span></div><span className="count-badge">{visible.length}/{assets.length}</span></div>
       <div className="asset-filter-panel">
-        <label className="asset-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ابحث في المحتوى المستورد…" /></label>
-        <select value={kind} onChange={(event) => setKind(event.target.value as AssetKind | "")}><option value="">كل الأنواع</option><option value="live">مباشر</option><option value="movie">أفلام</option><option value="series">مسلسلات</option></select>
-        <select value={category} onChange={(event) => setCategory(event.target.value)}><option value="">كل التصنيفات</option>{categories.map((value) => <option key={value}>{value}</option>)}</select>
-        <select value={status} onChange={(event) => setStatus(event.target.value as typeof status)}><option value="">كل الحالات</option><option value="active">منشور</option><option value="disabled">متوقف</option></select>
+        <label className="asset-search"><span className="sr-only">البحث في المحتوى</span><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ابحث في المحتوى المستورد…" /></label>
+        <select aria-label="تصفية حسب النوع" value={kind} onChange={(event) => setKind(event.target.value as AssetKind | "")}><option value="">كل الأنواع</option><option value="live">مباشر</option><option value="movie">أفلام</option><option value="series">مسلسلات</option></select>
+        <select aria-label="تصفية حسب التصنيف" value={category} onChange={(event) => setCategory(event.target.value)}><option value="">كل التصنيفات</option>{categories.map((value) => <option key={value}>{value}</option>)}</select>
+        <select aria-label="تصفية حسب الحالة" value={status} onChange={(event) => setStatus(event.target.value as typeof status)}><option value="">كل الحالات</option><option value="active">منشور</option><option value="disabled">متوقف</option></select>
       </div>
+      {filtersActive ? <button className="clear-filters" type="button" onClick={clearFilters}><RotateCcw size={15} />مسح عوامل التصفية</button> : null}
       <div className="asset-bulk-bar"><button className="button secondary" onClick={toggleVisible} disabled={!visible.length}>{allVisibleSelected ? "إلغاء تحديد النتائج" : "تحديد النتائج"}</button><span>{selected.size} محدد</span><div><button onClick={() => void bulk(false)} disabled={pending || !selected.size}><EyeOff />إخفاء</button><button onClick={() => void bulk(true)} disabled={pending || !selected.size}><Eye />نشر</button></div></div>
-      {message ? <p className="form-message"><CheckCircle2 size={17} />{message}</p> : null}
+      {message ? <p className={`form-message ${messageTone}`} role={messageTone === "error" ? "alert" : "status"}>{messageTone === "error" ? <CircleAlert size={17} /> : <CheckCircle2 size={17} />}{message}</p> : null}
       <div className="asset-admin-grid content-asset-grid">
         {visible.map((asset) => <article key={asset.id} className={`asset-admin-card ${selected.has(asset.id) ? "selected" : ""}`}>
           <button className="mini-art asset-select" onClick={() => toggleSelected(asset.id)} aria-label="تحديد العنصر">{selected.has(asset.id) ? <Check /> : asset.title.slice(0, 2)}</button>
@@ -98,7 +102,7 @@ export function ChannelManager({ initial, providers }: { initial: CatalogAsset[]
         <label>المزوّد<select name="providerId" required defaultValue=""><option value="" disabled>اختر مزوّدًا</option>{providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}</select></label>
         <label>النوع<select name="kind" defaultValue="live"><option value="live">قناة مباشرة</option><option value="movie">فيلم</option><option value="series">مسلسل</option></select></label>
         <label>العنوان<input name="title" required maxLength={180} /></label>
-        <label>مرجع العنصر لدى المزوّد<input name="providerAssetRef" dir="ltr" required placeholder="channel-id or opaque provider reference" /></label>
+        <label>مرجع العنصر لدى المزوّد<input name="providerAssetRef" dir="ltr" required placeholder="مثال: 18452" /></label>
         <div className="form-pair"><label>التصنيف<input name="category" /></label><label>الجودة<input name="quality" defaultValue="FHD" /></label></div>
         <label>اللغة<input name="language" defaultValue="العربية" /></label><label>الوصف<textarea name="description" /></label>
         <button className="button primary wide" disabled={pending || !providers.length}>{pending ? <LoaderCircle className="spin" /> : <Plus />}إضافة بحالة متوقفة</button>

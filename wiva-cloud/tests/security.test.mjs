@@ -314,3 +314,22 @@ test("viewer account exposes a POST logout that clears the session without JavaS
   assert.match(logout, /status: 303/);
   assert.match(logout, /clearViewerCookie\(\)/);
 });
+
+test("admin and authentication flows expose clear navigation, feedback, and mobile-first forms", () => {
+  const shell = readFileSync(join(root, "src/components/AdminShell.tsx"), "utf8");
+  const navigation = readFileSync(join(root, "src/components/AdminNavigation.tsx"), "utf8");
+  const adminLogout = readFileSync(join(root, "src/app/api/auth/admin/logout/route.ts"), "utf8");
+  const login = readFileSync(join(root, "src/components/LoginForm.tsx"), "utf8");
+  const signup = readFileSync(join(root, "src/components/SignupForm.tsx"), "utf8");
+  const styles = readFileSync(join(root, "src/app/globals.css"), "utf8");
+  assert.match(navigation, /usePathname/);
+  assert.match(navigation, /aria-current=\{active \? "page"/);
+  assert.match(shell, /action="\/api\/auth\/admin\/logout" method="post"/);
+  assert.match(adminLogout, /status: 303/);
+  assert.match(adminLogout, /new URL\("\/admin\/login"/);
+  assert.match(login, /إظهار كلمة المرور/);
+  assert.match(login, /aria-busy=\{pending\}/);
+  assert.match(signup, /12 حرفًا على الأقل/);
+  assert.match(styles, /\.viewer-auth-page \.auth-promo \{ display: none; \}/);
+  assert.match(styles, /\.form-message\.error/);
+});

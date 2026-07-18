@@ -1,6 +1,6 @@
 "use client";
 
-import { LoaderCircle, Sparkles } from "lucide-react";
+import { Eye, EyeOff, LoaderCircle, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
@@ -8,6 +8,7 @@ export function SignupForm() {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); const form = new FormData(event.currentTarget);
     setPending(true); setError("");
@@ -19,11 +20,19 @@ export function SignupForm() {
     } catch (reason) { setError(reason instanceof Error ? reason.message : "تعذر إنشاء الحساب الآن"); }
     finally { setPending(false); }
   }
-  return <form className="auth-form" onSubmit={submit}>
-    <label>الاسم<input name="name" autoComplete="name" maxLength={120} required /></label>
-    <label>البريد الإلكتروني<input name="email" type="email" dir="ltr" autoComplete="email" required /></label>
-    <label>كلمة المرور<input name="password" type="password" dir="ltr" autoComplete="new-password" minLength={12} required /></label>
-    {error ? <p className="form-error">{error}</p> : null}
-    <button className="button primary wide" disabled={pending}>{pending ? <LoaderCircle className="spin" size={19} /> : <Sparkles size={19} />}{pending ? "جارٍ إنشاء حسابك…" : "ابدأ 3 أيام مجانًا"}</button>
+  return <form className="auth-form" onSubmit={submit} aria-busy={pending}>
+    <label htmlFor="signup-name">الاسم<input id="signup-name" name="name" autoComplete="name" maxLength={120} placeholder="اسمك" required autoFocus /></label>
+    <label htmlFor="signup-email">البريد الإلكتروني<input id="signup-email" name="email" type="email" dir="ltr" autoComplete="email" inputMode="email" placeholder="name@example.com" required aria-invalid={Boolean(error)} /></label>
+    <label htmlFor="signup-password">كلمة المرور
+      <span className="password-input">
+        <input id="signup-password" name="password" type={showPassword ? "text" : "password"} dir="ltr" autoComplete="new-password" minLength={12} required aria-invalid={Boolean(error)} aria-describedby="signup-password-help" />
+        <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"} aria-pressed={showPassword}>
+          {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+        </button>
+      </span>
+      <small className="field-help" id="signup-password-help">استخدم 12 حرفًا على الأقل لحماية حسابك.</small>
+    </label>
+    {error ? <p className="form-error" role="alert">{error}</p> : null}
+    <button className="button primary wide" type="submit" disabled={pending}>{pending ? <LoaderCircle className="spin" size={19} /> : <Sparkles size={19} />}{pending ? "جارٍ إنشاء حسابك…" : "ابدأ 3 أيام مجانًا"}</button>
   </form>;
 }

@@ -5,6 +5,13 @@ export async function POST(request: Request) {
   try {
     assertSameOrigin(request);
     requireAdminRequest(request);
-    return Response.json({ ok: true }, { headers: { "set-cookie": clearAdminCookie(), "cache-control": "no-store" } });
+    return new Response(null, {
+      status: 303,
+      headers: {
+        location: new URL("/admin/login", request.url).toString(),
+        "set-cookie": clearAdminCookie(),
+        "cache-control": "no-store",
+      },
+    });
   } catch (error) { return errorResponse(error); }
 }
