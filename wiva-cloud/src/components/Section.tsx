@@ -11,7 +11,7 @@ export function CatalogSection({ title, description, href, assets }: { title: st
         <Link href={href}>عرض الكل <ArrowLeft size={17} /></Link>
       </div>
       {assets.length ? (
-        <div className="media-grid">{assets.map((asset, index) => <MediaCard key={asset.id} asset={asset} priority={index < 4} />)}</div>
+        <div className={`media-rail ${assets[0]?.kind === "live" ? "live-rail" : "poster-rail"}`}>{assets.map((asset, index) => <MediaCard key={asset.id} asset={asset} priority={index < 4} />)}</div>
       ) : (
         <EmptyState title="لا يوجد محتوى الآن" body="ستظهر العناصر هنا بعد تفعيلها من لوحة الإدارة." />
       )}

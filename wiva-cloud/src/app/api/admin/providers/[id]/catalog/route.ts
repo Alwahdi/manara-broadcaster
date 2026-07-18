@@ -1,3 +1,4 @@
+import { revalidateTag } from "next/cache";
 import { requireAdminRequest } from "@/lib/auth";
 import { audit, importProviderAssets, importProviderSeries } from "@/lib/db";
 import { catalogCategories, discoverProviderCatalog, discoverSeriesEpisodes, filterProviderCatalog, loadProviderConnection } from "@/lib/provider-catalog";
@@ -69,6 +70,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       if (episodes.length !== wanted.size) throw new HttpError(400, "بعض الحلقات لم تعد موجودة لدى المزوّد");
       const result = await importProviderSeries(id, series, episodes, active);
       await audit("provider.series.import", "provider", id, { seriesRef, episodes: result.imported, active });
+      revalidateTag("wiva-viewer-catalog", { expire: 0 });
       return Response.json({ ok: true, imported: result.imported, parentId: result.parentId, active }, { status: 201, headers: { "cache-control": "no-store" } });
     }
     if (section === "series") throw new HttpError(400, "افتح المسلسل واختر الحلقات التي تريد استيرادها");
@@ -84,6 +86,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
     const imported = await importProviderAssets(id, selected, active);
     await audit("provider.catalog.import", "provider", id, { section, categoryId, search: Boolean(search), imported, active, mode: body.allFiltered === true ? "filtered" : "selected" });
+    revalidateTag("wiva-viewer-catalog", { expire: 0 });
     return Response.json({ ok: true, imported, active }, { status: 201, headers: { "cache-control": "no-store" } });
   } catch (error) { return errorResponse(error); }
 }

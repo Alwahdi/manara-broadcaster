@@ -1,3 +1,4 @@
+import { revalidateTag } from "next/cache";
 import { requireAdminRequest } from "@/lib/auth";
 import { audit, deleteAsset, getAsset, listAssets, listProviders, setAssetActive } from "@/lib/db";
 import { assertSameOrigin, errorResponse, HttpError, jsonBody } from "@/lib/security";
@@ -16,6 +17,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
     if (!(await setAssetActive(id, body.active))) throw new HttpError(404, "المحتوى غير موجود");
     await audit("asset.status", "asset", id, { active: body.active });
+    revalidateTag("wiva-viewer-catalog", { expire: 0 });
     return Response.json({ ok: true, assets: await listAssets(undefined, true) }, { headers: { "cache-control": "no-store" } });
   } catch (error) { return errorResponse(error); }
 }
@@ -33,6 +35,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       providerId: asset.providerId,
       includedEpisodes: asset.kind === "series" && !asset.parentAssetId,
     });
+    revalidateTag("wiva-viewer-catalog", { expire: 0 });
     return Response.json({ ok: true, assets: await listAssets(undefined, true) }, { headers: { "cache-control": "no-store" } });
   } catch (error) { return errorResponse(error); }
 }

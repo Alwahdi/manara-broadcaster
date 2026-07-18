@@ -1,3 +1,4 @@
+import { revalidateTag } from "next/cache";
 import { requireAdminRequest } from "@/lib/auth";
 import { audit, listAssets, listProviders, setAssetsActive } from "@/lib/db";
 import { assertSameOrigin, cleanText, errorResponse, HttpError, jsonBody } from "@/lib/security";
@@ -16,6 +17,7 @@ export async function PATCH(request: Request) {
     }
     const updated = await setAssetsActive(ids, body.active);
     await audit("asset.bulk-status", "asset", null, { updated, active: body.active });
+    revalidateTag("wiva-viewer-catalog", { expire: 0 });
     return Response.json({ ok: true, updated, assets: await listAssets(undefined, true) }, { headers: { "cache-control": "no-store" } });
   } catch (error) { return errorResponse(error); }
 }

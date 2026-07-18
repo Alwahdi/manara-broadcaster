@@ -1,28 +1,26 @@
 import Link from "next/link";
-import { LogIn, Search, Tv2, UserRound } from "lucide-react";
+import { Search, Tv2, UserRound } from "lucide-react";
 import { BrandMark } from "@/components/BrandMark";
 import { ViewerNavigation } from "@/components/ViewerNavigation";
-import { currentViewerAccount } from "@/lib/auth";
 
-export async function ViewerShell({ children }: { children: React.ReactNode }) {
-  const viewer = await currentViewerAccount();
+export function ViewerShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="viewer-shell">
       <header className="viewer-header">
         <div className="viewer-header-inner">
           <Link href="/" className="brand-link"><BrandMark /></Link>
-          <ViewerNavigation accountHref={viewer ? "/account" : "/login"} />
+          <ViewerNavigation />
           <div className="header-actions">
             <Link href="/search" className="icon-button" aria-label="بحث"><Search size={20} /></Link>
-            <Link href={viewer ? "/account" : "/login"} className="account-button">
-              {viewer ? <UserRound size={18} /> : <LogIn size={18} />}
-              <span>{viewer?.name || "دخول"}</span>
+            <Link href="/account" className="account-button">
+              <UserRound size={18} />
+              <span>حسابي</span>
             </Link>
           </div>
         </div>
       </header>
       <main>{children}</main>
-      <ViewerNavigation mobile accountHref={viewer ? "/account" : "/login"} />
+      <ViewerNavigation mobile />
       <footer className="viewer-footer">
         <BrandMark compact />
         <p>كل قنواتك وأفلامك ومسلسلاتك في مكان واحد.</p>

@@ -1,4 +1,5 @@
 import { neon } from "@neondatabase/serverless";
+import { unstable_cache } from "next/cache";
 import postgres from "postgres";
 import { demoAssets } from "@/lib/demo";
 import { databaseConfigured, isDemoMode, tenantId } from "@/lib/env";
@@ -70,7 +71,7 @@ export async function listAssets(kind?: AssetKind, includeDisabled = false) {
   return (rows as Record<string, unknown>[]).map(assetFromRow);
 }
 
-export async function listViewerAssets(kind: AssetKind, limit = 5) {
+async function queryViewerAssets(kind: AssetKind, limit = 5) {
   const safeLimit = Math.min(60, Math.max(1, Math.floor(limit)));
   if (!databaseConfigured()) return isDemoMode() ? demoAssets.filter((item) => item.kind === kind).slice(0, safeLimit) : [];
   const query = sql(); const tenant = tenantId();
@@ -85,7 +86,16 @@ export async function listViewerAssets(kind: AssetKind, limit = 5) {
   return (rows as Record<string, unknown>[]).map(assetFromRow);
 }
 
-export async function listViewerCatalog(kind: AssetKind, options: { page?: number; pageSize?: number; category?: string; search?: string } = {}) {
+const cachedViewerAssets = unstable_cache(queryViewerAssets, ["wiva-viewer-assets-v2"], {
+  revalidate: 20,
+  tags: ["wiva-viewer-catalog"],
+});
+
+export async function listViewerAssets(kind: AssetKind, limit = 5) {
+  return cachedViewerAssets(kind, Math.min(60, Math.max(1, Math.floor(limit))));
+}
+
+async function queryViewerCatalog(kind: AssetKind, options: { page?: number; pageSize?: number; category?: string; search?: string } = {}) {
   const pageSize = Math.min(60, Math.max(12, Math.floor(options.pageSize || 30)));
   const page = Math.max(1, Math.floor(options.page || 1));
   const category = String(options.category || "").trim().slice(0, 120);
@@ -126,6 +136,20 @@ export async function listViewerCatalog(kind: AssetKind, options: { page?: numbe
     items: (rows as Record<string, unknown>[]).map(assetFromRow), total: Number(counts[0]?.total || 0),
     categories: categoryRows.map((row) => String(row.category || "")).filter(Boolean), page, pageSize,
   };
+}
+
+const cachedViewerCatalog = unstable_cache(queryViewerCatalog, ["wiva-viewer-catalog-v2"], {
+  revalidate: 20,
+  tags: ["wiva-viewer-catalog"],
+});
+
+export async function listViewerCatalog(kind: AssetKind, options: { page?: number; pageSize?: number; category?: string; search?: string } = {}) {
+  const page = Math.min(500, Math.max(1, Math.floor(options.page || 1)));
+  const pageSize = Math.min(60, Math.max(12, Math.floor(options.pageSize || 30)));
+  const category = String(options.category || "").trim().slice(0, 120);
+  const search = String(options.search || "").trim().slice(0, 120);
+  if (category || search) return queryViewerCatalog(kind, { page, pageSize, category, search });
+  return cachedViewerCatalog(kind, { page, pageSize });
 }
 
 export async function searchViewerAssets(search: string, limit = 48) {

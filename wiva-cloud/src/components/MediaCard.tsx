@@ -10,7 +10,7 @@ function initials(title: string) {
 export function MediaCard({ asset, priority = false }: { asset: CatalogAsset; priority?: boolean }) {
   const title = publicAssetTitle(asset); const language = publicLanguage(asset.language);
   return (
-    <Link href={asset.kind === "series" && !asset.parentAssetId ? `/series/${asset.id}` : `/watch/${asset.id}`} className="media-card" data-kind={asset.kind} data-priority={priority || undefined} prefetch={priority}>
+    <Link href={asset.kind === "series" && !asset.parentAssetId ? `/series/${asset.id}` : `/watch/${asset.id}`} className="media-card" data-kind={asset.kind} data-priority={priority || undefined} prefetch={priority ? true : null}>
       <div className="media-art">
         {asset.artworkUrl ? <img className="media-poster" src={asset.artworkUrl} alt="" loading={priority ? "eager" : "lazy"} decoding="async" fetchPriority={priority ? "high" : "auto"} referrerPolicy="no-referrer" /> : null}
         {!asset.artworkUrl ? <span className="media-initials">{initials(title)}</span> : null}

@@ -1,3 +1,4 @@
+import { revalidateTag } from "next/cache";
 import { requireAdminRequest } from "@/lib/auth";
 import { audit, createAsset, listAssets, listProviders } from "@/lib/db";
 import { assertSameOrigin, cleanText, errorResponse, HttpError, jsonBody } from "@/lib/security";
@@ -16,6 +17,7 @@ export async function POST(request: Request) {
     if (!provider || !provider.redistributionAttested) throw new HttpError(400, "المزوّد غير صالح أو بلا تأكيد حقوق");
     const id = await createAsset({ providerId, providerAssetRef, kind, title, description: cleanText(body.description, 1200), category: cleanText(body.category, 120), quality: cleanText(body.quality, 30) || "HD", language: cleanText(body.language, 60) });
     await audit("asset.create", "asset", id, { title, kind, providerId });
+    revalidateTag("wiva-viewer-catalog", { expire: 0 });
     return Response.json({ ok: true, assets: await listAssets(undefined, true) }, { status: 201, headers: { "cache-control": "no-store" } });
   } catch (error) { return errorResponse(error); }
 }

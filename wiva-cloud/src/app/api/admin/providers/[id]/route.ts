@@ -1,3 +1,4 @@
+import { revalidateTag } from "next/cache";
 import { requireAdminRequest } from "@/lib/auth";
 import { audit, listProviders, setProviderStatus } from "@/lib/db";
 import { assertSameOrigin, cleanText, errorResponse, HttpError, jsonBody } from "@/lib/security";
@@ -12,6 +13,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (!new Set(["disabled", "active", "degraded", "blocked"]).has(status)) throw new HttpError(400, "حالة غير صالحة");
     if (!(await setProviderStatus(id, status))) throw new HttpError(404, "المزوّد غير موجود");
     await audit("provider.status", "provider", id, { status });
+    revalidateTag("wiva-viewer-catalog", { expire: 0 });
     return Response.json({ ok: true, providers: await listProviders() }, { headers: { "cache-control": "no-store" } });
   } catch (error) { return errorResponse(error); }
 }

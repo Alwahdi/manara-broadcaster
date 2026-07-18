@@ -3,7 +3,7 @@ import { ArrowLeft, CirclePlay, Globe2, Radio, ShieldCheck, Sparkles } from "luc
 import { CatalogSection } from "@/components/Section";
 import { listViewerAssets } from "@/lib/db";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 20;
 
 export default async function HomePage() {
   const [live, movies, series] = await Promise.all([
