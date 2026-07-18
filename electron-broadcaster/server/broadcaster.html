@@ -95,7 +95,7 @@ function viewerQuality(value, tier = capacityTier) {
   const requestedHeight = heavilyCrowded ? 480 : crowded ? Math.min(720, requested) : requested;
   const height = Math.min(source.height, requestedHeight);
   const scaleResolutionDownBy = Math.max(1, source.height / height);
-  const targetBitrate = mode === '1080' ? 8000 : mode === '480' ? 1500 : mode === '720' ? 3500 : 3000;
+  const targetBitrate = mode === '1080' ? 6000 : mode === '480' ? 1500 : mode === '720' ? 3500 : 3000;
   const capacityBitrate = heavilyCrowded ? 1000 : crowded ? 2200 : targetBitrate;
   return {
     mode,
@@ -513,7 +513,7 @@ function closeDisconnectedPeerSoon(id, pc) {
   const timer = setTimeout(() => {
     peerCloseTimers.delete(key);
     if (peers.get(key) === pc && pc.connectionState === 'disconnected') closePeer(key);
-  }, 8000);
+  }, 22000);
   peerCloseTimers.set(key, timer);
 }
 

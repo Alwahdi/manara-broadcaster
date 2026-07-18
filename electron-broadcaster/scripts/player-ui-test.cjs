@@ -81,8 +81,13 @@ assert.match(broadcaster, /navigator\.hardwareConcurrency/, 'capture load protec
 assert.match(broadcaster, /CAPTURE_CAPACITY\.heavyAt/, 'capture sender load uses a hardware-aware heavy-viewer threshold');
 assert.match(broadcaster, /CAPTURE_CAPACITY\.crowdedRecoveryAt/, 'capture capacity uses a lower recovery threshold to prevent quality oscillation');
 assert.match(broadcaster, /scheduleCapacityRetune\(\)/, 'capture senders are retuned when viewer load changes');
+assert.match(broadcaster, /mode === '1080' \? 6000/, '1080p capture stays within a LAN-safe bitrate ceiling');
+assert.match(broadcaster, /}, 22000\);/, 'capture sender tolerates a transient ICE disconnect before closing a peer');
 assert.match(live, /pcRef\.current\s*!==\s*pc/, 'stale WebRTC peer events cannot trigger reconnect loops');
 assert.doesNotMatch(live, /track\.onmute[\s\S]{0,240}scheduleReconnect/, 'viewer does not rebuild video for a transient audio mute');
+assert.match(live, /function waitForBroadcasterRecovery\(\)/, 'viewer waits in place while a capture broadcaster recovers');
+assert.match(live, /msg\.type === "broadcaster-left"[\s\S]{0,160}waitForBroadcasterRecovery\(\)/, 'broadcaster restart does not discard the registered viewer');
+assert.match(live, /}, 20_000\);/, 'viewer tolerates transient LAN and broadcaster interruptions');
 assert.match(live, /weakQualitySamples\s*>=\s*2/, 'automatic capture quality requires repeated weak samples before degrading');
 assert.match(live, /stableQualitySamples\s*>=\s*6/, 'automatic capture quality waits for sustained stability before upgrading');
 assert.match(live, /framesDropped/, 'automatic capture quality observes decoder frame drops');

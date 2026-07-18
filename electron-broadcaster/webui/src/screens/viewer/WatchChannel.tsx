@@ -428,6 +428,7 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
     let retry: ReturnType<typeof setTimeout> | null = null;
     let remoteTrackTimer: ReturnType<typeof setTimeout> | null = null;
     let disconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let broadcasterRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
     let qualityTimer: ReturnType<typeof setInterval> | null = null;
     let startupTimer: ReturnType<typeof setTimeout> | null = null;
     let streamReady = false;
@@ -458,6 +459,11 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
     function clearDisconnectTimer() {
       if (disconnectTimer) clearTimeout(disconnectTimer);
       disconnectTimer = null;
+    }
+
+    function clearBroadcasterRecoveryTimer() {
+      if (broadcasterRecoveryTimer) clearTimeout(broadcasterRecoveryTimer);
+      broadcasterRecoveryTimer = null;
     }
 
     function clearQualityTimer() {
@@ -589,8 +595,21 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
       setReady(false);
     }
 
+    function waitForBroadcasterRecovery() {
+      if (closed) return;
+      cleanupPeer();
+      setStatus("انقطع البث مؤقتًا، نحاول استعادته...");
+      setError("");
+      if (broadcasterRecoveryTimer) return;
+      broadcasterRecoveryTimer = setTimeout(() => {
+        broadcasterRecoveryTimer = null;
+        scheduleReconnect("نستعيد الاتصال بالقناة...", 800);
+      }, 20_000);
+    }
+
     function scheduleReconnect(message = "انقطع الاتصال. سنعيد المحاولة خلال لحظات.", delay = 2200) {
       if (closed || retry) return;
+      clearBroadcasterRecoveryTimer();
       setReady(false);
       setStatus(message);
       setError("");
@@ -655,6 +674,7 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
       };
       ws.onclose = () => {
         if (closed) return;
+        clearBroadcasterRecoveryTimer();
         scheduleReconnect();
       };
       ws.onmessage = async (event) => {
@@ -665,15 +685,17 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
           return;
         }
         if (msg.type === "broadcaster-online") {
+          clearBroadcasterRecoveryTimer();
           setError("");
           setStatus("جاري فتح الصورة...");
           return;
         }
         if (msg.type === "broadcaster-left") {
-          scheduleReconnect("انقطع الاتصال مؤقتًا، نحاول إعادة التشغيل...", 1800);
+          waitForBroadcasterRecovery();
           return;
         }
         if (msg.type === "offer" && typeof msg.sdp === "string") {
+          clearBroadcasterRecoveryTimer();
           cleanupPeer();
           const pc = new RTCPeerConnection({ iceServers: [] });
           pcRef.current = pc;
@@ -711,7 +733,7 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
                 disconnectTimer = setTimeout(() => {
                   disconnectTimer = null;
                   if (pc.connectionState === "disconnected") scheduleReconnect("انقطع الاتصال مؤقتًا، نحاول إعادة التشغيل...", 1200);
-                }, 6000);
+                }, 20_000);
               }
               return;
             }
@@ -747,6 +769,7 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
       clearRetry();
       clearRemoteTrackTimer();
       clearDisconnectTimer();
+      clearBroadcasterRecoveryTimer();
       clearQualityTimer();
       try { wsRef.current?.close(); } catch {}
       cleanupPeer();
