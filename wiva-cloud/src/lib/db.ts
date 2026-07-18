@@ -180,7 +180,7 @@ async function queryViewerAssets(kind: AssetKind, limit = 5) {
   return (rows as Record<string, unknown>[]).map(assetFromRow);
 }
 
-const cachedViewerAssets = unstable_cache(queryViewerAssets, ["wiva-viewer-assets-v2"], {
+const cachedViewerAssets = unstable_cache(queryViewerAssets, ["wiva-viewer-assets-v3"], {
   revalidate: 20,
   tags: ["wiva-viewer-catalog"],
 });
@@ -250,7 +250,7 @@ async function queryViewerCatalog(kind: AssetKind, options: { page?: number; pag
   };
 }
 
-const cachedViewerCatalog = unstable_cache(queryViewerCatalog, ["wiva-viewer-catalog-v2"], {
+const cachedViewerCatalog = unstable_cache(queryViewerCatalog, ["wiva-viewer-catalog-v3"], {
   revalidate: 20,
   tags: ["wiva-viewer-catalog"],
 });

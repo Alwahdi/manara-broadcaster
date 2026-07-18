@@ -15,6 +15,7 @@ const restrictedTerms = [
   /\bvivid\s*(?:tv|red|touch)?\b/i,
   /\berotic\b/i,
   /\bsex(?:y)?\b/i,
+  /\b(?:pussy|blowjob|gangbang|creampie|orgy|fucking?|fetish)\b/i,
   /\b(?:stepdaughter|stepsister|stepmom|milf|nude|nudity|onlyfans|pornhub)\b/i,
   /\bhot\s*(?:club|night|girls?)\b/i,
   /للبالغين|إباحي|اباحي|عاري|عري|جنس(?:ي|ية)?/i,

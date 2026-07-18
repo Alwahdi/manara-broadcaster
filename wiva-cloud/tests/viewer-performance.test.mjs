@@ -66,6 +66,9 @@ test("public catalog fails closed for restricted and non-playable provider metad
   assert.match(schema, /metadata_review text not null default 'approved'/);
   assert.match(schema, /set is_restricted = true, metadata_review = 'needs_review'/);
   assert.match(safety, /isRestrictedMetadata/);
+  assert.match(safety, /pussy\|blowjob\|gangbang/);
+  assert.match(database, /wiva-viewer-assets-v3/);
+  assert.match(database, /wiva-viewer-catalog-v3/);
   assert.match(safety, /isScheduleMetadata/);
 });
 

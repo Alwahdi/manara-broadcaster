@@ -113,7 +113,7 @@ create index if not exists wiva_cloud_match_schedule_public_idx
 -- titles are hidden from public pages until an administrator reviews them.
 update wiva_cloud_assets
 set is_restricted = true, metadata_review = 'needs_review'
-where lower(concat_ws(' ', title, category, description)) ~ '(adult|xxx|18\s*\+|porn|porno|pornography|pornhub|playboy|brazzers|hustler|redlight|dorcel|penthouse|hardcore|vivid\s*(tv|red|touch)?|erotic|sex|sexy|stepdaughter|stepsister|stepmom|milf|nude|nudity|onlyfans|إباحي|اباحي|للبالغين|عاري|عري|جنس)';
+where lower(concat_ws(' ', title, category, description)) ~ '(adult|xxx|18\s*\+|porn|porno|pornography|pornhub|playboy|brazzers|hustler|redlight|dorcel|penthouse|hardcore|vivid\s*(tv|red|touch)?|erotic|sex|sexy|pussy|blowjob|gangbang|creampie|orgy|fuck|fucking|fetish|stepdaughter|stepsister|stepmom|milf|nude|nudity|onlyfans|إباحي|اباحي|للبالغين|عاري|عري|جنس)';
 
 update wiva_cloud_assets
 set is_playable = false, metadata_review = 'needs_review'
