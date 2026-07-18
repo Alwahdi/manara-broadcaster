@@ -14,7 +14,7 @@ export default async function HomePage() {
     <>
       <section className="hero">
         <div className="container hero-content">
-          <span className="eyebrow"><i /> منصة مشاهدة مرخّصة وآمنة</span>
+          <span className="eyebrow"><i /> مشاهدة سهلة وآمنة</span>
           <h1>كل شاشتك في <span>مكان واحد.</span></h1>
           <p>قنوات مباشرة، أفلام ومسلسلات بتجربة عربية سريعة وسهلة على الجوال والتلفزيون والمتصفح.</p>
           <div className="hero-actions">
@@ -28,8 +28,8 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
-      <CatalogSection title="البث المباشر" description="قنواتك المفعّلة مرتبة وواضحة" href="/live" assets={live} />
-      <CatalogSection title="أفلام مختارة" description="أحدث الإضافات من المصادر المرخّصة" href="/movies" assets={movies} />
+      <CatalogSection title="البث المباشر" description="قنواتك المتاحة مرتبة وواضحة" href="/live" assets={live} />
+      <CatalogSection title="أفلام مختارة" description="أحدث الأفلام المتاحة للمشاهدة" href="/movies" assets={movies} />
       <CatalogSection title="مسلسلات" description="حلقاتك في تجربة مشاهدة واحدة" href="/series" assets={series} />
       <section className="container catalog-section">
         <div className="architecture-card">

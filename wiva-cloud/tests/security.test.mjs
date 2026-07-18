@@ -257,6 +257,24 @@ test("mobile playback keeps a ready state and rewrites loopback gateway hosts", 
   assert.match(route, /gateway\.hostname = publicHostname/);
 });
 
+test("viewer player supports polished fullscreen gestures and hides technical copy", () => {
+  const player = readFileSync(join(root, "src/components/PlayerClient.tsx"), "utf8");
+  const home = readFileSync(join(root, "src/app/(viewer)/page.tsx"), "utf8");
+  const live = readFileSync(join(root, "src/app/(viewer)/live/page.tsx"), "utf8");
+  const catalog = readFileSync(join(root, "src/components/CatalogPage.tsx"), "utf8");
+  const icon = readFileSync(join(root, "src/app/icon.svg"), "utf8");
+  const manifest = readFileSync(join(root, "src/app/manifest.ts"), "utf8");
+  assert.match(player, /onDoubleClick=\{handleVideoDoubleClick\}/);
+  assert.match(player, /toggleFullscreen\(\)/);
+  assert.match(player, /player-buffering/);
+  assert.match(player, /navigator\.mediaSession/);
+  assert.match(icon, /url\(#gold\)/);
+  assert.match(manifest, /maskable/);
+  for (const publicCopy of [home, live, catalog]) {
+    assert.doesNotMatch(publicCopy, /بوابة وسائط|إدخال مشترك|المصادر المرخّصة|لوحة الإدارة/);
+  }
+});
+
 test("LAN viewer mutations preserve the browser HTTP origin in development", () => {
   const security = readFileSync(join(root, "src/lib/security.ts"), "utf8");
   const config = readFileSync(join(root, "next.config.mjs"), "utf8");

@@ -5,7 +5,7 @@ import {
   AlertTriangle, FastForward, Gauge, LoaderCircle, LockKeyhole, Maximize, Minimize,
   LogIn, Pause, PictureInPicture2, Play, Radio, Rewind, RotateCcw, Settings, UserPlus, Volume2, VolumeX,
 } from "lucide-react";
-import { CSSProperties, useCallback, useEffect, useRef, useState } from "react";
+import { CSSProperties, MouseEvent as ReactMouseEvent, useCallback, useEffect, useRef, useState } from "react";
 
 type State = "idle" | "loading" | "ready" | "playing" | "paused" | "error" | "blocked" | "paywall";
 
@@ -17,7 +17,7 @@ function formatTime(value: number) {
   return hours ? `${hours}:${minutes.toString().padStart(2, "0")}:${seconds}` : `${minutes}:${seconds}`;
 }
 
-export function PlayerClient({ assetId, active }: { assetId: string; active: boolean }) {
+export function PlayerClient({ assetId, title, active }: { assetId: string; title: string; active: boolean }) {
   const shellRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -25,6 +25,9 @@ export function PlayerClient({ assetId, active }: { assetId: string; active: boo
   const startupCleanupRef = useRef<(() => void) | null>(null);
   const liveRecoveryTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bufferingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gestureTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [state, setState] = useState<State>(active ? "idle" : "blocked");
   const [message, setMessage] = useState("");
   const [live, setLive] = useState(false);
@@ -37,6 +40,8 @@ export function PlayerClient({ assetId, active }: { assetId: string; active: boo
   const [fullscreen, setFullscreen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [speed, setSpeed] = useState(1);
+  const [buffering, setBuffering] = useState(false);
+  const [gestureHint, setGestureHint] = useState("");
 
   const revealControls = useCallback((keep = false) => {
     if (hideTimer.current) clearTimeout(hideTimer.current);
@@ -50,6 +55,13 @@ export function PlayerClient({ assetId, active }: { assetId: string; active: boo
     liveRecoveryTimerRef.current = null;
     if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
     previewTimerRef.current = null;
+    if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+    clickTimerRef.current = null;
+    if (bufferingTimerRef.current) clearTimeout(bufferingTimerRef.current);
+    bufferingTimerRef.current = null;
+    if (gestureTimerRef.current) clearTimeout(gestureTimerRef.current);
+    gestureTimerRef.current = null;
+    setBuffering(false);
     hlsRef.current?.destroy(); hlsRef.current = null;
     if (hideTimer.current) clearTimeout(hideTimer.current);
     const video = videoRef.current;
@@ -155,6 +167,34 @@ export function PlayerClient({ assetId, active }: { assetId: string; active: boo
     try { if (document.pictureInPictureElement) await document.exitPictureInPicture(); else await video.requestPictureInPicture(); } catch {}
   }, []);
 
+  const handleVideoClick = useCallback(() => {
+    if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+    clickTimerRef.current = setTimeout(() => { clickTimerRef.current = null; togglePlayback(); }, 220);
+  }, [togglePlayback]);
+
+  const handleVideoDoubleClick = useCallback((event: ReactMouseEvent<HTMLVideoElement>) => {
+    event.preventDefault();
+    if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+    clickTimerRef.current = null;
+    const entering = !document.fullscreenElement;
+    void toggleFullscreen();
+    setGestureHint(entering ? "ملء الشاشة" : "العودة للحجم الطبيعي");
+    if (gestureTimerRef.current) clearTimeout(gestureTimerRef.current);
+    gestureTimerRef.current = setTimeout(() => setGestureHint(""), 1200);
+  }, [toggleFullscreen]);
+
+  useEffect(() => {
+    if (!("mediaSession" in navigator)) return;
+    navigator.mediaSession.metadata = new MediaMetadata({ title, artist: "WIVA" });
+    const video = videoRef.current;
+    const handlers: Array<[MediaSessionAction, MediaSessionActionHandler | null]> = [
+      ["play", () => void resume()], ["pause", () => video?.pause()],
+      ["seekbackward", live ? null : () => seekBy(-10)], ["seekforward", live ? null : () => seekBy(10)],
+    ];
+    for (const [action, handler] of handlers) { try { navigator.mediaSession.setActionHandler(action, handler); } catch {} }
+    return () => { for (const [action] of handlers) { try { navigator.mediaSession.setActionHandler(action, null); } catch {} } };
+  }, [live, resume, seekBy, title]);
+
   useEffect(() => {
     const video = videoRef.current; const shell = shellRef.current;
     if (!video || !shell) return;
@@ -177,7 +217,11 @@ export function PlayerClient({ assetId, active }: { assetId: string; active: boo
         if (saved > 5 && saved < video.duration * 0.95) video.currentTime = saved;
       } catch {}
     };
-    const onPlaying = () => { setState("playing"); setMessage(""); revealControls(); };
+    const clearBuffering = () => {
+      if (bufferingTimerRef.current) clearTimeout(bufferingTimerRef.current);
+      bufferingTimerRef.current = null; setBuffering(false);
+    };
+    const onPlaying = () => { clearBuffering(); setState("playing"); setMessage(""); revealControls(); };
     const onPause = () => setState((value) => value === "playing" ? "paused" : value);
     const recoverLivePlayback = () => {
       if (!live || !video.buffered.length) return;
@@ -192,13 +236,15 @@ export function PlayerClient({ assetId, active }: { assetId: string; active: boo
       void video.play().then(() => { setState("playing"); setMessage(""); }).catch(() => setState("ready"));
     };
     const onWaiting = () => {
+      if (bufferingTimerRef.current) clearTimeout(bufferingTimerRef.current);
+      bufferingTimerRef.current = setTimeout(() => setBuffering(true), 320);
       if (live) {
         setMessage("لحظات ويعود البث…");
         recoverLivePlayback();
         if (!liveRecoveryTimerRef.current) liveRecoveryTimerRef.current = setInterval(recoverLivePlayback, 250);
       } else setMessage("جارٍ الانتقال إلى الموضع المطلوب…");
     };
-    const onCanPlay = () => { if (live) recoverLivePlayback(); else setMessage(""); };
+    const onCanPlay = () => { clearBuffering(); if (live) recoverLivePlayback(); else setMessage(""); };
     const onEnded = () => { setState("paused"); try { localStorage.removeItem(`wiva-progress:${assetId}`); } catch {} };
     const onMediaError = () => { setState("error"); setMessage("تعذر تشغيل الفيديو الآن. جرّب مرة أخرى."); };
     const onVolume = () => { sync(); try { localStorage.setItem("wiva-cloud-volume", String(video.volume)); } catch {} };
@@ -222,6 +268,8 @@ export function PlayerClient({ assetId, active }: { assetId: string; active: boo
       video.removeEventListener("progress", recoverLivePlayback);
       if (liveRecoveryTimerRef.current) clearInterval(liveRecoveryTimerRef.current);
       liveRecoveryTimerRef.current = null;
+      if (bufferingTimerRef.current) clearTimeout(bufferingTimerRef.current);
+      bufferingTimerRef.current = null;
       video.removeEventListener("loadedmetadata", restoreProgress); video.removeEventListener("playing", onPlaying); video.removeEventListener("pause", onPause); video.removeEventListener("waiting", onWaiting); video.removeEventListener("canplay", onCanPlay); video.removeEventListener("ended", onEnded); video.removeEventListener("error", onMediaError); video.removeEventListener("volumechange", onVolume);
       document.removeEventListener("fullscreenchange", onFullscreen); shell.removeEventListener("keydown", onKey);
     };
@@ -235,13 +283,16 @@ export function PlayerClient({ assetId, active }: { assetId: string; active: boo
 
   return (
     <div ref={shellRef} className={`player-stage wiva-cloud-player ${controlsVisible ? "controls-visible" : "controls-hidden"}`} tabIndex={0} onPointerMove={() => revealControls(!playing)} onPointerDown={() => revealControls(!playing)}>
-      <video ref={videoRef} playsInline disablePictureInPicture={false} onClick={togglePlayback} />
+      <video ref={videoRef} playsInline disablePictureInPicture={false} controlsList="nodownload" onClick={handleVideoClick} onDoubleClick={handleVideoDoubleClick} />
       {showStartup ? <div className="player-overlay">
         {state === "paywall" ? <LockKeyhole size={38} /> : state === "blocked" ? <LockKeyhole size={38} /> : state === "error" ? <AlertTriangle size={38} /> : state === "loading" ? <LoaderCircle className="spin" size={42} /> : <Play size={44} fill="currentColor" />}
         <h2>{state === "paywall" ? "تابع المشاهدة" : state === "blocked" ? "المحتوى غير متاح" : state === "error" ? "تعذر بدء التشغيل" : state === "loading" ? "جارٍ تجهيز التشغيل…" : state === "ready" ? "الفيديو جاهز" : "جاهز للمشاهدة"}</h2>
         <p>{message || (state === "blocked" ? "هذا المحتوى غير متاح حاليًا." : "اضغط تشغيل وابدأ المشاهدة.")}</p>
         {state === "paywall" ? <div className="player-paywall-actions"><a className="button primary" href="/signup"><UserPlus size={18} /> ابدأ 3 أيام مجانًا</a><a className="button secondary" href="/login"><LogIn size={18} /> تسجيل الدخول</a></div> : active && state !== "loading" ? <button className="button primary player-start" onClick={state === "ready" ? resume : play}>{state === "error" ? <RotateCcw size={19} /> : <Play size={19} />} {state === "error" ? "إعادة المحاولة" : "تشغيل الآن"}</button> : null}
       </div> : null}
+
+      {!showStartup && buffering ? <div className="player-buffering" role="status" aria-live="polite"><LoaderCircle className="spin" /><span>{message || "لحظات ونكمل المشاهدة…"}</span></div> : null}
+      {gestureHint ? <div className="player-gesture-hint" aria-live="polite"><Maximize size={18} />{gestureHint}</div> : null}
 
       {!showStartup ? <div className="wiva-cloud-controls" dir="rtl">
         {!live && duration > 0 ? <div className="wiva-cloud-timeline">

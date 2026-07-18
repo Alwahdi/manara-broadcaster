@@ -8,8 +8,11 @@ import "@/app/globals.css";
 import { brandName } from "@/lib/env";
 
 export const metadata: Metadata = {
-  title: { default: `${brandName()} Cloud`, template: `%s | ${brandName()} Cloud` },
-  description: "منصة WIVA المرخّصة للقنوات المباشرة والأفلام والمكتبة الإعلامية.",
+  title: { default: brandName(), template: `%s | ${brandName()}` },
+  description: "قنوات مباشرة وأفلام ومسلسلات في تجربة عربية سهلة وسريعة.",
+  applicationName: brandName(), manifest: "/manifest.webmanifest",
+  icons: { icon: [{ url: "/icon.svg", type: "image/svg+xml" }], shortcut: "/icon.svg", apple: "/icon.svg" },
+  appleWebApp: { capable: true, title: brandName(), statusBarStyle: "black-translucent" },
 };
 
 export const viewport: Viewport = {

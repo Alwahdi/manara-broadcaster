@@ -10,7 +10,7 @@ export async function CatalogPage({ kind, title, description }: { kind: AssetKin
     <div className="container">
       <header className="listing-hero"><span className="eyebrow"><i /> {assets.length} عنصر</span><h1>{title}</h1><p>{description}</p><div className="filter-row"><span className="filter-chip">الكل</span>{categories.map((category) => <span key={category} className="filter-chip">{category}</span>)}</div></header>
       <section className="listing-grid">
-        {assets.length ? <div className="media-grid">{assets.map((asset) => <MediaCard key={asset.id} asset={asset} />)}</div> : <EmptyState title="لا يوجد محتوى مفعّل" body="أضف مصدرًا مرخّصًا وفعّل العناصر من لوحة الإدارة." />}
+        {assets.length ? <div className="media-grid">{assets.map((asset) => <MediaCard key={asset.id} asset={asset} />)}</div> : <EmptyState title="لا يوجد محتوى الآن" body="سيظهر المحتوى الجديد هنا فور توفره." />}
       </section>
     </div>
   );
