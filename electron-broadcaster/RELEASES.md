@@ -14,6 +14,13 @@ Packaged apps check for updates on startup and every 6 hours. The WIVA Agent
 window also includes a manual update check and install button when an update is
 ready.
 
+## v2.6.61
+
+- Stabilizes IPTV playback with a resilience-first HLS buffer, bounded retries, small-gap recovery, and fast restart when a provider segment stalls.
+- Detects capture playback freezes, dropped frames, decoder stalls, packet loss, and excessive jitter so automatic quality can recover when video freezes while audio continues.
+- Adapts HDMI sender bitrate, resolution, frame rate, and audio bitrate to the Windows host capacity and active viewer load before encoder pressure causes prolonged playback stalls.
+- Keeps coalesced IPTV segment delivery responsive with TCP no-delay and verifies one upstream segment request across 1,000 simulated concurrent viewers.
+
 ## v2.6.60
 
 - Adds an in-player mobile rotation control and automatic landscape orientation when fullscreen is supported, with a full-viewport fallback that keeps WIVA controls available on restricted browsers.
