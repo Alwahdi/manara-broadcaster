@@ -70,6 +70,7 @@ create table if not exists wiva_cloud_assets (
   consecutive_failures integer not null default 0,
   last_failure_at timestamptz,
   last_success_at timestamptz,
+  last_imported_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique(tenant_id, provider_id, provider_asset_ref)
@@ -88,8 +89,33 @@ alter table wiva_cloud_assets add column if not exists metadata_review text not 
 alter table wiva_cloud_assets add column if not exists consecutive_failures integer not null default 0;
 alter table wiva_cloud_assets add column if not exists last_failure_at timestamptz;
 alter table wiva_cloud_assets add column if not exists last_success_at timestamptz;
+alter table wiva_cloud_assets add column if not exists last_imported_at timestamptz not null default now();
 create index if not exists wiva_cloud_assets_parent_idx on wiva_cloud_assets(tenant_id, parent_asset_id, season_number, episode_number);
 create index if not exists wiva_cloud_assets_public_idx on wiva_cloud_assets(tenant_id, kind, is_active, is_restricted, is_playable);
+create index if not exists wiva_cloud_assets_latest_idx on wiva_cloud_assets(tenant_id, kind, last_imported_at desc);
+
+create table if not exists wiva_cloud_provider_sync_rules (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references wiva_cloud_tenants(id) on delete cascade,
+  provider_id uuid not null references wiva_cloud_providers(id) on delete cascade,
+  series_ref text not null,
+  series_title text not null,
+  enabled boolean not null default true,
+  publish_new boolean not null default true,
+  last_checked_at timestamptz,
+  last_success_at timestamptz,
+  next_run_at timestamptz not null default now(),
+  last_error text not null default '',
+  imported_count integer not null default 0,
+  known_episode_refs jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(tenant_id, provider_id, series_ref)
+);
+
+create index if not exists wiva_cloud_provider_sync_due_idx
+  on wiva_cloud_provider_sync_rules(tenant_id, enabled, next_run_at);
+alter table wiva_cloud_provider_sync_rules add column if not exists known_episode_refs jsonb not null default '[]'::jsonb;
 
 create table if not exists wiva_cloud_match_schedule (
   id uuid primary key default gen_random_uuid(),
@@ -247,6 +273,10 @@ for each row execute function wiva_cloud_set_updated_at();
 
 drop trigger if exists wiva_cloud_providers_updated_at on wiva_cloud_providers;
 create trigger wiva_cloud_providers_updated_at before update on wiva_cloud_providers
+for each row execute function wiva_cloud_set_updated_at();
+
+drop trigger if exists wiva_cloud_provider_sync_rules_updated_at on wiva_cloud_provider_sync_rules;
+create trigger wiva_cloud_provider_sync_rules_updated_at before update on wiva_cloud_provider_sync_rules
 for each row execute function wiva_cloud_set_updated_at();
 
 drop trigger if exists wiva_cloud_assets_updated_at on wiva_cloud_assets;

@@ -33,7 +33,24 @@ export type ProviderSummary = {
   priority: number;
   rightsReference: string;
   redistributionAttested: boolean;
+  trackedSeriesCount: number;
+  lastAutoSyncAt: string | null;
   createdAt: string;
+};
+
+export type ProviderSyncRule = {
+  id: string;
+  providerId: string;
+  seriesRef: string;
+  seriesTitle: string;
+  enabled: boolean;
+  publishNew: boolean;
+  lastCheckedAt: string | null;
+  lastSuccessAt: string | null;
+  nextRunAt: string;
+  lastError: string;
+  importedCount: number;
+  knownEpisodeRefs: string[];
 };
 
 export type ProviderCatalogCategory = {

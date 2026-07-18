@@ -365,6 +365,19 @@ test("provider catalogs use a persistent cache and imported series require episo
   assert.match(database, /catalogIdentity/);
 });
 
+test("tracked series sync only imports new episodes and the daily cron fails closed", () => {
+  const schema = readFileSync(join(root, "db/schema.sql"), "utf8");
+  const sync = readFileSync(join(root, "src/lib/provider-sync.ts"), "utf8");
+  const cron = readFileSync(join(root, "src/app/api/cron/provider-sync/route.ts"), "utf8");
+  const catalog = readFileSync(join(root, "src/components/ProviderCatalogManager.tsx"), "utf8");
+  assert.match(schema, /wiva_cloud_provider_sync_rules/);
+  assert.match(sync, /!existing\.has\(episode\.ref\)/);
+  assert.match(sync, /slice\(0, 500\)/);
+  assert.match(cron, /CRON_SECRET/);
+  assert.match(cron, /timingSafeEqual/);
+  assert.match(catalog, /متابعة تلقائية يومية/);
+});
+
 test("public health is minimal while gateway metrics require a signed health request", () => {
   const health = readFileSync(join(root, "src/app/api/health/route.ts"), "utf8");
   const gateway = readFileSync(join(root, "scripts/local-media-gateway.mjs"), "utf8");

@@ -11,7 +11,7 @@ import { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPoin
 type State = "idle" | "loading" | "ready" | "playing" | "paused" | "error" | "blocked" | "paywall";
 
 type NetworkInfo = { effectiveType?: string; saveData?: boolean; downlink?: number };
-type GestureFeedback = { kind: "seek-back" | "seek-forward" | "fullscreen"; label: string } | null;
+type GestureFeedback = { kind: "seek-back" | "seek-forward" | "fullscreen" | "speed"; label: string } | null;
 type LockableOrientation = { lock?: (orientation: "landscape") => Promise<void>; unlock?: () => void };
 
 function playbackTuning() {
@@ -47,6 +47,8 @@ export function PlayerClient({ assetId, title, active, resumeAt = 0, authenticat
   const leaseHeartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const leaseRef = useRef("");
   const gestureTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdActiveRef = useRef(false);
   const pointerStartRef = useRef<{ x: number; y: number; pointerId: number } | null>(null);
   const lastTouchTapRef = useRef<{ at: number; x: number } | null>(null);
   const touchGestureAtRef = useRef(0);
@@ -92,6 +94,8 @@ export function PlayerClient({ assetId, title, active, resumeAt = 0, authenticat
     if (leaseId) void fetch(`/api/playback/lease/${encodeURIComponent(leaseId)}`, { method: "DELETE", credentials: "include", keepalive: true }).catch(() => undefined);
     if (gestureTimerRef.current) clearTimeout(gestureTimerRef.current);
     gestureTimerRef.current = null;
+    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+    holdTimerRef.current = null; holdActiveRef.current = false;
     pointerStartRef.current = null; lastTouchTapRef.current = null; touchGestureAtRef.current = 0; ignoreClickRef.current = false; scrubbingRef.current = false;
     setGestureFeedback(null); setScrubbing(false);
     setBuffering(false);
@@ -217,6 +221,15 @@ export function PlayerClient({ assetId, title, active, resumeAt = 0, authenticat
     revealControls(true);
   }, [live, revealControls]);
 
+  const goLive = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || !live) return;
+    const hlsPosition = hlsRef.current?.liveSyncPosition;
+    if (typeof hlsPosition === "number" && Number.isFinite(hlsPosition)) video.currentTime = hlsPosition;
+    else if (video.seekable.length) video.currentTime = Math.max(0, video.seekable.end(video.seekable.length - 1) - .35);
+    void resume(); revealControls();
+  }, [live, resume, revealControls]);
+
   const showGesture = useCallback((feedback: NonNullable<GestureFeedback>) => {
     if (gestureTimerRef.current) clearTimeout(gestureTimerRef.current);
     setGestureFeedback(feedback);
@@ -297,9 +310,33 @@ export function PlayerClient({ assetId, title, active, resumeAt = 0, authenticat
     revealControls(!playing);
     if (event.pointerType !== "touch" || (event.target as HTMLElement).closest("button,input,a")) return;
     pointerStartRef.current = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+    if (!live && playing) {
+      if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = setTimeout(() => {
+        const video = videoRef.current;
+        if (!video || video.paused) return;
+        holdActiveRef.current = true; ignoreClickRef.current = true; video.playbackRate = 2;
+        showGesture({ kind: "speed", label: "سرعة 2×" });
+      }, 430);
+    }
+  }, [live, playing, revealControls, showGesture]);
+
+  const handlePointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    revealControls(!playing);
+    const start = pointerStartRef.current;
+    if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 18 && holdTimerRef.current && !holdActiveRef.current) {
+      clearTimeout(holdTimerRef.current); holdTimerRef.current = null;
+    }
   }, [playing, revealControls]);
 
   const handlePointerUp = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+    holdTimerRef.current = null;
+    if (holdActiveRef.current) {
+      holdActiveRef.current = false; pointerStartRef.current = null; ignoreClickRef.current = true;
+      const video = videoRef.current; if (video) video.playbackRate = speed;
+      setGestureFeedback(null); revealControls(); return;
+    }
     const start = pointerStartRef.current;
     pointerStartRef.current = null;
     if (!start || start.pointerId !== event.pointerId) return;
@@ -324,7 +361,7 @@ export function PlayerClient({ assetId, title, active, resumeAt = 0, authenticat
       void exitFullscreen();
       showGesture({ kind: "fullscreen", label: "العودة للحجم الطبيعي" });
     }
-  }, [enterFullscreen, exitFullscreen, fullscreen, handleTouchDoubleTap, showGesture]);
+  }, [enterFullscreen, exitFullscreen, fullscreen, handleTouchDoubleTap, revealControls, showGesture, speed]);
 
   useEffect(() => {
     if (!("mediaSession" in navigator)) return;
@@ -416,8 +453,15 @@ export function PlayerClient({ assetId, title, active, resumeAt = 0, authenticat
       if (key === " " || key === "k") { event.preventDefault(); togglePlayback(); }
       else if (key === "f") { event.preventDefault(); void toggleFullscreen(); }
       else if (key === "m") { event.preventDefault(); video.muted = !video.muted; }
-      else if (!live && event.key === "ArrowRight") { event.preventDefault(); seekBy(10); }
-      else if (!live && event.key === "ArrowLeft") { event.preventDefault(); seekBy(-10); }
+      else if (!live && key === "l") { event.preventDefault(); seekBy(10); }
+      else if (!live && key === "j") { event.preventDefault(); seekBy(-10); }
+      else if (!live && event.key === "ArrowRight") { event.preventDefault(); seekBy(5); }
+      else if (!live && event.key === "ArrowLeft") { event.preventDefault(); seekBy(-5); }
+      else if (event.key === "ArrowUp") { event.preventDefault(); video.muted = false; video.volume = Math.min(1, video.volume + .05); }
+      else if (event.key === "ArrowDown") { event.preventDefault(); video.volume = Math.max(0, video.volume - .05); }
+      else if (!live && /^[0-9]$/.test(event.key) && Number.isFinite(video.duration)) { event.preventDefault(); video.currentTime = video.duration * Number(event.key) / 10; }
+      else if (!live && (event.key === ">" || event.key === "." && event.shiftKey)) { event.preventDefault(); const next = Math.min(2, video.playbackRate + .25); video.playbackRate = next; setSpeed(next); }
+      else if (!live && (event.key === "<" || event.key === "," && event.shiftKey)) { event.preventDefault(); const next = Math.max(.5, video.playbackRate - .25); video.playbackRate = next; setSpeed(next); }
       revealControls();
     };
     for (const name of ["timeupdate", "durationchange", "loadedmetadata", "progress", "seeking", "seeked"]) video.addEventListener(name, sync);
@@ -444,7 +488,7 @@ export function PlayerClient({ assetId, title, active, resumeAt = 0, authenticat
   const progress = duration > 0 ? Math.min(100, (displayedTime / duration) * 100) : 0;
 
   return (
-    <div ref={shellRef} className={`player-stage wiva-cloud-player ${controlsVisible ? "controls-visible" : "controls-hidden"} ${scrubbing ? "is-scrubbing" : ""}`} tabIndex={0} aria-label={`مشغل ${title}`} aria-busy={state === "loading" || buffering} onPointerMove={() => revealControls(!playing)} onPointerLeave={() => { if (playing) setControlsVisible(false); }} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={() => { pointerStartRef.current = null; }}>
+    <div ref={shellRef} className={`player-stage wiva-cloud-player ${controlsVisible ? "controls-visible" : "controls-hidden"} ${scrubbing ? "is-scrubbing" : ""}`} tabIndex={0} aria-label={`مشغل ${title}`} aria-busy={state === "loading" || buffering} onPointerMove={handlePointerMove} onPointerLeave={() => { if (playing) setControlsVisible(false); }} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={() => { if (holdTimerRef.current) clearTimeout(holdTimerRef.current); holdTimerRef.current = null; if (holdActiveRef.current && videoRef.current) videoRef.current.playbackRate = speed; holdActiveRef.current = false; pointerStartRef.current = null; }}>
       <video ref={videoRef} playsInline disablePictureInPicture={false} controlsList="nodownload" aria-label={title} onClick={handleVideoClick} onDoubleClick={handleVideoDoubleClick} />
       {showStartup ? <div className="player-overlay">
         {state === "loading" ? <div className="player-startup-loading" role="status"><span className="player-spinner"><LoaderCircle /></span><small className="sr-only">{message || "جارٍ تجهيز التشغيل"}</small></div> : <>
@@ -456,10 +500,10 @@ export function PlayerClient({ assetId, title, active, resumeAt = 0, authenticat
       </div> : null}
 
       {!showStartup && buffering ? <div className="player-buffering" role="status" aria-live="polite"><span className="player-spinner"><LoaderCircle /></span><span className="sr-only">{message || "لحظات ونكمل المشاهدة"}</span></div> : null}
-      {gestureFeedback ? <div className={`player-gesture-feedback ${gestureFeedback.kind}`} aria-live="polite">{gestureFeedback.kind === "seek-forward" ? <FastForward /> : gestureFeedback.kind === "seek-back" ? <Rewind /> : <Maximize />}<strong>{gestureFeedback.label}</strong></div> : null}
+      {gestureFeedback ? <div className={`player-gesture-feedback ${gestureFeedback.kind}`} aria-live="polite">{gestureFeedback.kind === "seek-forward" ? <FastForward /> : gestureFeedback.kind === "seek-back" ? <Rewind /> : gestureFeedback.kind === "speed" ? <Gauge /> : <Maximize />}<strong>{gestureFeedback.label}</strong></div> : null}
 
       {!showStartup ? <div className="wiva-cloud-controls" dir="rtl">
-        <div className="player-mobile-title"><strong>{title}</strong><span>{live ? "مباشر · اسحب للأعلى لملء الشاشة" : "نقرتان يمينًا أو يسارًا · اسحب للأعلى"}</span></div>
+        <div className="player-mobile-title"><strong>{title}</strong><span>{live ? "مباشر · اسحب للأعلى لملء الشاشة" : "نقرتان ±10 ثوانٍ · اضغط مطولًا لسرعة 2×"}</span></div>
         {!live && duration > 0 ? <div className="wiva-cloud-timeline">
           {scrubbing ? <output className="player-scrub-preview" style={{ "--scrub-position": `${progress}%` } as CSSProperties}>{formatTime(scrubTime)}</output> : null}
           <input aria-label="موضع الفيلم" type="range" min="0" max={duration} step="0.1" value={Math.min(displayedTime, duration)} style={{ "--played": `${progress}%`, "--buffered": `${Math.max(progress, buffered)}%` } as CSSProperties}
@@ -473,7 +517,7 @@ export function PlayerClient({ assetId, title, active, resumeAt = 0, authenticat
         <div className="wiva-cloud-control-row">
           <div className="wiva-cloud-control-group">
             <button className="player-control-button primary-control" onClick={togglePlayback} aria-label={playing ? "إيقاف مؤقت" : "تشغيل"}>{playing ? <Pause fill="currentColor" /> : <Play fill="currentColor" />}</button>
-            {!live ? <><button className="player-control-button seek-control" onClick={() => seekBy(-10)} aria-label="رجوع عشر ثوان"><Rewind /><small>10</small></button><button className="player-control-button seek-control" onClick={() => seekBy(10)} aria-label="تقديم عشر ثوان"><FastForward /><small>10</small></button></> : <span className="player-live-badge"><i /><Radio size={15} /> مباشر</span>}
+            {!live ? <><button className="player-control-button seek-control" onClick={() => seekBy(-10)} aria-label="رجوع عشر ثوان" title="رجوع 10 ثوانٍ (J)"><Rewind /><small>10</small></button><button className="player-control-button seek-control" onClick={() => seekBy(10)} aria-label="تقديم عشر ثوان" title="تقديم 10 ثوانٍ (L)"><FastForward /><small>10</small></button></> : <button className="player-live-badge" onClick={goLive} aria-label="العودة إلى اللحظة المباشرة" title="العودة إلى البث المباشر"><i /><Radio size={15} /> مباشر</button>}
             <button className="player-control-button" onClick={() => { const video = videoRef.current; if (video) video.muted = !video.muted; }} aria-label={muted ? "تشغيل الصوت" : "كتم الصوت"}>{muted || volume === 0 ? <VolumeX /> : <Volume2 />}</button>
             <input className="player-volume" aria-label="مستوى الصوت" type="range" min="0" max="1" step="0.05" value={muted ? 0 : volume} onChange={(event) => { const video = videoRef.current; if (video) { video.volume = Number(event.target.value); video.muted = false; } }} />
           </div>

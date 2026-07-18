@@ -1,6 +1,6 @@
 import { revalidateTag } from "next/cache";
 import { requireAdminRequest } from "@/lib/auth";
-import { audit, importProviderAssets, importProviderSeries } from "@/lib/db";
+import { audit, getProviderSyncRule, importProviderAssets, importProviderSeries, upsertProviderSyncRule } from "@/lib/db";
 import { catalogCategories, discoverProviderCatalog, discoverSeriesEpisodes, filterProviderCatalog, loadProviderConnection } from "@/lib/provider-catalog";
 import { assertSameOrigin, cleanText, errorResponse, HttpError, jsonBody } from "@/lib/security";
 import type { AssetKind } from "@/lib/types";
@@ -28,8 +28,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const connection = await loadProviderConnection(id);
     const seriesRef = cleanText(url.searchParams.get("seriesRef"), 180);
     if (section === "series" && seriesRef) {
-      const episodes = await discoverSeriesEpisodes(connection, seriesRef);
-      return Response.json({ ok: true, episodes }, { headers: { "cache-control": "no-store" } });
+      const [episodes, tracking] = await Promise.all([discoverSeriesEpisodes(connection, seriesRef), getProviderSyncRule(id, seriesRef)]);
+      return Response.json({ ok: true, episodes, tracking }, { headers: { "cache-control": "no-store" } });
     }
     const all = await discoverProviderCatalog(connection, section, url.searchParams.get("fresh") === "true");
     const filtered = filterProviderCatalog(all, categoryId, search);
@@ -52,7 +52,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   try {
     assertSameOrigin(request); requireAdminRequest(request);
     const { id } = await params;
-    const body = await jsonBody<{ section?: unknown; categoryId?: unknown; q?: unknown; refs?: unknown; allFiltered?: unknown; active?: unknown; seriesRef?: unknown; episodeRefs?: unknown }>(request, 120_000);
+    const body = await jsonBody<{ section?: unknown; categoryId?: unknown; q?: unknown; refs?: unknown; allFiltered?: unknown; active?: unknown; seriesRef?: unknown; episodeRefs?: unknown; autoTrack?: unknown }>(request, 120_000);
     const section = sectionFrom(body.section || "live");
     const categoryId = cleanText(body.categoryId, 160);
     const search = cleanText(body.q, 160);
@@ -70,7 +70,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       const episodes = available.filter((episode) => wanted.has(episode.ref));
       if (episodes.length !== wanted.size) throw new HttpError(400, "بعض الحلقات لم تعد موجودة لدى المزوّد");
       const result = await importProviderSeries(id, series, episodes, active);
-      await audit("provider.series.import", "provider", id, { seriesRef, episodes: result.imported, active });
+      if (body.autoTrack === true) await upsertProviderSyncRule({ providerId: id, seriesRef, seriesTitle: series.title, enabled: true, publishNew: active, knownEpisodeRefs: available.map((episode) => episode.ref) });
+      await audit("provider.series.import", "provider", id, { seriesRef, episodes: result.imported, active, autoTrack: body.autoTrack === true });
       revalidateTag("wiva-viewer-catalog", { expire: 0 });
       return Response.json({ ok: true, imported: result.imported, parentId: result.parentId, active }, { status: 201, headers: { "cache-control": "no-store" } });
     }
@@ -89,5 +90,22 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     await audit("provider.catalog.import", "provider", id, { section, categoryId, search: Boolean(search), imported, active, mode: body.allFiltered === true ? "filtered" : "selected" });
     revalidateTag("wiva-viewer-catalog", { expire: 0 });
     return Response.json({ ok: true, imported, active }, { status: 201, headers: { "cache-control": "no-store" } });
+  } catch (error) { return errorResponse(error); }
+}
+
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    assertSameOrigin(request); requireAdminRequest(request);
+    const { id } = await params;
+    const body = await jsonBody<{ seriesRef?: unknown; enabled?: unknown; publishNew?: unknown }>(request);
+    const seriesRef = cleanText(body.seriesRef, 180);
+    if (!seriesRef) throw new HttpError(400, "مرجع المسلسل غير صالح");
+    const connection = await loadProviderConnection(id);
+    const series = (await discoverProviderCatalog(connection, "series")).find((item) => item.ref === seriesRef);
+    if (!series) throw new HttpError(404, "لم يعد المسلسل موجودًا لدى المزوّد");
+    const baseline = body.enabled === true ? await discoverSeriesEpisodes(connection, seriesRef) : [];
+    const tracking = await upsertProviderSyncRule({ providerId: id, seriesRef, seriesTitle: series.title, enabled: body.enabled === true, publishNew: body.publishNew === true, knownEpisodeRefs: baseline.map((episode) => episode.ref) });
+    await audit("provider.series.tracking", "provider", id, { seriesRef, enabled: tracking.enabled, publishNew: tracking.publishNew });
+    return Response.json({ ok: true, tracking }, { headers: { "cache-control": "no-store" } });
   } catch (error) { return errorResponse(error); }
 }

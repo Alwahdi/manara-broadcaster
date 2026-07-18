@@ -1,9 +1,9 @@
 "use client";
 
-import { Check, ChevronLeft, ChevronRight, CloudDownload, Eye, Film, FolderCheck, LoaderCircle, Radio, RefreshCw, Search, Tv2, X } from "lucide-react";
+import { BellRing, Check, ChevronLeft, ChevronRight, CloudDownload, Eye, Film, FolderCheck, LoaderCircle, Radio, RefreshCw, Search, Tv2, X } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AssetKind, ProviderCatalogCategory, ProviderCatalogItem, ProviderSeriesEpisode, ProviderSummary } from "@/lib/types";
+import type { AssetKind, ProviderCatalogCategory, ProviderCatalogItem, ProviderSeriesEpisode, ProviderSummary, ProviderSyncRule } from "@/lib/types";
 
 type CatalogResponse = {
   ok: boolean;
@@ -40,6 +40,10 @@ export function ProviderCatalogManager({ provider }: { provider: ProviderSummary
   const [episodeSelection, setEpisodeSelection] = useState<Set<string>>(new Set());
   const [episodeLoading, setEpisodeLoading] = useState(false);
   const [season, setSeason] = useState<number | null>(null);
+  const [tracking, setTracking] = useState<ProviderSyncRule | null>(null);
+  const [autoTrack, setAutoTrack] = useState(false);
+  const [trackingSaving, setTrackingSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const loadSequence = useRef(0);
   const seriesInspectorRef = useRef<HTMLElement>(null);
 
@@ -68,7 +72,7 @@ export function ProviderCatalogManager({ provider }: { provider: ProviderSummary
   }
 
   async function inspectSeries(item: ProviderCatalogItem) {
-    setOpenSeries(item); setEpisodes([]); setEpisodeSelection(new Set()); setSeason(null); setEpisodeLoading(true); setMessage("");
+    setOpenSeries(item); setEpisodes([]); setEpisodeSelection(new Set()); setSeason(null); setTracking(null); setAutoTrack(false); setEpisodeLoading(true); setMessage("");
     requestAnimationFrame(() => seriesInspectorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
     try {
       const params = new URLSearchParams({ section: "series", seriesRef: item.ref });
@@ -76,6 +80,9 @@ export function ProviderCatalogManager({ provider }: { provider: ProviderSummary
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "تعذر تحميل حلقات المسلسل");
       setEpisodes(payload.episodes);
+      setTracking(payload.tracking || null);
+      setAutoTrack(payload.tracking?.enabled === true);
+      if (payload.tracking) setPublish(payload.tracking.publishNew === true);
       setSeason(payload.episodes[0]?.seasonNumber ?? null);
       requestAnimationFrame(() => seriesInspectorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
     } catch (error) { setMessage(error instanceof Error ? error.message : "تعذر تحميل حلقات المسلسل"); }
@@ -86,11 +93,32 @@ export function ProviderCatalogManager({ provider }: { provider: ProviderSummary
     if (!openSeries || !episodeSelection.size) return;
     setImporting(true); setMessage("");
     try {
-      const response = await fetch(`/api/admin/providers/${provider.id}/catalog`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ section: "series", seriesRef: openSeries.ref, episodeRefs: [...episodeSelection], active: publish }) });
+      const response = await fetch(`/api/admin/providers/${provider.id}/catalog`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ section: "series", seriesRef: openSeries.ref, episodeRefs: [...episodeSelection], active: publish, autoTrack }) });
       const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "تعذر استيراد الحلقات");
       setEpisodeSelection(new Set()); setMessage(`تم استيراد ${payload.imported} حلقة${publish ? " ونشرها للمشاهدين" : " بحالة متوقفة للمراجعة"}.`);
     } catch (error) { setMessage(error instanceof Error ? error.message : "تعذر استيراد الحلقات"); }
     finally { setImporting(false); }
+  }
+
+  async function saveTracking() {
+    if (!openSeries) return;
+    setTrackingSaving(true); setMessage("");
+    try {
+      const response = await fetch(`/api/admin/providers/${provider.id}/catalog`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ seriesRef: openSeries.ref, enabled: autoTrack, publishNew: publish }) });
+      const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "تعذر حفظ المتابعة التلقائية");
+      setTracking(payload.tracking); setMessage(autoTrack ? "تم تفعيل الفحص اليومي للحلقات والمواسم الجديدة." : "تم إيقاف المتابعة التلقائية لهذا المسلسل.");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "تعذر حفظ المتابعة التلقائية"); }
+    finally { setTrackingSaving(false); }
+  }
+
+  async function syncNow() {
+    setSyncing(true); setMessage("");
+    try {
+      const response = await fetch(`/api/admin/providers/${provider.id}/sync`, { method: "POST" });
+      const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "تعذر بدء الفحص الآن");
+      setMessage(payload.failed ? `تم الفحص مع تعذر تحديث ${payload.failed} مسلسل. أضيفت ${payload.added} حلقة جديدة.` : `تم الفحص بنجاح. أضيفت ${payload.added} حلقة جديدة.`);
+    } catch (error) { setMessage(error instanceof Error ? error.message : "تعذر بدء الفحص الآن"); }
+    finally { setSyncing(false); }
   }
 
   function submitSearch(event: FormEvent) {
@@ -132,6 +160,7 @@ export function ProviderCatalogManager({ provider }: { provider: ProviderSummary
   const pages = data ? Math.max(1, Math.ceil(data.total / data.limit)) : 1;
 
   return <div className="provider-catalog-workspace">
+    {provider.trackedSeriesCount > 0 ? <section className="provider-sync-summary ops-card"><div><span><BellRing /></span><div><strong>متابعة تلقائية يومية</strong><p>{provider.trackedSeriesCount.toLocaleString("ar")} مسلسل تحت المتابعة؛ تُستورد الحلقات والمواسم الجديدة فقط.</p></div></div><button className="button secondary" disabled={syncing} onClick={() => void syncNow()}>{syncing ? <LoaderCircle className="spin" /> : <RefreshCw />}فحص الآن</button></section> : null}
     <section className="catalog-toolbar ops-card">
       <div className="catalog-section-tabs" role="tablist">
         {sectionOptions.map((option) => <button key={option.id} role="tab" className={section === option.id ? "active" : ""} aria-selected={section === option.id} onClick={() => changeSection(option.id)}><option.icon size={17} />{option.label}</button>)}
@@ -163,6 +192,7 @@ export function ProviderCatalogManager({ provider }: { provider: ProviderSummary
     {section === "series" && openSeries ? <section ref={seriesInspectorRef} className="series-inspector ops-card">
       <div className="series-inspector-heading"><div><Tv2 /><span><h2>{openSeries.title}</h2><p>{episodeLoading ? "جارٍ جلب المواسم والحلقات…" : `${episodes.length.toLocaleString("ar")} حلقة متاحة من المزوّد`}</p></span></div><button className="icon-button" onClick={() => setOpenSeries(null)} aria-label="إغلاق"><X /></button></div>
       {episodeLoading ? <div className="series-episode-loading"><LoaderCircle className="spin" /></div> : episodes.length ? <>
+        <div className="series-automation-panel"><div><BellRing /><span><strong>متابعة الحلقات الجديدة</strong><small>يفحص WIVA هذا المسلسل كل 24 ساعة ويستورد الإضافات فقط.</small></span></div><div className="series-automation-actions"><label className="publish-switch"><input type="checkbox" checked={autoTrack} onChange={(event) => setAutoTrack(event.target.checked)} /><span>متابعة تلقائية</span></label><label className="publish-switch"><input type="checkbox" checked={publish} onChange={(event) => setPublish(event.target.checked)} /><span>نشر الحلقات الجديدة</span></label><button className="button secondary" disabled={trackingSaving} onClick={() => void saveTracking()}>{trackingSaving ? <LoaderCircle className="spin" /> : <Check />}حفظ</button></div>{tracking?.lastSuccessAt ? <small>آخر فحص ناجح: {new Date(tracking.lastSuccessAt).toLocaleString("ar")}</small> : null}</div>
         <div className="season-tabs">{[...new Set(episodes.map((episode) => episode.seasonNumber))].map((value) => <button key={value} className={season === value ? "active" : ""} aria-pressed={season === value} onClick={() => setSeason(value)}>الموسم {value.toLocaleString("ar")}</button>)}</div>
         <div className="episode-select-actions"><button className="button secondary" onClick={() => setEpisodeSelection((current) => { const next = new Set(current); for (const episode of episodes.filter((item) => item.seasonNumber === season)) next.add(episode.ref); return next; })}>تحديد الموسم</button><span>{episodeSelection.size.toLocaleString("ar")} حلقة محددة</span><button className="button primary" disabled={!episodeSelection.size || importing} onClick={() => void importEpisodes()}>{importing ? <LoaderCircle className="spin" /> : <CloudDownload />}استيراد الحلقات المحددة</button></div>
         <div className="episode-picker">{episodes.filter((episode) => episode.seasonNumber === season).map((episode) => <button key={episode.ref} className={episodeSelection.has(episode.ref) ? "selected" : ""} onClick={() => setEpisodeSelection((current) => { const next = new Set(current); next.has(episode.ref) ? next.delete(episode.ref) : next.add(episode.ref); return next; })}><i>{episodeSelection.has(episode.ref) ? <Check /> : episode.episodeNumber.toLocaleString("ar")}</i><span><strong>{episode.title}</strong><small>الحلقة {episode.episodeNumber.toLocaleString("ar")} · {episode.containerExtension.toUpperCase()}</small></span></button>)}</div>

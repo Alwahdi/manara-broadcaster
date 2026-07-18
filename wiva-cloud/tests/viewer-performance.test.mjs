@@ -48,14 +48,26 @@ test("viewer home and account use a direct app-first information architecture", 
   const shell = source("src/components/ViewerShell.tsx");
   const navigation = source("src/components/ViewerNavigation.tsx");
   const styles = source("src/app/globals.css");
-  assert.match(home, /home-destinations/);
-  assert.match(home, /ماذا تريد أن تشاهد/);
+  assert.match(home, /listLatestViewerAssets/);
+  assert.match(home, /أحدث الأفلام/);
+  assert.match(home, /أحدث المسلسلات/);
+  assert.doesNotMatch(home, /home-destinations|ماذا تريد أن تشاهد/);
   assert.doesNotMatch(home, /لماذا WIVA|كل شاشتك في|className="hero"/);
   assert.match(account, /account-profile-card/);
   assert.match(account, /account-action-list/);
   assert.match(navigation, /primary-destination/);
   assert.doesNotMatch(shell, /viewer-footer/);
   assert.match(styles, /\.mobile-nav a\.primary-destination/);
+});
+
+test("viewer player mirrors familiar media gestures without copying YouTube branding", () => {
+  const player = source("src/components/PlayerClient.tsx");
+  assert.match(player, /سرعة 2×/);
+  assert.match(player, /key === "j"/);
+  assert.match(player, /key === "l"/);
+  assert.match(player, /goLive/);
+  assert.match(player, /PictureInPicture2/);
+  assert.doesNotMatch(player, /YouTube|youtube/i);
 });
 
 test("public catalog fails closed for restricted and non-playable provider metadata", () => {
