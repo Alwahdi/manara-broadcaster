@@ -1,7 +1,8 @@
 import { createDecipheriv, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { lookup } from "node:dns/promises";
-import { existsSync } from "node:fs";
-import { mkdir, readFile, readdir, rm } from "node:fs/promises";
+import { createWriteStream, existsSync } from "node:fs";
+import { mkdir, open, readFile, readdir, rm } from "node:fs/promises";
+import { once } from "node:events";
 import { createServer } from "node:http";
 import { isIP } from "node:net";
 import { tmpdir } from "node:os";
@@ -24,11 +25,14 @@ const MAX_RESOURCE_BYTES = 28 * 1024 * 1024;
 const VOD_INITIAL_BYTES = 512 * 1024;
 const VOD_CHUNK_BYTES = 8 * 1024 * 1024;
 const MAX_VOD_CACHE_BYTES = 128 * 1024 * 1024;
+const MAX_VOD_SPOOL_BYTES = Number(process.env.WIVA_MAX_VOD_SPOOL_BYTES || 8 * 1024 * 1024 * 1024);
+const MAX_VOD_SPOOL_TOTAL_BYTES = Number(process.env.WIVA_MAX_VOD_SPOOL_TOTAL_BYTES || 16 * 1024 * 1024 * 1024);
 const VOD_IDLE_MS = 10 * 60 * 1000;
 const LIVE_IDLE_MS = 45_000;
 const AVAILABILITY_TTL_MS = 2_000;
 const FFMPEG_PATH = process.env.WIVA_FFMPEG_PATH || ffmpegInstaller.path;
 const INGEST_ROOT = join(tmpdir(), "wiva-cloud-live");
+const VOD_SPOOL_ROOT = join(tmpdir(), "wiva-cloud-vod");
 
 if (SIGNING_SECRET.length < 32 || CREDENTIALS_KEY.length !== 32 || !DATABASE_URL) throw new Error("Local gateway secrets/database are not configured");
 
@@ -45,6 +49,7 @@ const safeHosts = new Map();
 const metrics = { upstreamRequests: 0, upstreamBytes: 0, downstreamBytes: 0, cacheHits: 0, coalesced: 0, errors: 0 };
 let cacheBytes = 0;
 let vodCacheBytes = 0;
+let vodSpoolReservedBytes = 0;
 
 function hmac(value) { return createHmac("sha256", SIGNING_SECRET).update(value).digest("base64url"); }
 function safeEqual(left, right) { const a = Buffer.from(left); const b = Buffer.from(right); return a.length === b.length && timingSafeEqual(a, b); }
@@ -78,14 +83,14 @@ function cleanExpired() {
   for (const [key, value] of uriTokens) if (value.expiresAt < now) uriTokens.delete(key);
   for (const [key, value] of cache) if (!value.promise && value.expiresAt < now) { cache.delete(key); cacheBytes -= value.bytes || 0; }
   for (const [key, ingest] of liveIngests) if (ingest.lastAccess + LIVE_IDLE_MS < now) stopLiveIngest(key, ingest);
-  for (const [key, state] of vodStates) if (state.lastAccess + VOD_IDLE_MS < now && state.pending.size === 0) vodStates.delete(key);
+  for (const [key, state] of vodStates) if (state.lastAccess + VOD_IDLE_MS < now && state.pending.size === 0) dropVodState(key, state);
   for (const [key, value] of assetAvailability) if (value.expiresAt + 60_000 < now) assetAvailability.delete(key);
 }
 
 function vodState(channel) {
   let state = vodStates.get(channel.assetId);
   if (!state) {
-    state = { channel, total: 0, contentType: "video/mp4", pending: new Map(), queue: Promise.resolve(), lastAccess: Date.now() };
+    state = { channel, total: 0, contentType: "video/mp4", pending: new Map(), queue: Promise.resolve(), spool: null, lastAccess: Date.now() };
     vodStates.set(channel.assetId, state);
   }
   state.lastAccess = Date.now();
@@ -109,6 +114,94 @@ function vodChunkEnd(index, total) {
   return Math.min(total - 1, start + size - 1);
 }
 
+function notifySpool(spool) {
+  for (const wake of spool.waiters) wake();
+  spool.waiters.clear();
+}
+
+function dropVodState(key, state) {
+  if (vodStates.get(key) === state) vodStates.delete(key);
+  if (state.spool) {
+    state.spool.abort.abort();
+    vodSpoolReservedBytes = Math.max(0, vodSpoolReservedBytes - state.spool.total);
+    void rm(state.spool.dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+async function waitForSpool(spool, end, timeoutMs = 120_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (spool.downloaded <= end && !spool.complete && !spool.error) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw new Error("انتهت مهلة تجهيز موضع الفيديو");
+    await new Promise((resolve) => {
+      const timer = setTimeout(() => { spool.waiters.delete(wake); resolve(); }, Math.min(remaining, 2_000));
+      const wake = () => { clearTimeout(timer); resolve(); };
+      spool.waiters.add(wake);
+    });
+  }
+  if (spool.error) throw spool.error;
+  if (spool.downloaded <= end) throw new Error("لم يكتمل تنزيل موضع الفيديو");
+}
+
+async function readSpoolChunk(state, index) {
+  const spool = state.spool;
+  if (!spool) throw new Error("ملف الفيديو المؤقت غير متاح");
+  const start = vodChunkStart(index);
+  const end = vodChunkEnd(index, spool.total);
+  await waitForSpool(spool, end);
+  const length = end - start + 1;
+  const body = Buffer.allocUnsafe(length);
+  const handle = await open(spool.path, "r");
+  try {
+    const { bytesRead } = await handle.read(body, 0, length, start);
+    if (bytesRead !== length) throw new Error("تعذر قراءة موضع الفيديو");
+  } finally { await handle.close(); }
+  return { body, start, end, total: spool.total, contentType: state.contentType };
+}
+
+async function startVodSpool(state, response) {
+  if (state.spool) return state.spool;
+  const total = Number(response.headers.get("content-length") || 0);
+  if (!Number.isSafeInteger(total) || total <= 0 || total > MAX_VOD_SPOOL_BYTES) {
+    await response.body?.cancel().catch(() => {});
+    throw new Error("ملف الفيديو لا يدعم التقديم السريع");
+  }
+  if (vodSpoolReservedBytes + total > MAX_VOD_SPOOL_TOTAL_BYTES) {
+    await response.body?.cancel().catch(() => {});
+    throw new Error("ذاكرة الفيديو المؤقتة مشغولة حاليًا");
+  }
+  const dir = join(VOD_SPOOL_ROOT, `${state.channel.assetId}-${randomBytes(4).toString("hex")}`);
+  const path = join(dir, "media.bin");
+  await mkdir(dir, { recursive: true });
+  const spool = { dir, path, total, downloaded: 0, complete: false, error: null, waiters: new Set(), abort: new AbortController() };
+  state.spool = spool; state.total = total;
+  state.contentType = response.headers.get("content-type") || state.contentType;
+  vodSpoolReservedBytes += total;
+  void (async () => {
+    const writer = createWriteStream(path, { flags: "wx" });
+    try {
+      if (!response.body) throw new Error("الفيديو غير متاح");
+      const reader = response.body.getReader();
+      spool.abort.signal.addEventListener("abort", () => void reader.cancel(), { once: true });
+      while (!spool.abort.signal.aborted) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!writer.write(Buffer.from(value))) await once(writer, "drain");
+        spool.downloaded += value.byteLength;
+        metrics.upstreamBytes += value.byteLength;
+        notifySpool(spool);
+      }
+      writer.end(); await once(writer, "finish");
+      if (!spool.abort.signal.aborted && spool.downloaded !== total) throw new Error("انقطع تنزيل الفيديو قبل اكتماله");
+      spool.complete = !spool.abort.signal.aborted;
+    } catch (error) {
+      writer.destroy();
+      if (!spool.abort.signal.aborted) spool.error = error instanceof Error ? error : new Error("تعذر تجهيز الفيديو");
+    } finally { notifySpool(spool); }
+  })();
+  return spool;
+}
+
 async function fetchVodChunk(state, index) {
   const key = `${state.channel.assetId}:${index}`;
   const cached = vodChunks.get(key);
@@ -118,17 +211,30 @@ async function fetchVodChunk(state, index) {
   }
   if (state.pending.has(index)) { metrics.coalesced += 1; return state.pending.get(index); }
   const task = state.queue.catch(() => {}).then(async () => {
+    if (state.spool) {
+      const value = await readSpoolChunk(state, index);
+      vodChunks.set(key, value); vodCacheBytes += value.body.length; pruneVodCache();
+      return value;
+    }
     const start = vodChunkStart(index);
     const size = index === 0 ? VOD_INITIAL_BYTES : VOD_CHUNK_BYTES;
     const end = state.total ? Math.min(state.total - 1, start + size - 1) : start + size - 1;
     const target = new URL(state.channel.ingest);
     await assertSafeUrl(target, state.channel.allowHttp);
     metrics.upstreamRequests += 1;
+    const controller = new AbortController();
+    const connectTimeout = setTimeout(() => controller.abort(), 30_000);
     const response = await fetch(target, {
       redirect: "follow",
-      signal: AbortSignal.timeout(30_000),
+      signal: controller.signal,
       headers: { "user-agent": "WIVA-Media-Gateway/1.0", accept: "video/*,*/*", range: `bytes=${start}-${end}` },
-    });
+    }).finally(() => clearTimeout(connectTimeout));
+    if (response.status === 200 && start === 0) {
+      await startVodSpool(state, response);
+      const value = await readSpoolChunk(state, index);
+      vodChunks.set(key, value); vodCacheBytes += value.body.length; pruneVodCache();
+      return value;
+    }
     if (response.status !== 206) {
       await response.body?.cancel().catch(() => {});
       throw new Error("المزوّد لا يدعم التقديم داخل هذا الملف");
@@ -219,7 +325,8 @@ function revokeAssetRuntime(assetId) {
   for (const [token, resource] of uriTokens) if (revokedSessions.has(resource.sessionToken)) uriTokens.delete(token);
   const ingest = liveIngests.get(assetId);
   if (ingest) stopLiveIngest(assetId, ingest);
-  vodStates.delete(assetId);
+  const state = vodStates.get(assetId);
+  if (state) dropVodState(assetId, state);
   for (const [key, entry] of vodChunks) {
     if (!key.startsWith(`${assetId}:`)) continue;
     vodChunks.delete(key); vodCacheBytes -= entry?.body?.length || 0;
@@ -275,7 +382,10 @@ async function ensureLiveIngest(channel, ingestKey = channel.assetId) {
   const dir = join(INGEST_ROOT, `${ingestKey.replace(/[^A-Za-z0-9_-]/g, "_")}-${randomBytes(4).toString("hex")}`);
   await mkdir(dir, { recursive: true });
   const vod = channel.mediaType !== "live";
-  const copyInput = vod || channel.deliveryMode === "copy";
+  // Auto favors passthrough. Re-encoding every H.264 channel wasted CPU and
+  // introduced tiny cadence stalls; incompatible feeds can explicitly choose
+  // transcode from the admin catalog.
+  const copyInput = vod || channel.deliveryMode !== "transcode";
   const videoCodecArgs = process.platform === "darwin" ? [
     "-c:v", "h264_videotoolbox", "-realtime", "1", "-allow_sw", "1",
   ] : [
@@ -298,7 +408,7 @@ async function ensureLiveIngest(channel, ingestKey = channel.assetId) {
   const hlsArgs = vod
     ? ["-hls_list_size", "0", "-hls_playlist_type", "event", "-hls_flags", "append_list+independent_segments+program_date_time"]
     : ["-hls_list_size", "24", "-hls_delete_threshold", "8", "-hls_flags", copyInput
-      ? "delete_segments+append_list+omit_endlist+program_date_time+split_by_time"
+      ? "delete_segments+append_list+omit_endlist+program_date_time"
       : "delete_segments+append_list+omit_endlist+program_date_time+independent_segments"];
   const args = [
     "-hide_banner", "-loglevel", "error", "-nostdin",
@@ -441,11 +551,16 @@ const server = createServer(async (req, res) => {
     if (url.pathname === "/health") return sendJson(res, 200, { ok: true, service: "wiva-local-media-gateway", sessions: sessions.size, cacheEntries: cache.size, ...metrics });
     const play = url.pathname.match(/^\/v1\/play\/([0-9a-f-]+)\/(index\.m3u8|media)$/i);
     if (play) {
-      const viewer = url.searchParams.get("viewer") || ""; const exp = Number(url.searchParams.get("exp") || 0); const nonce = url.searchParams.get("nonce") || ""; const signature = url.searchParams.get("sig") || ""; const tenant = url.searchParams.get("tenant") || "";
-      const expected = hmac(`${tenant}.${play[1]}.${viewer}.${exp}.${nonce}`);
-      if (tenant !== TENANT || !viewer || !nonce || exp < Math.floor(Date.now() / 1000) || exp > Math.floor(Date.now() / 1000) + 120 || !safeEqual(signature, expected)) return sendError(res, 403, "رابط التشغيل غير صالح أو منتهي");
+      const viewer = url.searchParams.get("viewer") || ""; const exp = Number(url.searchParams.get("exp") || 0); const accessExp = Number(url.searchParams.get("accessExp") || 0); const nonce = url.searchParams.get("nonce") || ""; const signature = url.searchParams.get("sig") || ""; const tenant = url.searchParams.get("tenant") || "";
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      const legacyGrant = !accessExp;
+      const effectiveAccessExp = legacyGrant ? nowSeconds + Math.floor(SESSION_TTL_MS / 1000) : accessExp;
+      const expected = legacyGrant
+        ? hmac(`${tenant}.${play[1]}.${viewer}.${exp}.${nonce}`)
+        : hmac(`${tenant}.${play[1]}.${viewer}.${exp}.${accessExp}.${nonce}`);
+      if (tenant !== TENANT || !viewer || !nonce || exp < nowSeconds || exp > nowSeconds + 120 || effectiveAccessExp < nowSeconds || !safeEqual(signature, expected)) return sendError(res, 403, "رابط التشغيل غير صالح أو منتهي");
       if (!(await assetIsAvailable(play[1]))) return sendError(res, 403, "المحتوى متوقف حاليًا");
-      const channel = await resolveChannel(play[1]); const token = randomBytes(24).toString("base64url"); const session = { token, channel, viewer, expiresAt: Date.now() + SESSION_TTL_MS }; sessions.set(token, session);
+      const channel = await resolveChannel(play[1]); const token = randomBytes(24).toString("base64url"); const session = { token, channel, viewer, expiresAt: Math.min(Date.now() + SESSION_TTL_MS, effectiveAccessExp * 1000) }; sessions.set(token, session);
       const resource = play[2] === "media" && channel.mediaType !== "live" ? "media" : "index.m3u8";
       res.writeHead(302, { location: `/v1/session/${token}/${resource}`, "cache-control": "no-store", "referrer-policy": "no-referrer", "access-control-allow-origin": "*" }); return res.end();
     }

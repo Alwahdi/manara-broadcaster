@@ -69,10 +69,26 @@ export type ViewerIdentity = {
   email: string;
   status: "pending" | "active" | "blocked" | "expired";
   maxConcurrentStreams: number;
+  expiresAt: string | null;
 };
 
 export type ViewerSummary = ViewerIdentity & {
-  expiresAt: string | null;
   lastLoginAt: string | null;
   createdAt: string;
+};
+
+export type PaymentRequestSummary = {
+  id: string;
+  viewerId: string;
+  viewerName: string;
+  viewerEmail: string;
+  method: "bank_transfer";
+  amount: number | null;
+  currency: string;
+  transferReference: string;
+  note: string;
+  requestedDays: number;
+  status: "pending" | "approved" | "rejected";
+  createdAt: string;
+  reviewedAt: string | null;
 };

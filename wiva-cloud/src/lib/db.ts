@@ -2,7 +2,7 @@ import { neon } from "@neondatabase/serverless";
 import postgres from "postgres";
 import { demoAssets } from "@/lib/demo";
 import { databaseConfigured, isDemoMode, tenantId } from "@/lib/env";
-import type { AssetKind, CatalogAsset, ProviderCatalogItem, ProviderSeriesEpisode, ProviderSummary, ViewerIdentity, ViewerSummary } from "@/lib/types";
+import type { AssetKind, CatalogAsset, PaymentRequestSummary, ProviderCatalogItem, ProviderSeriesEpisode, ProviderSummary, ViewerIdentity, ViewerSummary } from "@/lib/types";
 
 const globalForDb = globalThis as typeof globalThis & {
   wivaLocalSql?: ReturnType<typeof postgres>;
@@ -347,6 +347,27 @@ export async function viewerBySessionHash(tokenHash: string): Promise<ViewerIden
     email: String(row.email),
     status: row.status as ViewerIdentity["status"],
     maxConcurrentStreams: Number(row.max_concurrent_streams),
+    expiresAt: row.expires_at ? new Date(String(row.expires_at)).toISOString() : null,
+  };
+}
+
+export async function viewerAccountBySessionHash(tokenHash: string): Promise<ViewerIdentity | null> {
+  if (!databaseConfigured()) return null;
+  const query = sql();
+  const rows = await query`
+    select v.id, v.name, v.email, v.status, v.max_concurrent_streams, v.expires_at
+    from wiva_cloud_viewer_sessions s
+    join wiva_cloud_viewers v on v.id = s.viewer_id and v.tenant_id = s.tenant_id
+    where s.tenant_id = ${tenantId()} and s.token_hash = ${tokenHash} and s.expires_at > now()
+    limit 1
+  `;
+  const row = rows[0] as Record<string, unknown> | undefined;
+  if (!row || row.status === "blocked") return null;
+  return {
+    id: String(row.id), name: String(row.name), email: String(row.email),
+    status: row.status as ViewerIdentity["status"],
+    maxConcurrentStreams: Number(row.max_concurrent_streams),
+    expiresAt: row.expires_at ? new Date(String(row.expires_at)).toISOString() : null,
   };
 }
 
@@ -357,12 +378,86 @@ export async function deleteViewerSession(tokenHash: string) {
 }
 
 export async function audit(action: string, targetType: string, targetId: string | null, metadata: Record<string, unknown> = {}) {
+  return auditEvent("admin", "environment-admin", action, targetType, targetId, metadata);
+}
+
+export async function auditEvent(actorType: string, actorId: string, action: string, targetType: string, targetId: string | null, metadata: Record<string, unknown> = {}) {
   if (!databaseConfigured()) return;
   const query = sql();
   await query`
     insert into wiva_cloud_audit_log (tenant_id, actor_type, actor_id, action, target_type, target_id, metadata)
-    values (${tenantId()}, 'admin', 'environment-admin', ${action}, ${targetType}, ${targetId}, ${JSON.stringify(metadata)}::jsonb)
+    values (${tenantId()}, ${actorType}, ${actorId}, ${action}, ${targetType}, ${targetId}, ${JSON.stringify(metadata)}::jsonb)
   `;
+}
+
+function paymentFromRow(row: Record<string, unknown>): PaymentRequestSummary {
+  return {
+    id: String(row.id), viewerId: String(row.viewer_id), viewerName: String(row.viewer_name || ""),
+    viewerEmail: String(row.viewer_email || ""), method: "bank_transfer",
+    amount: row.amount == null ? null : Number(row.amount), currency: String(row.currency || "USD"),
+    transferReference: String(row.transfer_reference || ""), note: String(row.note || ""),
+    requestedDays: Number(row.requested_days), status: row.status as PaymentRequestSummary["status"],
+    createdAt: new Date(String(row.created_at)).toISOString(),
+    reviewedAt: row.reviewed_at ? new Date(String(row.reviewed_at)).toISOString() : null,
+  };
+}
+
+export async function listPaymentRequests(viewerId?: string): Promise<PaymentRequestSummary[]> {
+  if (!databaseConfigured()) return [];
+  const query = sql();
+  const rows = viewerId
+    ? await query`
+        select r.*, v.name viewer_name, v.email viewer_email
+        from wiva_cloud_payment_requests r join wiva_cloud_viewers v on v.id=r.viewer_id
+        where r.tenant_id=${tenantId()} and r.viewer_id=${viewerId}
+        order by r.created_at desc limit 20
+      `
+    : await query`
+        select r.*, v.name viewer_name, v.email viewer_email
+        from wiva_cloud_payment_requests r join wiva_cloud_viewers v on v.id=r.viewer_id
+        where r.tenant_id=${tenantId()}
+        order by (r.status='pending') desc, r.created_at desc limit 200
+      `;
+  return (rows as Record<string, unknown>[]).map(paymentFromRow);
+}
+
+export async function createPaymentRequest(input: { viewerId: string; amount: number | null; currency: string; transferReference: string; note: string; requestedDays: number }) {
+  const query = sql();
+  const rows = await query`
+    insert into wiva_cloud_payment_requests
+      (tenant_id, viewer_id, amount, currency, transfer_reference, note, requested_days)
+    select ${tenantId()}, ${input.viewerId}, ${input.amount}, ${input.currency}, ${input.transferReference}, ${input.note}, ${input.requestedDays}
+    where not exists (
+      select 1 from wiva_cloud_payment_requests
+      where tenant_id=${tenantId()} and viewer_id=${input.viewerId} and status='pending'
+    )
+    returning id
+  `;
+  return rows[0] ? String(rows[0].id) : null;
+}
+
+export async function reviewPaymentRequest(id: string, status: "approved" | "rejected") {
+  const query = sql();
+  if (status === "rejected") {
+    const rows = await query`
+      update wiva_cloud_payment_requests set status='rejected', reviewed_at=now()
+      where tenant_id=${tenantId()} and id=${id} and status='pending' returning id
+    `;
+    return Boolean(rows[0]);
+  }
+  const rows = await query`
+    with reviewed as (
+      update wiva_cloud_payment_requests set status='approved', reviewed_at=now()
+      where tenant_id=${tenantId()} and id=${id} and status='pending'
+      returning viewer_id, requested_days
+    ), activated as (
+      update wiva_cloud_viewers v set status='active',
+        expires_at=greatest(coalesce(v.expires_at, now()), now()) + make_interval(days => r.requested_days)
+      from reviewed r where v.tenant_id=${tenantId()} and v.id=r.viewer_id returning v.id
+    )
+    select exists(select 1 from activated) accepted
+  `;
+  return Boolean(rows[0]?.accepted);
 }
 
 export async function dashboardCounts() {

@@ -1,7 +1,7 @@
 import { createHmac, randomBytes } from "node:crypto";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { createViewerSession, deleteViewerSession, findViewerByEmail, viewerBySessionHash } from "@/lib/db";
+import { createViewerSession, deleteViewerSession, findViewerByEmail, viewerAccountBySessionHash, viewerBySessionHash } from "@/lib/db";
 import { hashToken, safeEqual } from "@/lib/crypto";
 import { databaseConfigured } from "@/lib/env";
 import { passwordHashIsConfigured, verifyPassword } from "@/lib/password";
@@ -9,8 +9,10 @@ import { HttpError } from "@/lib/security";
 
 const ADMIN_COOKIE = "wiva_cloud_admin";
 const VIEWER_COOKIE = "wiva_cloud_viewer";
+const PREVIEW_COOKIE = "wiva_cloud_preview";
 
 type AdminPayload = { email: string; exp: number; nonce: string };
+type PreviewPayload = { id: string; startedAt: number; exp: number };
 
 function sessionSecret() {
   const secret = process.env.WIVA_SESSION_SECRET?.trim();
@@ -81,12 +83,17 @@ export async function authenticateViewer(email: string, password: string) {
   if (!databaseConfigured()) throw new HttpError(503, "قاعدة بيانات المشاهدين غير مهيأة");
   const row = await findViewerByEmail(email);
   if (!row || !verifyPassword(password, String(row.password_hash || ""))) throw new HttpError(401, "بيانات الدخول غير صحيحة");
-  if (row.status !== "active") throw new HttpError(403, "الحساب غير متاح حاليًا");
-  if (row.expires_at && new Date(String(row.expires_at)).getTime() < Date.now()) throw new HttpError(403, "انتهت صلاحية الحساب");
+  if (row.status === "blocked" || row.status === "pending") throw new HttpError(403, "الحساب غير متاح حاليًا");
+  const token = await issueViewerSession(String(row.id));
+  const expiresAt = row.expires_at ? new Date(String(row.expires_at)).getTime() : null;
+  return { token, canWatch: row.status === "active" && (!expiresAt || expiresAt > Date.now()) };
+}
+
+export async function issueViewerSession(viewerId: string) {
   const token = randomBytes(32).toString("base64url");
   const requestHeaders = await headers();
   const ip = requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
-  await createViewerSession(String(row.id), hashToken(token), requestHeaders.get("user-agent") || "", hashToken(ip));
+  await createViewerSession(viewerId, hashToken(token), requestHeaders.get("user-agent") || "", hashToken(ip));
   return token;
 }
 
@@ -104,6 +111,44 @@ export async function currentViewer() {
   const store = await cookies();
   const token = store.get(VIEWER_COOKIE)?.value;
   return token ? viewerBySessionHash(hashToken(token)) : null;
+}
+
+export async function currentViewerAccount() {
+  const store = await cookies();
+  const token = store.get(VIEWER_COOKIE)?.value;
+  return token ? viewerAccountBySessionHash(hashToken(token)) : null;
+}
+
+function encodePreview(payload: PreviewPayload) {
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = createHmac("sha256", sessionSecret()).update(`preview.${body}`).digest("base64url");
+  return `${body}.${signature}`;
+}
+
+function decodePreview(value?: string): PreviewPayload | null {
+  if (!value) return null;
+  const [body, signature] = value.split(".");
+  if (!body || !signature) return null;
+  const expected = createHmac("sha256", sessionSecret()).update(`preview.${body}`).digest("base64url");
+  if (!safeEqual(signature, expected)) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as PreviewPayload;
+    return payload.id && Number.isFinite(payload.exp) && Number.isFinite(payload.startedAt) ? payload : null;
+  } catch { return null; }
+}
+
+export async function previewAccess() {
+  const store = await cookies();
+  const existing = decodePreview(store.get(PREVIEW_COOKIE)?.value);
+  if (existing) return { payload: existing, cookie: null };
+  const startedAt = Date.now();
+  const payload = { id: randomBytes(18).toString("base64url"), startedAt, exp: startedAt + 3 * 60 * 1000 };
+  return { payload, cookie: previewCookie(encodePreview(payload)) };
+}
+
+function previewCookie(token: string) {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  return `${PREVIEW_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax${secure}; Max-Age=2592000`;
 }
 
 export async function logoutViewer(request: Request) {

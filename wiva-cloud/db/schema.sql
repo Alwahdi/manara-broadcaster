@@ -99,6 +99,24 @@ create table if not exists wiva_cloud_viewer_sessions (
 create index if not exists wiva_cloud_sessions_expiry_idx
   on wiva_cloud_viewer_sessions(expires_at);
 
+create table if not exists wiva_cloud_payment_requests (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references wiva_cloud_tenants(id) on delete cascade,
+  viewer_id uuid not null references wiva_cloud_viewers(id) on delete cascade,
+  method text not null default 'bank_transfer' check (method in ('bank_transfer')),
+  amount numeric(12,2),
+  currency text not null default 'USD',
+  transfer_reference text not null,
+  note text not null default '',
+  requested_days integer not null default 30 check (requested_days between 1 and 365),
+  status text not null default 'pending' check (status in ('pending','approved','rejected')),
+  reviewed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists wiva_cloud_payment_requests_tenant_time_idx
+  on wiva_cloud_payment_requests(tenant_id, status, created_at desc);
+
 create table if not exists wiva_cloud_audit_log (
   id bigserial primary key,
   tenant_id uuid not null references wiva_cloud_tenants(id) on delete cascade,

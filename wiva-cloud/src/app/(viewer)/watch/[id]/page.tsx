@@ -20,7 +20,7 @@ export default async function WatchPage({ params }: { params: Promise<{ id: stri
           <h1>{asset.title}</h1>
           <p>{asset.description || "لا يوجد وصف لهذا المحتوى."}</p>
           <div className="watch-tags"><span>{asset.category}</span><span>{asset.language || "اللغة غير محددة"}</span></div>
-          <div className="watch-notice"><CheckCircle2 size={18} /><span>رابط المصدر وبيانات المزوّد لا تظهر للمشاهد. يبدأ البث فقط عند الضغط على تشغيل.</span></div>
+          <div className="watch-notice"><CheckCircle2 size={18} /><span>اضغط تشغيل واستمتع بالمشاهدة. نحفظ تقدمك في الأفلام والحلقات على هذا الجهاز.</span></div>
         </aside>
       </div>
     </div>

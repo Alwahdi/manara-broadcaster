@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Clapperboard, Film, Home, LogIn, Radio, Search, Tv2, UserRound } from "lucide-react";
 import { BrandMark } from "@/components/BrandMark";
-import { currentViewer } from "@/lib/auth";
+import { currentViewerAccount } from "@/lib/auth";
 
 const nav = [
   { href: "/", label: "الرئيسية", icon: Home },
@@ -11,7 +11,7 @@ const nav = [
 ];
 
 export async function ViewerShell({ children }: { children: React.ReactNode }) {
-  const viewer = await currentViewer();
+  const viewer = await currentViewerAccount();
   return (
     <div className="viewer-shell">
       <header className="viewer-header">
@@ -38,7 +38,7 @@ export async function ViewerShell({ children }: { children: React.ReactNode }) {
       </nav>
       <footer className="viewer-footer">
         <BrandMark compact />
-        <p>مشاهدة آمنة للمحتوى المرخّص عبر WIVA Media Gateway.</p>
+        <p>كل قنواتك وأفلامك ومسلسلاتك في مكان واحد.</p>
         <span><Tv2 size={16} /> يعمل على الجوال والتلفزيون والمتصفح</span>
       </footer>
     </div>

@@ -47,7 +47,7 @@ export function ChannelManager({ initial, providers }: { initial: CatalogAsset[]
     try {
       const response = await fetch("/api/admin/assets/bulk", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ ids: [...selected], active }) });
       const payload = await response.json(); if (!response.ok) throw new Error(payload.error);
-      setAssets(payload.assets); setSelected(new Set()); setMessage(`تم ${active ? "نشر" : "إيقاف"} ${payload.updated} عنصر.`);
+      setAssets(payload.assets); setSelected(new Set()); setMessage(`تم ${active ? "نشر" : "إخفاء"} ${payload.updated} عنصر.`);
     } catch (error) { setMessage(error instanceof Error ? error.message : "تعذر تعديل العناصر"); }
     finally { setPending(false); }
   }
@@ -78,7 +78,7 @@ export function ChannelManager({ initial, providers }: { initial: CatalogAsset[]
         <select value={category} onChange={(event) => setCategory(event.target.value)}><option value="">كل التصنيفات</option>{categories.map((value) => <option key={value}>{value}</option>)}</select>
         <select value={status} onChange={(event) => setStatus(event.target.value as typeof status)}><option value="">كل الحالات</option><option value="active">منشور</option><option value="disabled">متوقف</option></select>
       </div>
-      <div className="asset-bulk-bar"><button className="button secondary" onClick={toggleVisible} disabled={!visible.length}>{allVisibleSelected ? "إلغاء تحديد النتائج" : "تحديد النتائج"}</button><span>{selected.size} محدد</span><div><button onClick={() => void bulk(false)} disabled={pending || !selected.size}><EyeOff />إيقاف</button><button onClick={() => void bulk(true)} disabled={pending || !selected.size}><Eye />نشر</button></div></div>
+      <div className="asset-bulk-bar"><button className="button secondary" onClick={toggleVisible} disabled={!visible.length}>{allVisibleSelected ? "إلغاء تحديد النتائج" : "تحديد النتائج"}</button><span>{selected.size} محدد</span><div><button onClick={() => void bulk(false)} disabled={pending || !selected.size}><EyeOff />إخفاء</button><button onClick={() => void bulk(true)} disabled={pending || !selected.size}><Eye />نشر</button></div></div>
       {message ? <p className="form-message"><CheckCircle2 size={17} />{message}</p> : null}
       <div className="asset-admin-grid content-asset-grid">
         {visible.map((asset) => <article key={asset.id} className={`asset-admin-card ${selected.has(asset.id) ? "selected" : ""}`}>

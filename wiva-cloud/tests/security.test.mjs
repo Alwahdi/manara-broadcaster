@@ -202,15 +202,49 @@ test("movies and episodes use a seekable bounded shared range cache", () => {
   assert.match(player, /!live && duration > 0/);
   assert.match(player, /video\.currentTime = Math\.max/);
   assert.match(player, /player-live-badge/);
-  assert.match(player, /ahead < 12/);
+  assert.match(player, /ahead < 5/);
   assert.match(player, /setInterval\(recoverLivePlayback, 250\)/);
   assert.doesNotMatch(player, /onWaiting[\s\S]{0,220}setState\("loading"\)/);
   assert.match(player, /Hls\.Events\.BUFFER_APPENDED/);
-  assert.match(player, /maxLiveSyncPlaybackRate: 1/);
-  assert.match(gateway, /channel\.deliveryMode === "copy"/);
-  assert.match(gateway, /program_date_time\+split_by_time/);
-  assert.match(player, /ahead >= 8/);
+  assert.match(player, /maxLiveSyncPlaybackRate: 1\.05/);
+  assert.match(gateway, /channel\.deliveryMode !== "transcode"/);
+  assert.doesNotMatch(gateway, /split_by_time/);
+  assert.match(player, /ahead >= 2\.5/);
   assert.match(player, /media\.preload = "auto"/);
+  assert.match(gateway, /MAX_VOD_SPOOL_TOTAL_BYTES/);
+  assert.match(gateway, /startVodSpool/);
+  assert.match(gateway, /createWriteStream/);
+});
+
+test("anonymous preview is signed, time bounded, and followed by a three-day self-service trial", () => {
+  const auth = readFileSync(join(root, "src/lib/auth.ts"), "utf8");
+  const playback = readFileSync(join(root, "src/lib/playback.ts"), "utf8");
+  const route = readFileSync(join(root, "src/app/api/playback/[id]/route.ts"), "utf8");
+  const signup = readFileSync(join(root, "src/app/api/auth/viewer/signup/route.ts"), "utf8");
+  const gateway = readFileSync(join(root, "scripts/local-media-gateway.mjs"), "utf8");
+  assert.match(auth, /PREVIEW_COOKIE/);
+  assert.match(auth, /startedAt \+ 3 \* 60 \* 1000/);
+  assert.match(auth, /preview\./);
+  assert.match(route, /status: 402/);
+  assert.match(route, /previewEndsAt/);
+  assert.match(playback, /accessExp/);
+  assert.match(gateway, /effectiveAccessExp/);
+  assert.match(signup, /3 \* 24 \* 60 \* 60 \* 1000/);
+  assert.match(signup, /viewer\.self_signup/);
+});
+
+test("manual payment requests require a viewer and admin review atomically extends access", () => {
+  const schema = readFileSync(join(root, "db/schema.sql"), "utf8");
+  const database = readFileSync(join(root, "src/lib/db.ts"), "utf8");
+  const viewerRoute = readFileSync(join(root, "src/app/api/payments/requests/route.ts"), "utf8");
+  const adminRoute = readFileSync(join(root, "src/app/api/admin/payments/[id]/route.ts"), "utf8");
+  assert.match(schema, /wiva_cloud_payment_requests/);
+  assert.match(schema, /status in \('pending','approved','rejected'\)/);
+  assert.match(viewerRoute, /currentViewerAccount/);
+  assert.match(viewerRoute, /assertSameOrigin/);
+  assert.match(adminRoute, /requireAdminRequest/);
+  assert.match(database, /with reviewed as/);
+  assert.match(database, /make_interval\(days => r\.requested_days\)/);
 });
 
 test("mobile playback keeps a ready state and rewrites loopback gateway hosts", () => {

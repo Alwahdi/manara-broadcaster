@@ -1,4 +1,5 @@
-import { currentViewer } from "@/lib/auth";
+import { currentViewer, previewAccess } from "@/lib/auth";
+import { hashToken } from "@/lib/crypto";
 import { getAsset } from "@/lib/db";
 import { isDemoMode } from "@/lib/env";
 import { createPlaybackUrl } from "@/lib/playback";
@@ -27,8 +28,23 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (!asset) throw new HttpError(404, "المحتوى غير موجود");
     if (!asset.isActive) throw new HttpError(403, "المحتوى غير مفعّل");
     const viewer = await currentViewer();
-    if (!viewer && !(isDemoMode() && asset.demoPlaybackUrl)) throw new HttpError(401, "سجّل الدخول لبدء المشاهدة");
-    const grant = createPlaybackUrl(asset, viewer?.id || "demo-viewer", gatewayForRequest(request));
-    return Response.json({ ok: true, ...grant, live: asset.kind === "live" }, { headers: { "cache-control": "private, no-store", "referrer-policy": "no-referrer" } });
+    let viewerId = viewer?.id || "";
+    let accessExpiresAt = viewer?.expiresAt ? new Date(viewer.expiresAt).getTime() : Date.now() + 2 * 60 * 60 * 1000;
+    let previewCookie: string | null = null;
+    let preview = false;
+    if (!viewer) {
+      const access = await previewAccess();
+      if (access.payload.exp <= Date.now()) {
+        return Response.json({ ok: false, error: "انتهت المعاينة المجانية", action: "signup" }, { status: 402, headers: { "cache-control": "private, no-store" } });
+      }
+      viewerId = `preview-${hashToken(access.payload.id).slice(0, 24)}`;
+      accessExpiresAt = access.payload.exp;
+      previewCookie = access.cookie;
+      preview = true;
+    }
+    const grant = createPlaybackUrl(asset, viewerId || (isDemoMode() ? "demo-viewer" : "preview"), gatewayForRequest(request), accessExpiresAt);
+    const headers: Record<string, string> = { "cache-control": "private, no-store", "referrer-policy": "no-referrer" };
+    if (previewCookie) headers["set-cookie"] = previewCookie;
+    return Response.json({ ok: true, ...grant, live: asset.kind === "live", preview, previewEndsAt: preview ? accessExpiresAt : null }, { headers });
   } catch (error) { return errorResponse(error); }
 }

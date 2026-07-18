@@ -7,7 +7,7 @@ export async function POST(request: Request) {
     assertSameOrigin(request);
     enforceRateLimit(request, "viewer-login", 8);
     const body = await jsonBody<{ email?: unknown; password?: unknown }>(request, 8_000);
-    const token = await authenticateViewer(cleanText(body.email, 254), cleanText(body.password, 512));
-    return Response.json({ ok: true }, { headers: { "set-cookie": viewerCookie(token), "cache-control": "no-store" } });
+    const result = await authenticateViewer(cleanText(body.email, 254), cleanText(body.password, 512));
+    return Response.json({ ok: true, destination: result.canWatch ? "/" : "/account" }, { headers: { "set-cookie": viewerCookie(result.token), "cache-control": "no-store" } });
   } catch (error) { return errorResponse(error); }
 }

@@ -22,7 +22,7 @@ export function LoginForm({ admin = false }: { admin?: boolean }) {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "تعذر تسجيل الدخول");
-      router.replace(admin ? "/admin" : "/");
+      router.replace(admin ? "/admin" : String(payload.destination || "/"));
       router.refresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "تعذر تسجيل الدخول");

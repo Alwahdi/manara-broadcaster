@@ -151,6 +151,7 @@ img, video { display: block; max-width: 100%; }
 .wiva-cloud-player video { display: block; width: 100%; height: 100%; min-height: 0; aspect-ratio: 16/9; object-fit: contain; cursor: pointer; }
 .wiva-cloud-player .player-overlay { z-index: 5; }
 .player-start { min-width: 148px; justify-content: center; }
+.player-paywall-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
 .wiva-cloud-controls { position: absolute; z-index: 6; inset: 0; color: #fff; pointer-events: none; transition: opacity .2s ease, visibility .2s ease; }
 .controls-hidden .wiva-cloud-controls { opacity: 0; visibility: hidden; }
 .controls-visible .wiva-cloud-controls, .wiva-cloud-controls:focus-within { opacity: 1; visibility: visible; }
@@ -207,6 +208,8 @@ input, select, textarea { width: 100%; min-height: 46px; padding: 10px 12px; bor
 textarea { min-height: 100px; resize: vertical; }
 select { appearance: none; }
 .form-error { margin: 0; color: #ffd1d4; padding: 10px 12px; border: 1px solid rgba(255,116,125,.28); border-radius: 10px; background: rgba(255,116,125,.08); font-size: .84rem; }
+.auth-switch { margin: 18px 0 0 !important; text-align: center; font-size: .82rem; }
+.auth-switch a { color: var(--gold); font-weight: 800; }
 
 .viewer-footer { min-height: 120px; padding: 32px clamp(16px, 4vw, 44px); display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 22px; border-top: 1px solid var(--line); color: var(--dim); background: #06080e; font-size: .79rem; }
 .viewer-footer p { margin: 0; }
@@ -266,6 +269,20 @@ select { appearance: none; }
 .status-badge { padding: 5px 8px; border-radius: 999px; font-size: .65rem !important; font-weight: 800; }
 .status-badge.active { color: #bff5df; background: rgba(69,221,163,.1); }
 .status-badge.disabled { background: rgba(255,255,255,.05); }
+.status-badge.pending { color: #ffe6a7; background: rgba(255,212,107,.1); }
+.payment-card { margin-top: 18px; }
+.payment-history { margin-block: 16px; display: grid; gap: 8px; }
+.payment-history article { padding: 11px 12px; display: grid; grid-template-columns: auto auto minmax(0,1fr); align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 11px; background: rgba(255,255,255,.025); }
+.payment-history small { overflow: hidden; color: var(--dim); text-overflow: ellipsis; white-space: nowrap; }
+.payment-form { margin-top: 18px; }
+.admin-payment-card { margin-bottom: 18px; }
+.payment-admin-list { display: grid; gap: 8px; }
+.payment-admin-list article { padding: 12px; display: flex; align-items: center; justify-content: space-between; gap: 14px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.025); }
+.payment-admin-list article > div:first-child { min-width: 0; display: grid; }
+.payment-admin-list span, .payment-admin-list small { color: var(--muted); font-size: .72rem; }
+.payment-admin-list p { margin: 5px 0 0; color: var(--dim); font-size: .72rem; }
+.payment-review-actions { display: flex; gap: 7px; }
+.payment-review-actions .approve { color: #bff5df; border-color: rgba(69,221,163,.28); }
 .stack-form { display: grid; gap: 13px; }
 .form-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .check-row { grid-template-columns: 20px 1fr !important; align-items: start; }
@@ -449,6 +466,13 @@ select { appearance: none; }
   .viewer-footer { display: none; }
   .account-actions { align-items: stretch; flex-direction: column; }
   .account-actions form, .account-actions .button { width: 100%; }
+  .player-paywall-actions { width: 100%; }
+  .player-paywall-actions .button { flex: 1; min-width: 150px; }
+  .payment-history article { grid-template-columns: auto 1fr; }
+  .payment-history small { grid-column: 1 / -1; }
+  .payment-admin-list article { align-items: stretch; flex-direction: column; }
+  .payment-review-actions { width: 100%; }
+  .payment-review-actions .icon-button { flex: 1; width: auto; }
   .auth-promo { min-height: 260px; padding: 24px; }
   .auth-promo h1 { margin-top: 20px; font-size: 2.2rem; }
   .auth-benefits { display: none; }

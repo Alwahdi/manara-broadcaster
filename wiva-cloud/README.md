@@ -14,6 +14,15 @@ Electron Agent UI because that UI is exported as static files for Windows/LAN.
 - **CDN:** distributes HLS manifests and segments to internet viewers. The
   gateway must not fan out 100,000 direct sockets itself.
 
+The portal includes a signed three-minute anonymous preview, self-service
+three-day trial accounts, and manual transfer requests that an administrator
+must review before access is extended. It does not perform an automatic charge.
+
+Single ingest saves upstream provider bandwidth; it does not remove downstream
+capacity requirements. One thousand simultaneous LAN viewers still require a
+properly sized LAN, and large internet audiences require a CDN in front of the
+gateway.
+
 Vercel Functions are not used as the video byte proxy. They are request-bound,
 have duration/payload limits, and do not provide the persistent process needed
 for shared ingest state.

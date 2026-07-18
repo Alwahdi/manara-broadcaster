@@ -1,13 +1,13 @@
 "use client";
 
-import Hls from "hls.js";
+import Hls, { ErrorTypes } from "hls.js";
 import {
   AlertTriangle, FastForward, Gauge, LoaderCircle, LockKeyhole, Maximize, Minimize,
-  Pause, PictureInPicture2, Play, Radio, Rewind, RotateCcw, Settings, Volume2, VolumeX,
+  LogIn, Pause, PictureInPicture2, Play, Radio, Rewind, RotateCcw, Settings, UserPlus, Volume2, VolumeX,
 } from "lucide-react";
 import { CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 
-type State = "idle" | "loading" | "ready" | "playing" | "paused" | "error" | "blocked";
+type State = "idle" | "loading" | "ready" | "playing" | "paused" | "error" | "blocked" | "paywall";
 
 function formatTime(value: number) {
   if (!Number.isFinite(value) || value < 0) return "0:00";
@@ -24,6 +24,7 @@ export function PlayerClient({ assetId, active }: { assetId: string; active: boo
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startupCleanupRef = useRef<(() => void) | null>(null);
   const liveRecoveryTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [state, setState] = useState<State>(active ? "idle" : "blocked");
   const [message, setMessage] = useState("");
   const [live, setLive] = useState(false);
@@ -47,6 +48,8 @@ export function PlayerClient({ assetId, active }: { assetId: string; active: boo
     startupCleanupRef.current?.(); startupCleanupRef.current = null;
     if (liveRecoveryTimerRef.current) clearInterval(liveRecoveryTimerRef.current);
     liveRecoveryTimerRef.current = null;
+    if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+    previewTimerRef.current = null;
     hlsRef.current?.destroy(); hlsRef.current = null;
     if (hideTimer.current) clearTimeout(hideTimer.current);
     const video = videoRef.current;
@@ -66,31 +69,42 @@ export function PlayerClient({ assetId, active }: { assetId: string; active: boo
     try {
       const response = await fetch(`/api/playback/${encodeURIComponent(assetId)}`, { cache: "no-store", credentials: "include" });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "تعذر تجهيز التشغيل");
+      if (!response.ok) {
+        if (response.status === 402 || payload.action === "signup") {
+          setState("paywall"); setMessage("أنشئ حسابًا لتبدأ 3 أيام مجانية، أو سجّل الدخول لمتابعة المشاهدة."); return;
+        }
+        throw new Error(response.status === 401 ? "سجّل الدخول لمتابعة المشاهدة." : response.status === 403 || response.status === 404 ? "هذا المحتوى غير متاح حاليًا." : "تعذر تشغيل الفيديو الآن. حاول بعد قليل.");
+      }
       const video = videoRef.current;
       if (!video) return;
       const url = String(payload.url); const isLive = payload.live === true;
       setLive(isLive);
+      if (payload.preview === true && Number(payload.previewEndsAt) > Date.now()) {
+        previewTimerRef.current = setTimeout(() => {
+          stop(); setState("paywall"); setMessage("انتهت المعاينة المجانية. أنشئ حسابًا لتحصل على 3 أيام كاملة.");
+        }, Number(payload.previewEndsAt) - Date.now());
+      }
       if (isLive && Hls.isSupported()) {
-        const hls = new Hls({ enableWorker: true, lowLatencyMode: false, startFragPrefetch: true, liveSyncDurationCount: 8, liveMaxLatencyDurationCount: 30, maxLiveSyncPlaybackRate: 1, maxBufferLength: 90, maxMaxBufferLength: 180, backBufferLength: 0, fragLoadingMaxRetry: 10, manifestLoadingMaxRetry: 6 });
+        const hls = new Hls({ enableWorker: true, lowLatencyMode: false, startFragPrefetch: true, liveSyncDurationCount: 4, liveMaxLatencyDurationCount: 12, maxLiveSyncPlaybackRate: 1.05, maxBufferLength: 45, maxMaxBufferLength: 90, backBufferLength: 30, fragLoadingMaxRetry: 10, manifestLoadingMaxRetry: 6 });
         hlsRef.current = hls; hls.loadSource(url); hls.attachMedia(video);
-        let started = false;
+        let started = false; let recoveryAttempts = 0;
         const startWhenBuffered = () => {
           if (started || !video.buffered.length) return;
           const ahead = video.buffered.end(video.buffered.length - 1) - video.currentTime;
-          if (ahead < 12) return;
+          if (ahead < 5) return;
           started = true; void resume();
         };
-        hls.on(Hls.Events.MANIFEST_PARSED, () => setMessage("جارٍ تكوين مخزون قصير لبث سلس…"));
+        hls.on(Hls.Events.MANIFEST_PARSED, () => setMessage("لحظات ويبدأ البث…"));
         hls.on(Hls.Events.BUFFER_APPENDED, startWhenBuffered);
         hls.on(Hls.Events.ERROR, (_event, data) => {
           if (!data.fatal) return;
-          setMessage(data.response?.code === 502 ? "المزوّد لم يرسل بثًا صالحًا الآن." : "انقطع البث. جرّب إعادة المحاولة.");
-          setState("error"); hls.destroy();
+          if (recoveryAttempts < 2 && data.type === ErrorTypes.NETWORK_ERROR) { recoveryAttempts += 1; setMessage("نعيد الاتصال…"); setTimeout(() => hls.startLoad(), 600 * recoveryAttempts); return; }
+          if (recoveryAttempts < 2 && data.type === ErrorTypes.MEDIA_ERROR) { recoveryAttempts += 1; setMessage("نعيد ضبط الصورة…"); hls.recoverMediaError(); return; }
+          setMessage("تعذر استمرار البث الآن. حاول مرة أخرى."); setState("error"); hls.destroy();
         });
       } else {
         const media = video;
-        media.src = url; media.preload = "auto"; setMessage("جارٍ تجهيز مخزون قصير لتشغيل متواصل…");
+        media.src = url; media.preload = "auto"; setMessage("لحظات ويبدأ الفيديو…");
         let fallback: ReturnType<typeof setTimeout> | null = null;
         let started = false;
         const cleanup = () => {
@@ -102,11 +116,11 @@ export function PlayerClient({ assetId, active }: { assetId: string; active: boo
         function startWhenReady() {
           if (!media.buffered.length) return;
           const ahead = media.buffered.end(media.buffered.length - 1) - media.currentTime;
-          if (ahead >= 8 || media.readyState >= HTMLMediaElement.HAVE_ENOUGH_DATA) start();
+          if (ahead >= 2.5 || media.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) start();
         }
         startupCleanupRef.current = cleanup;
         for (const event of ["progress", "canplay", "canplaythrough", "loadeddata"]) media.addEventListener(event, startWhenReady);
-        fallback = setTimeout(start, 10_000);
+        fallback = setTimeout(start, 5_000);
         media.load(); startWhenReady();
       }
     } catch (error) { setMessage(error instanceof Error ? error.message : "تعذر تشغيل المحتوى"); setState("error"); }
@@ -168,7 +182,7 @@ export function PlayerClient({ assetId, active }: { assetId: string; active: boo
     const recoverLivePlayback = () => {
       if (!live || !video.buffered.length) return;
       const ahead = video.buffered.end(video.buffered.length - 1) - video.currentTime;
-      if (ahead < 8 || video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) return;
+      if (ahead < 4 || video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) return;
       if (liveRecoveryTimerRef.current) clearInterval(liveRecoveryTimerRef.current);
       liveRecoveryTimerRef.current = null;
       // A waiting event does not mean the user paused. Keep the player visible
@@ -179,14 +193,14 @@ export function PlayerClient({ assetId, active }: { assetId: string; active: boo
     };
     const onWaiting = () => {
       if (live) {
-        setMessage("جارٍ تثبيت البث…");
+        setMessage("لحظات ويعود البث…");
         recoverLivePlayback();
         if (!liveRecoveryTimerRef.current) liveRecoveryTimerRef.current = setInterval(recoverLivePlayback, 250);
-      } else setMessage("جارٍ جلب الجزء المطلوب…");
+      } else setMessage("جارٍ الانتقال إلى الموضع المطلوب…");
     };
     const onCanPlay = () => { if (live) recoverLivePlayback(); else setMessage(""); };
     const onEnded = () => { setState("paused"); try { localStorage.removeItem(`wiva-progress:${assetId}`); } catch {} };
-    const onMediaError = () => { setState("error"); setMessage("تعذر قراءة الفيديو من المزوّد. جرّب مرة أخرى."); };
+    const onMediaError = () => { setState("error"); setMessage("تعذر تشغيل الفيديو الآن. جرّب مرة أخرى."); };
     const onVolume = () => { sync(); try { localStorage.setItem("wiva-cloud-volume", String(video.volume)); } catch {} };
     const onFullscreen = () => setFullscreen(document.fullscreenElement === shell);
     const onKey = (event: KeyboardEvent) => {
@@ -215,7 +229,7 @@ export function PlayerClient({ assetId, active }: { assetId: string; active: boo
 
   useEffect(() => () => stop(), [stop]);
 
-  const showStartup = ["idle", "loading", "ready", "error", "blocked"].includes(state);
+  const showStartup = ["idle", "loading", "ready", "error", "blocked", "paywall"].includes(state);
   const progress = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
   const playing = state === "playing";
 
@@ -223,10 +237,10 @@ export function PlayerClient({ assetId, active }: { assetId: string; active: boo
     <div ref={shellRef} className={`player-stage wiva-cloud-player ${controlsVisible ? "controls-visible" : "controls-hidden"}`} tabIndex={0} onPointerMove={() => revealControls(!playing)} onPointerDown={() => revealControls(!playing)}>
       <video ref={videoRef} playsInline disablePictureInPicture={false} onClick={togglePlayback} />
       {showStartup ? <div className="player-overlay">
-        {state === "blocked" ? <LockKeyhole size={38} /> : state === "error" ? <AlertTriangle size={38} /> : state === "loading" ? <LoaderCircle className="spin" size={42} /> : <Play size={44} fill="currentColor" />}
-        <h2>{state === "blocked" ? "المحتوى غير مفعّل" : state === "error" ? "تعذر بدء التشغيل" : state === "loading" ? "جارٍ تجهيز التشغيل…" : state === "ready" ? "الفيديو جاهز" : "جاهز للمشاهدة"}</h2>
-        <p>{message || (state === "blocked" ? "يلزم تفعيل مصدر مرخّص من لوحة الإدارة." : "اتصال مشفّر، والمصدر يبدأ عند الضغط فقط.")}</p>
-        {active && state !== "loading" ? <button className="button primary player-start" onClick={state === "ready" ? resume : play}>{state === "error" ? <RotateCcw size={19} /> : <Play size={19} />} {state === "error" ? "إعادة المحاولة" : "تشغيل الآن"}</button> : null}
+        {state === "paywall" ? <LockKeyhole size={38} /> : state === "blocked" ? <LockKeyhole size={38} /> : state === "error" ? <AlertTriangle size={38} /> : state === "loading" ? <LoaderCircle className="spin" size={42} /> : <Play size={44} fill="currentColor" />}
+        <h2>{state === "paywall" ? "تابع المشاهدة" : state === "blocked" ? "المحتوى غير متاح" : state === "error" ? "تعذر بدء التشغيل" : state === "loading" ? "جارٍ تجهيز التشغيل…" : state === "ready" ? "الفيديو جاهز" : "جاهز للمشاهدة"}</h2>
+        <p>{message || (state === "blocked" ? "هذا المحتوى غير متاح حاليًا." : "اضغط تشغيل وابدأ المشاهدة.")}</p>
+        {state === "paywall" ? <div className="player-paywall-actions"><a className="button primary" href="/signup"><UserPlus size={18} /> ابدأ 3 أيام مجانًا</a><a className="button secondary" href="/login"><LogIn size={18} /> تسجيل الدخول</a></div> : active && state !== "loading" ? <button className="button primary player-start" onClick={state === "ready" ? resume : play}>{state === "error" ? <RotateCcw size={19} /> : <Play size={19} />} {state === "error" ? "إعادة المحاولة" : "تشغيل الآن"}</button> : null}
       </div> : null}
 
       {!showStartup ? <div className="wiva-cloud-controls" dir="rtl">
