@@ -5,11 +5,13 @@ import {
   AlertTriangle, FastForward, Gauge, LoaderCircle, LockKeyhole, Maximize, Minimize,
   LogIn, Pause, PictureInPicture2, Play, Radio, Rewind, RotateCcw, Settings, UserPlus, Volume2, VolumeX,
 } from "lucide-react";
-import { CSSProperties, MouseEvent as ReactMouseEvent, useCallback, useEffect, useRef, useState } from "react";
+import { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, useCallback, useEffect, useRef, useState } from "react";
 
 type State = "idle" | "loading" | "ready" | "playing" | "paused" | "error" | "blocked" | "paywall";
 
 type NetworkInfo = { effectiveType?: string; saveData?: boolean; downlink?: number };
+type GestureFeedback = { kind: "seek-back" | "seek-forward" | "fullscreen"; label: string } | null;
+type LockableOrientation = { lock?: (orientation: "landscape") => Promise<void>; unlock?: () => void };
 
 function playbackTuning() {
   const connection = (navigator as Navigator & { connection?: NetworkInfo }).connection;
@@ -42,6 +44,11 @@ export function PlayerClient({ assetId, title, active }: { assetId: string; titl
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bufferingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gestureTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pointerStartRef = useRef<{ x: number; y: number; pointerId: number } | null>(null);
+  const lastTouchTapRef = useRef<{ at: number; x: number } | null>(null);
+  const touchGestureAtRef = useRef(0);
+  const ignoreClickRef = useRef(false);
+  const scrubbingRef = useRef(false);
   const [state, setState] = useState<State>(active ? "idle" : "blocked");
   const [message, setMessage] = useState("");
   const [live, setLive] = useState(false);
@@ -55,7 +62,10 @@ export function PlayerClient({ assetId, title, active }: { assetId: string; titl
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [buffering, setBuffering] = useState(false);
-  const [gestureHint, setGestureHint] = useState("");
+  const [gestureFeedback, setGestureFeedback] = useState<GestureFeedback>(null);
+  const [scrubbing, setScrubbing] = useState(false);
+  const [scrubTime, setScrubTime] = useState(0);
+  const playing = state === "playing";
 
   const revealControls = useCallback((keep = false) => {
     if (hideTimer.current) clearTimeout(hideTimer.current);
@@ -75,6 +85,8 @@ export function PlayerClient({ assetId, title, active }: { assetId: string; titl
     bufferingTimerRef.current = null;
     if (gestureTimerRef.current) clearTimeout(gestureTimerRef.current);
     gestureTimerRef.current = null;
+    pointerStartRef.current = null; lastTouchTapRef.current = null; touchGestureAtRef.current = 0; ignoreClickRef.current = false; scrubbingRef.current = false;
+    setGestureFeedback(null); setScrubbing(false);
     setBuffering(false);
     hlsRef.current?.destroy(); hlsRef.current = null;
     if (hideTimer.current) clearTimeout(hideTimer.current);
@@ -186,15 +198,40 @@ export function PlayerClient({ assetId, title, active }: { assetId: string; titl
     revealControls(true);
   }, [live, revealControls]);
 
-  const toggleFullscreen = useCallback(async () => {
+  const showGesture = useCallback((feedback: NonNullable<GestureFeedback>) => {
+    if (gestureTimerRef.current) clearTimeout(gestureTimerRef.current);
+    setGestureFeedback(feedback);
+    gestureTimerRef.current = setTimeout(() => setGestureFeedback(null), 850);
+  }, []);
+
+  const setLandscape = useCallback(async (lock: boolean) => {
+    const orientation = screen.orientation as unknown as LockableOrientation | undefined;
+    try { if (lock) await orientation?.lock?.("landscape"); else orientation?.unlock?.(); } catch {}
+  }, []);
+
+  const enterFullscreen = useCallback(async (landscape = false) => {
     const shell = shellRef.current; const video = videoRef.current;
     if (!shell || !video) return;
     try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else if (shell.requestFullscreen) await shell.requestFullscreen();
+      if (shell.requestFullscreen) await shell.requestFullscreen();
       else (video as HTMLVideoElement & { webkitEnterFullscreen?: () => void }).webkitEnterFullscreen?.();
+      if (landscape) await setLandscape(true);
     } catch {}
-  }, []);
+  }, [setLandscape]);
+
+  const exitFullscreen = useCallback(async () => {
+    const video = videoRef.current as HTMLVideoElement & { webkitExitFullscreen?: () => void };
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else video?.webkitExitFullscreen?.();
+    } catch {}
+    await setLandscape(false);
+  }, [setLandscape]);
+
+  const toggleFullscreen = useCallback(async () => {
+    if (document.fullscreenElement || fullscreen) await exitFullscreen();
+    else await enterFullscreen(window.matchMedia("(pointer: coarse)").matches);
+  }, [enterFullscreen, exitFullscreen, fullscreen]);
 
   const togglePip = useCallback(async () => {
     const video = videoRef.current;
@@ -203,20 +240,72 @@ export function PlayerClient({ assetId, title, active }: { assetId: string; titl
   }, []);
 
   const handleVideoClick = useCallback(() => {
+    if (ignoreClickRef.current) { ignoreClickRef.current = false; return; }
     if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
-    clickTimerRef.current = setTimeout(() => { clickTimerRef.current = null; togglePlayback(); }, 220);
-  }, [togglePlayback]);
+    clickTimerRef.current = setTimeout(() => {
+      clickTimerRef.current = null;
+      if (window.matchMedia("(pointer: coarse)").matches) {
+        if (controlsVisible) { if (playing) setControlsVisible(false); }
+        else revealControls(true);
+      } else togglePlayback();
+    }, 260);
+  }, [controlsVisible, playing, revealControls, togglePlayback]);
+
+  const handleTouchDoubleTap = useCallback((clientX: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    const bounds = video.getBoundingClientRect();
+    const position = (clientX - bounds.left) / Math.max(1, bounds.width);
+    if (!live && (position <= .42 || position >= .58)) {
+      const amount = position >= .58 ? 10 : -10;
+      seekBy(amount);
+      showGesture({ kind: amount > 0 ? "seek-forward" : "seek-back", label: amount > 0 ? "+10 ثوانٍ" : "−10 ثوانٍ" });
+    } else revealControls(true);
+  }, [live, revealControls, seekBy, showGesture]);
 
   const handleVideoDoubleClick = useCallback((event: ReactMouseEvent<HTMLVideoElement>) => {
     event.preventDefault();
     if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
     clickTimerRef.current = null;
+    const coarse = window.matchMedia("(pointer: coarse)").matches;
+    if (coarse) { if (Date.now() - touchGestureAtRef.current > 500) handleTouchDoubleTap(event.clientX); return; }
     const entering = !document.fullscreenElement;
     void toggleFullscreen();
-    setGestureHint(entering ? "ملء الشاشة" : "العودة للحجم الطبيعي");
-    if (gestureTimerRef.current) clearTimeout(gestureTimerRef.current);
-    gestureTimerRef.current = setTimeout(() => setGestureHint(""), 1200);
-  }, [toggleFullscreen]);
+    showGesture({ kind: "fullscreen", label: entering ? "ملء الشاشة" : "العودة للحجم الطبيعي" });
+  }, [handleTouchDoubleTap, showGesture, toggleFullscreen]);
+
+  const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    revealControls(!playing);
+    if (event.pointerType !== "touch" || (event.target as HTMLElement).closest("button,input,a")) return;
+    pointerStartRef.current = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+  }, [playing, revealControls]);
+
+  const handlePointerUp = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const start = pointerStartRef.current;
+    pointerStartRef.current = null;
+    if (!start || start.pointerId !== event.pointerId) return;
+    const dx = event.clientX - start.x; const dy = event.clientY - start.y;
+    if (Math.abs(dy) < 54 || Math.abs(dy) < Math.abs(dx) * 1.25) {
+      if (event.pointerType === "touch" && Math.hypot(dx, dy) < 22) {
+        const now = Date.now(); const previous = lastTouchTapRef.current;
+        if (previous && now - previous.at < 340 && Math.abs(previous.x - event.clientX) < 54) {
+          lastTouchTapRef.current = null; touchGestureAtRef.current = now; ignoreClickRef.current = true;
+          if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+          clickTimerRef.current = null; handleTouchDoubleTap(event.clientX);
+        } else lastTouchTapRef.current = { at: now, x: event.clientX };
+      }
+      return;
+    }
+    lastTouchTapRef.current = null;
+    ignoreClickRef.current = true;
+    if (dy < 0 && !fullscreen) {
+      void enterFullscreen(true);
+      showGesture({ kind: "fullscreen", label: "ملء الشاشة" });
+    } else if (dy > 0 && fullscreen) {
+      void exitFullscreen();
+      showGesture({ kind: "fullscreen", label: "العودة للحجم الطبيعي" });
+    }
+  }, [enterFullscreen, exitFullscreen, fullscreen, handleTouchDoubleTap, showGesture]);
 
   useEffect(() => {
     if (!("mediaSession" in navigator)) return;
@@ -283,7 +372,13 @@ export function PlayerClient({ assetId, title, active }: { assetId: string; titl
     const onEnded = () => { setState("paused"); try { localStorage.removeItem(`wiva-progress:${assetId}`); } catch {} };
     const onMediaError = () => { setState("error"); setMessage("تعذر تشغيل الفيديو الآن. جرّب مرة أخرى."); };
     const onVolume = () => { sync(); try { localStorage.setItem("wiva-cloud-volume", String(video.volume)); } catch {} };
-    const onFullscreen = () => setFullscreen(document.fullscreenElement === shell);
+    const onFullscreen = () => {
+      const activeFullscreen = document.fullscreenElement === shell;
+      setFullscreen(activeFullscreen);
+      if (!activeFullscreen) void setLandscape(false);
+    };
+    const onWebkitBeginFullscreen = () => setFullscreen(true);
+    const onWebkitEndFullscreen = () => { setFullscreen(false); void setLandscape(false); };
     const onKey = (event: KeyboardEvent) => {
       if ((event.target as HTMLElement)?.closest("input,button,select,textarea")) return;
       const key = event.key.toLowerCase();
@@ -297,7 +392,7 @@ export function PlayerClient({ assetId, title, active }: { assetId: string; titl
     for (const name of ["timeupdate", "durationchange", "loadedmetadata", "progress", "seeking", "seeked"]) video.addEventListener(name, sync);
     video.addEventListener("progress", recoverLivePlayback);
     video.addEventListener("loadedmetadata", restoreProgress); video.addEventListener("playing", onPlaying); video.addEventListener("pause", onPause); video.addEventListener("waiting", onWaiting); video.addEventListener("stalled", onWaiting); video.addEventListener("canplay", onCanPlay); video.addEventListener("ended", onEnded); video.addEventListener("error", onMediaError); video.addEventListener("volumechange", onVolume);
-    document.addEventListener("fullscreenchange", onFullscreen); shell.addEventListener("keydown", onKey);
+    document.addEventListener("fullscreenchange", onFullscreen); video.addEventListener("webkitbeginfullscreen", onWebkitBeginFullscreen); video.addEventListener("webkitendfullscreen", onWebkitEndFullscreen); shell.addEventListener("keydown", onKey);
     return () => {
       for (const name of ["timeupdate", "durationchange", "loadedmetadata", "progress", "seeking", "seeked"]) video.removeEventListener(name, sync);
       video.removeEventListener("progress", recoverLivePlayback);
@@ -306,33 +401,42 @@ export function PlayerClient({ assetId, title, active }: { assetId: string; titl
       if (bufferingTimerRef.current) clearTimeout(bufferingTimerRef.current);
       bufferingTimerRef.current = null;
       video.removeEventListener("loadedmetadata", restoreProgress); video.removeEventListener("playing", onPlaying); video.removeEventListener("pause", onPause); video.removeEventListener("waiting", onWaiting); video.removeEventListener("stalled", onWaiting); video.removeEventListener("canplay", onCanPlay); video.removeEventListener("ended", onEnded); video.removeEventListener("error", onMediaError); video.removeEventListener("volumechange", onVolume);
-      document.removeEventListener("fullscreenchange", onFullscreen); shell.removeEventListener("keydown", onKey);
+      document.removeEventListener("fullscreenchange", onFullscreen); video.removeEventListener("webkitbeginfullscreen", onWebkitBeginFullscreen); video.removeEventListener("webkitendfullscreen", onWebkitEndFullscreen); shell.removeEventListener("keydown", onKey);
     };
-  }, [assetId, live, revealControls, seekBy, toggleFullscreen, togglePlayback]);
+  }, [assetId, live, revealControls, seekBy, setLandscape, toggleFullscreen, togglePlayback]);
 
   useEffect(() => () => stop(), [stop]);
 
   const showStartup = ["idle", "loading", "ready", "error", "blocked", "paywall"].includes(state);
-  const progress = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
-  const playing = state === "playing";
+  const displayedTime = scrubbing ? scrubTime : currentTime;
+  const progress = duration > 0 ? Math.min(100, (displayedTime / duration) * 100) : 0;
 
   return (
-    <div ref={shellRef} className={`player-stage wiva-cloud-player ${controlsVisible ? "controls-visible" : "controls-hidden"}`} tabIndex={0} onPointerMove={() => revealControls(!playing)} onPointerDown={() => revealControls(!playing)}>
+    <div ref={shellRef} className={`player-stage wiva-cloud-player ${controlsVisible ? "controls-visible" : "controls-hidden"} ${scrubbing ? "is-scrubbing" : ""}`} tabIndex={0} onPointerMove={() => revealControls(!playing)} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={() => { pointerStartRef.current = null; }}>
       <video ref={videoRef} playsInline disablePictureInPicture={false} controlsList="nodownload" aria-label={title} onClick={handleVideoClick} onDoubleClick={handleVideoDoubleClick} />
       {showStartup ? <div className="player-overlay">
-        {state === "paywall" ? <LockKeyhole size={38} /> : state === "blocked" ? <LockKeyhole size={38} /> : state === "error" ? <AlertTriangle size={38} /> : state === "loading" ? <LoaderCircle className="spin" size={42} /> : <Play size={44} fill="currentColor" />}
-        <h2>{state === "paywall" ? "تابع المشاهدة" : state === "blocked" ? "المحتوى غير متاح" : state === "error" ? "تعذر بدء التشغيل" : state === "loading" ? "جارٍ تجهيز التشغيل…" : state === "ready" ? "الفيديو جاهز" : "جاهز للمشاهدة"}</h2>
-        <p>{message || (state === "blocked" ? "هذا المحتوى غير متاح حاليًا." : "اضغط تشغيل وابدأ المشاهدة.")}</p>
-        {state === "paywall" ? <div className="player-paywall-actions"><a className="button primary" href="/signup"><UserPlus size={18} /> ابدأ 3 أيام مجانًا</a><a className="button secondary" href="/login"><LogIn size={18} /> تسجيل الدخول</a></div> : active && state !== "loading" ? <button className="button primary player-start" onClick={state === "ready" ? resume : play}>{state === "error" ? <RotateCcw size={19} /> : <Play size={19} />} {state === "error" ? "إعادة المحاولة" : "تشغيل الآن"}</button> : null}
+        {state === "loading" ? <div className="player-startup-loading" role="status"><span className="player-spinner"><LoaderCircle /></span><small className="sr-only">{message || "جارٍ تجهيز التشغيل"}</small></div> : <>
+          {state === "paywall" || state === "blocked" ? <LockKeyhole size={38} /> : state === "error" ? <AlertTriangle size={38} /> : <Play size={44} fill="currentColor" />}
+          <h2>{state === "paywall" ? "تابع المشاهدة" : state === "blocked" ? "المحتوى غير متاح" : state === "error" ? "تعذر بدء التشغيل" : state === "ready" ? "الفيديو جاهز" : "جاهز للمشاهدة"}</h2>
+          <p>{message || (state === "blocked" ? "هذا المحتوى غير متاح حاليًا." : "اضغط تشغيل وابدأ المشاهدة.")}</p>
+          {state === "paywall" ? <div className="player-paywall-actions"><a className="button primary" href="/signup"><UserPlus size={18} /> ابدأ 3 أيام مجانًا</a><a className="button secondary" href="/login"><LogIn size={18} /> تسجيل الدخول</a></div> : active ? <button className="button primary player-start" onClick={state === "ready" ? resume : play}>{state === "error" ? <RotateCcw size={19} /> : <Play size={19} />} {state === "error" ? "إعادة المحاولة" : "تشغيل الآن"}</button> : null}
+        </>}
       </div> : null}
 
-      {!showStartup && buffering ? <div className="player-buffering" role="status" aria-live="polite"><LoaderCircle className="spin" /><span>{message || "لحظات ونكمل المشاهدة…"}</span></div> : null}
-      {gestureHint ? <div className="player-gesture-hint" aria-live="polite"><Maximize size={18} />{gestureHint}</div> : null}
+      {!showStartup && buffering ? <div className="player-buffering" role="status" aria-live="polite"><span className="player-spinner"><LoaderCircle /></span><span className="sr-only">{message || "لحظات ونكمل المشاهدة"}</span></div> : null}
+      {gestureFeedback ? <div className={`player-gesture-feedback ${gestureFeedback.kind}`} aria-live="polite">{gestureFeedback.kind === "seek-forward" ? <FastForward /> : gestureFeedback.kind === "seek-back" ? <Rewind /> : <Maximize />}<strong>{gestureFeedback.label}</strong></div> : null}
 
       {!showStartup ? <div className="wiva-cloud-controls" dir="rtl">
+        <div className="player-mobile-title"><strong>{title}</strong><span>{live ? "مباشر · اسحب للأعلى لملء الشاشة" : "نقرتان يمينًا أو يسارًا · اسحب للأعلى"}</span></div>
         {!live && duration > 0 ? <div className="wiva-cloud-timeline">
-          <input aria-label="موضع الفيلم" type="range" min="0" max={duration} step="0.1" value={Math.min(currentTime, duration)} style={{ "--played": `${progress}%`, "--buffered": `${Math.max(progress, buffered)}%` } as CSSProperties} onChange={(event) => { if (videoRef.current) videoRef.current.currentTime = Number(event.target.value); }} />
-          <span dir="ltr">{formatTime(currentTime)} / {formatTime(duration)}</span>
+          {scrubbing ? <output className="player-scrub-preview" style={{ "--scrub-position": `${progress}%` } as CSSProperties}>{formatTime(scrubTime)}</output> : null}
+          <input aria-label="موضع الفيلم" type="range" min="0" max={duration} step="0.1" value={Math.min(displayedTime, duration)} style={{ "--played": `${progress}%`, "--buffered": `${Math.max(progress, buffered)}%` } as CSSProperties}
+            onPointerDown={(event) => { event.stopPropagation(); scrubbingRef.current = true; setScrubbing(true); setScrubTime(Number(event.currentTarget.value)); revealControls(true); }}
+            onChange={(event) => { const next = Number(event.target.value); setScrubTime(next); if (!scrubbingRef.current && videoRef.current) { videoRef.current.currentTime = next; setCurrentTime(next); } }}
+            onPointerUp={(event) => { event.stopPropagation(); const next = Number(event.currentTarget.value); if (videoRef.current) videoRef.current.currentTime = next; setCurrentTime(next); scrubbingRef.current = false; setScrubbing(false); revealControls(); }}
+            onPointerCancel={() => { scrubbingRef.current = false; setScrubbing(false); }}
+            onKeyUp={(event) => { if (videoRef.current) videoRef.current.currentTime = Number(event.currentTarget.value); }} />
+          <span dir="ltr">{formatTime(displayedTime)} / {formatTime(duration)}</span>
         </div> : null}
         <div className="wiva-cloud-control-row">
           <div className="wiva-cloud-control-group">

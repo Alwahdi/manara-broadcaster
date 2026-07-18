@@ -267,6 +267,13 @@ test("viewer player supports polished fullscreen gestures and hides technical co
   assert.match(player, /onDoubleClick=\{handleVideoDoubleClick\}/);
   assert.match(player, /toggleFullscreen\(\)/);
   assert.match(player, /player-buffering/);
+  assert.match(player, /position >= \.58 \? 10 : -10/);
+  assert.match(player, /lastTouchTapRef/);
+  assert.match(player, /Math\.hypot\(dx, dy\) < 22/);
+  assert.match(player, /handlePointerUp/);
+  assert.match(player, /orientation\?\.lock\?\.\("landscape"\)/);
+  assert.match(player, /player-scrub-preview/);
+  assert.match(player, /scrubbingRef\.current/);
   assert.match(player, /navigator\.mediaSession/);
   const encodedWordmark = brandAssets.match(/WIVA_WORDMARK_BASE64 = "([^"]+)"/)?.[1];
   assert.deepEqual(Buffer.from(encodedWordmark || "", "base64"), readFileSync(join(root, "../electron-broadcaster/assets/wiva-logo-128.png")));
