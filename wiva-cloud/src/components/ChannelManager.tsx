@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, CheckCircle2, Clapperboard, Eye, EyeOff, LoaderCircle, Plus, Power, Search } from "lucide-react";
+import { Check, CheckCircle2, Clapperboard, Eye, EyeOff, LoaderCircle, Plus, Power, Search, Trash2 } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
 import type { AssetKind, CatalogAsset, ProviderSummary } from "@/lib/types";
 
@@ -52,6 +52,20 @@ export function ChannelManager({ initial, providers }: { initial: CatalogAsset[]
     finally { setPending(false); }
   }
 
+  async function remove(asset: CatalogAsset) {
+    const detail = asset.kind === "series" && !asset.parentAssetId ? " وسيتم حذف جميع مواسمه وحلقاته" : "";
+    if (!window.confirm(`حذف «${asset.title}» نهائيًا${detail}؟`)) return;
+    setPending(true); setMessage("");
+    try {
+      const response = await fetch(`/api/admin/assets/${asset.id}`, { method: "DELETE" });
+      const payload = await response.json(); if (!response.ok) throw new Error(payload.error);
+      setAssets(payload.assets);
+      setSelected((current) => { const next = new Set(current); next.delete(asset.id); return next; });
+      setMessage(`تم حذف «${asset.title}»${detail}.`);
+    } catch (error) { setMessage(error instanceof Error ? error.message : "تعذر حذف المحتوى"); }
+    finally { setPending(false); }
+  }
+
   function toggleSelected(id: string) { setSelected((current) => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; }); }
   function toggleVisible() { setSelected((current) => { const next = new Set(current); for (const asset of visible) allVisibleSelected ? next.delete(asset.id) : next.add(asset.id); return next; }); }
 
@@ -70,7 +84,10 @@ export function ChannelManager({ initial, providers }: { initial: CatalogAsset[]
         {visible.map((asset) => <article key={asset.id} className={`asset-admin-card ${selected.has(asset.id) ? "selected" : ""}`}>
           <button className="mini-art asset-select" onClick={() => toggleSelected(asset.id)} aria-label="تحديد العنصر">{selected.has(asset.id) ? <Check /> : asset.title.slice(0, 2)}</button>
           <div><span className="asset-kind">{asset.kind === "live" ? "مباشر" : asset.kind === "movie" ? "فيلم" : "مسلسل"}</span><strong>{asset.title}</strong><small>{asset.category || "غير مصنف"} · {asset.quality}</small></div>
-          <button className={`toggle-button ${asset.isActive ? "on" : ""}`} onClick={() => void toggle(asset)} disabled={pending}><Power size={16} />{asset.isActive ? "منشور" : "متوقف"}</button>
+          <div className="asset-card-actions">
+            <button className={`toggle-button ${asset.isActive ? "on" : ""}`} onClick={() => void toggle(asset)} disabled={pending}><Power size={16} />{asset.isActive ? "منشور" : "متوقف"}</button>
+            <button className="asset-delete-button" onClick={() => void remove(asset)} disabled={pending} aria-label={`حذف ${asset.title}`}><Trash2 size={16} />حذف</button>
+          </div>
         </article>)}
         {!visible.length ? <div className="inline-empty"><Search /><p>لا يوجد محتوى يطابق البحث والفلاتر الحالية.</p></div> : null}
       </div>

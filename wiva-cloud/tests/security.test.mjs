@@ -129,6 +129,34 @@ test("local media gateway validates grants and hides upstream URLs behind tokens
   assert.doesNotMatch(gateway, /Access-Control-Allow-Origin': '\*'/);
 });
 
+test("disabled providers fail closed across catalog, playback, and active gateway sessions", () => {
+  const database = readFileSync(join(root, "src/lib/db.ts"), "utf8");
+  const gateway = readFileSync(join(root, "scripts/local-media-gateway.mjs"), "utf8");
+  const providers = readFileSync(join(root, "src/components/ProviderManager.tsx"), "utf8");
+  assert.match(database, /join wiva_cloud_providers p on p\.id = a\.provider_id and p\.tenant_id = a\.tenant_id/);
+  assert.match(database, /p\.status\s*=\s*'active' and p\.redistribution_attested\s*=\s*true/);
+  assert.match(database, /getAsset\(id: string, includeUnavailable = false\)/);
+  assert.match(gateway, /AVAILABILITY_TTL_MS = 2_000/);
+  assert.match(gateway, /async function assetIsAvailable/);
+  assert.match(gateway, /revokeAssetRuntime\(assetId\)/);
+  assert.match(gateway, /assetIsAvailable\(session\.channel\.assetId\)/);
+  assert.match(providers, /اختفى كل محتواه من المشاهدين/);
+});
+
+test("admins can permanently delete one asset with cascade-aware confirmation and audit", () => {
+  const database = readFileSync(join(root, "src/lib/db.ts"), "utf8");
+  const route = readFileSync(join(root, "src/app/api/admin/assets/[id]/route.ts"), "utf8");
+  const manager = readFileSync(join(root, "src/components/ChannelManager.tsx"), "utf8");
+  assert.match(database, /export async function deleteAsset/);
+  assert.match(database, /delete from wiva_cloud_assets/);
+  assert.match(route, /export async function DELETE/);
+  assert.match(route, /assertSameOrigin\(request\); requireAdminRequest\(request\)/);
+  assert.match(route, /audit\("asset\.delete"/);
+  assert.match(manager, /window\.confirm/);
+  assert.match(manager, /method: "DELETE"/);
+  assert.match(manager, /جميع مواسمه وحلقاته/);
+});
+
 test("local live gateway uses one bounded TS ingest shared by viewer sessions", () => {
   const gateway = readFileSync(join(root, "scripts/local-media-gateway.mjs"), "utf8");
   assert.match(gateway, /const liveIngests = new Map\(\)/);

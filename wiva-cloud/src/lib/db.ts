@@ -48,22 +48,54 @@ export async function listAssets(kind?: AssetKind, includeDisabled = false) {
   if (!databaseConfigured()) return isDemoMode() ? demoAssets.filter((item) => !kind || item.kind === kind) : [];
   const query = sql();
   const tenant = tenantId();
-  const rows = kind
-    ? await query`select * from wiva_cloud_assets where tenant_id = ${tenant} and kind = ${kind} and (${kind !== "series"} or parent_asset_id is null) and (${includeDisabled} or is_active = true) order by sort_order, title`
-    : await query`select * from wiva_cloud_assets where tenant_id = ${tenant} and (${includeDisabled} or is_active = true) order by is_featured desc, sort_order, title`;
+  const rows = includeDisabled
+    ? kind
+      ? await query`select * from wiva_cloud_assets where tenant_id = ${tenant} and kind = ${kind} and (${kind !== "series"} or parent_asset_id is null) order by sort_order, title`
+      : await query`select * from wiva_cloud_assets where tenant_id = ${tenant} order by is_featured desc, sort_order, title`
+    : kind
+      ? await query`
+          select a.* from wiva_cloud_assets a
+          join wiva_cloud_providers p on p.id = a.provider_id and p.tenant_id = a.tenant_id
+          where a.tenant_id = ${tenant} and a.kind = ${kind} and (${kind !== "series"} or a.parent_asset_id is null)
+            and a.is_active = true and p.status = 'active' and p.redistribution_attested = true
+          order by a.sort_order, a.title
+        `
+      : await query`
+          select a.* from wiva_cloud_assets a
+          join wiva_cloud_providers p on p.id = a.provider_id and p.tenant_id = a.tenant_id
+          where a.tenant_id = ${tenant} and a.is_active = true
+            and p.status = 'active' and p.redistribution_attested = true
+          order by a.is_featured desc, a.sort_order, a.title
+        `;
   return (rows as Record<string, unknown>[]).map(assetFromRow);
 }
 
 export async function listSeriesEpisodes(parentId: string, includeDisabled = false) {
   const query = sql();
-  const rows = await query`select * from wiva_cloud_assets where tenant_id=${tenantId()} and parent_asset_id=${parentId} and (${includeDisabled} or is_active=true) order by season_number, episode_number, title`;
+  const rows = includeDisabled
+    ? await query`select * from wiva_cloud_assets where tenant_id=${tenantId()} and parent_asset_id=${parentId} order by season_number, episode_number, title`
+    : await query`
+        select a.* from wiva_cloud_assets a
+        join wiva_cloud_providers p on p.id = a.provider_id and p.tenant_id = a.tenant_id
+        where a.tenant_id=${tenantId()} and a.parent_asset_id=${parentId} and a.is_active=true
+          and p.status='active' and p.redistribution_attested=true
+        order by a.season_number, a.episode_number, a.title
+      `;
   return (rows as Record<string, unknown>[]).map(assetFromRow);
 }
 
-export async function getAsset(id: string) {
+export async function getAsset(id: string, includeUnavailable = false) {
   if (!databaseConfigured()) return isDemoMode() ? demoAssets.find((item) => item.id === id) || null : null;
   const query = sql();
-  const rows = await query`select * from wiva_cloud_assets where tenant_id = ${tenantId()} and id = ${id} limit 1`;
+  const rows = includeUnavailable
+    ? await query`select * from wiva_cloud_assets where tenant_id = ${tenantId()} and id = ${id} limit 1`
+    : await query`
+        select a.* from wiva_cloud_assets a
+        join wiva_cloud_providers p on p.id = a.provider_id and p.tenant_id = a.tenant_id
+        where a.tenant_id = ${tenantId()} and a.id = ${id} and a.is_active = true
+          and p.status = 'active' and p.redistribution_attested = true
+        limit 1
+      `;
   return rows[0] ? assetFromRow(rows[0] as Record<string, unknown>) : null;
 }
 
@@ -207,6 +239,16 @@ export async function setAssetActive(id: string, active: boolean) {
     returning id
   `;
   return Boolean(rows[0]);
+}
+
+export async function deleteAsset(id: string) {
+  const query = sql();
+  const rows = await query`
+    delete from wiva_cloud_assets
+    where tenant_id = ${tenantId()} and id = ${id}
+    returning id, title, kind, provider_id
+  `;
+  return (rows[0] as Record<string, unknown> | undefined) || null;
 }
 
 export async function setAssetsActive(ids: string[], active: boolean) {

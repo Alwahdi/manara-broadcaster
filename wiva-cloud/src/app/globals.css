@@ -288,6 +288,10 @@ select { appearance: none; }
 .asset-admin-card small, .asset-kind { color: var(--dim); font-size: .64rem; }
 .toggle-button { padding: 6px 8px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); background: rgba(255,255,255,.03); cursor: pointer; font-size: .68rem; }
 .toggle-button.on { color: #bff5df; border-color: rgba(69,221,163,.22); background: rgba(69,221,163,.08); }
+.asset-card-actions { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.asset-delete-button { padding: 6px 8px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid rgba(255,116,125,.25); border-radius: 9px; color: #ffd8db; background: rgba(255,116,125,.07); cursor: pointer; font-size: .68rem; }
+.asset-delete-button:hover { border-color: rgba(255,116,125,.65); background: rgba(255,116,125,.14); }
+.asset-delete-button:disabled, .toggle-button:disabled { opacity: .5; cursor: wait; }
 .content-manager-grid { grid-template-columns: minmax(0,1.7fr) minmax(300px,.6fr); }
 .asset-filter-panel { margin-bottom: 10px; display: grid; grid-template-columns: minmax(220px,1.4fr) repeat(3,minmax(120px,.6fr)); gap: 8px; }
 .asset-filter-panel select, .asset-filter-panel input { min-height: 42px; }

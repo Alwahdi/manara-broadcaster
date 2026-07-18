@@ -35,6 +35,7 @@ export function ProviderManager({ initial }: { initial: ProviderSummary[] }) {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error);
       setProviders(payload.providers);
+      setMessage(status === "active" ? "تم تشغيل المزوّد. عاد محتواه المنشور للظهور للمشاهدين." : "تم إيقاف المزوّد. اختفى كل محتواه من المشاهدين وتوقفت طلبات التشغيل الجديدة.");
     } catch (error) { setMessage(error instanceof Error ? error.message : "تعذر تغيير الحالة"); }
     finally { setPending(false); }
   }
@@ -42,7 +43,8 @@ export function ProviderManager({ initial }: { initial: ProviderSummary[] }) {
   return (
     <div className="manager-grid">
       <section className="ops-card">
-        <div className="ops-card-heading"><div><ServerCog /><span><h2>المزوّدون</h2><p>بدّل بين مصادر مرخّصة من دون كشف بياناتها.</p></span></div><span className="count-badge">{providers.length}</span></div>
+        <div className="ops-card-heading"><div><ServerCog /><span><h2>المزوّدون</h2><p>إيقاف المزوّد يخفي كل محتواه فورًا ويمنع تشغيله.</p></span></div><span className="count-badge">{providers.length}</span></div>
+        {message ? <p className="form-message"><CheckCircle2 size={17} />{message}</p> : null}
         <div className="provider-list">
           {providers.length ? providers.map((provider) => (
             <article key={provider.id} className="provider-row provider-row-with-library">
@@ -67,7 +69,6 @@ export function ProviderManager({ initial }: { initial: ProviderSummary[] }) {
           <label>الأولوية<input name="priority" type="number" min="1" max="9999" defaultValue="100" /></label>
           <label className="check-row risk-row"><input name="allowInsecureHttp" type="checkbox" value="true" /><span><strong>السماح باتصال HTTP غير مشفّر</strong><small>للاختبار المحلي فقط. قد يتمكن مزوّد الشبكة من اعتراض اسم المستخدم وكلمة المرور.</small></span></label>
           <label className="check-row"><input name="attested" type="checkbox" value="true" required /><span>أؤكد أن لدي حقًا مكتوبًا لإعادة توزيع هذا المحتوى.</span></label>
-          {message ? <p className="form-message"><CheckCircle2 size={17} />{message}</p> : null}
           <button className="button primary wide" disabled={pending}>{pending ? <LoaderCircle className="spin" /> : <Plus />}حفظ المزوّد</button>
         </form>
       </section>

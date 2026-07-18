@@ -26,6 +26,7 @@ const VOD_CHUNK_BYTES = 8 * 1024 * 1024;
 const MAX_VOD_CACHE_BYTES = 128 * 1024 * 1024;
 const VOD_IDLE_MS = 10 * 60 * 1000;
 const LIVE_IDLE_MS = 45_000;
+const AVAILABILITY_TTL_MS = 2_000;
 const FFMPEG_PATH = process.env.WIVA_FFMPEG_PATH || ffmpegInstaller.path;
 const INGEST_ROOT = join(tmpdir(), "wiva-cloud-live");
 
@@ -39,6 +40,7 @@ const cache = new Map();
 const vodStates = new Map();
 const vodChunks = new Map();
 const resolvedChannels = new Map();
+const assetAvailability = new Map();
 const safeHosts = new Map();
 const metrics = { upstreamRequests: 0, upstreamBytes: 0, downstreamBytes: 0, cacheHits: 0, coalesced: 0, errors: 0 };
 let cacheBytes = 0;
@@ -77,6 +79,7 @@ function cleanExpired() {
   for (const [key, value] of cache) if (!value.promise && value.expiresAt < now) { cache.delete(key); cacheBytes -= value.bytes || 0; }
   for (const [key, ingest] of liveIngests) if (ingest.lastAccess + LIVE_IDLE_MS < now) stopLiveIngest(key, ingest);
   for (const [key, state] of vodStates) if (state.lastAccess + VOD_IDLE_MS < now && state.pending.size === 0) vodStates.delete(key);
+  for (const [key, value] of assetAvailability) if (value.expiresAt + 60_000 < now) assetAvailability.delete(key);
 }
 
 function vodState(channel) {
@@ -204,6 +207,49 @@ function stopLiveIngest(key, ingest) {
   liveIngests.delete(key);
   if (!ingest.process.killed) ingest.process.kill("SIGTERM");
   void rm(ingest.dir, { recursive: true, force: true }).catch(() => {});
+}
+
+function revokeAssetRuntime(assetId) {
+  resolvedChannels.delete(assetId);
+  const revokedSessions = new Set();
+  for (const [token, session] of sessions) {
+    if (session.channel.assetId !== assetId) continue;
+    revokedSessions.add(token); sessions.delete(token);
+  }
+  for (const [token, resource] of uriTokens) if (revokedSessions.has(resource.sessionToken)) uriTokens.delete(token);
+  const ingest = liveIngests.get(assetId);
+  if (ingest) stopLiveIngest(assetId, ingest);
+  vodStates.delete(assetId);
+  for (const [key, entry] of vodChunks) {
+    if (!key.startsWith(`${assetId}:`)) continue;
+    vodChunks.delete(key); vodCacheBytes -= entry?.body?.length || 0;
+  }
+}
+
+async function assetIsAvailable(assetId) {
+  const cached = assetAvailability.get(assetId);
+  if (cached && cached.expiresAt > Date.now()) return cached.promise || cached.available;
+  const promise = (async () => {
+    const rows = await sql`
+      select exists(
+        select 1 from wiva_cloud_assets a
+        join wiva_cloud_providers p on p.id = a.provider_id and p.tenant_id = a.tenant_id
+        where a.tenant_id = ${TENANT} and a.id = ${assetId} and a.is_active = true
+          and p.status = 'active' and p.redistribution_attested = true
+      ) as available
+    `;
+    return Boolean(rows[0]?.available);
+  })();
+  assetAvailability.set(assetId, { promise, available: false, expiresAt: Date.now() + AVAILABILITY_TTL_MS });
+  try {
+    const available = await promise;
+    assetAvailability.set(assetId, { promise: null, available, expiresAt: Date.now() + AVAILABILITY_TTL_MS });
+    if (!available) revokeAssetRuntime(assetId);
+    return available;
+  } catch (error) {
+    assetAvailability.delete(assetId);
+    throw error;
+  }
 }
 
 async function waitForLivePlaylist(ingest, timeoutMs = 15_000, minimumSegments = 3) {
@@ -398,6 +444,7 @@ const server = createServer(async (req, res) => {
       const viewer = url.searchParams.get("viewer") || ""; const exp = Number(url.searchParams.get("exp") || 0); const nonce = url.searchParams.get("nonce") || ""; const signature = url.searchParams.get("sig") || ""; const tenant = url.searchParams.get("tenant") || "";
       const expected = hmac(`${tenant}.${play[1]}.${viewer}.${exp}.${nonce}`);
       if (tenant !== TENANT || !viewer || !nonce || exp < Math.floor(Date.now() / 1000) || exp > Math.floor(Date.now() / 1000) + 120 || !safeEqual(signature, expected)) return sendError(res, 403, "رابط التشغيل غير صالح أو منتهي");
+      if (!(await assetIsAvailable(play[1]))) return sendError(res, 403, "المحتوى متوقف حاليًا");
       const channel = await resolveChannel(play[1]); const token = randomBytes(24).toString("base64url"); const session = { token, channel, viewer, expiresAt: Date.now() + SESSION_TTL_MS }; sessions.set(token, session);
       const resource = play[2] === "media" && channel.mediaType !== "live" ? "media" : "index.m3u8";
       res.writeHead(302, { location: `/v1/session/${token}/${resource}`, "cache-control": "no-store", "referrer-policy": "no-referrer", "access-control-allow-origin": "*" }); return res.end();
@@ -405,6 +452,7 @@ const server = createServer(async (req, res) => {
     const sessionRoute = url.pathname.match(/^\/v1\/session\/([A-Za-z0-9_-]+)\/(index\.m3u8|media|seg|live\/[^/]+)$/);
     if (!sessionRoute) return sendError(res, 404, "المسار غير موجود");
     const session = sessions.get(sessionRoute[1]); if (!session || session.expiresAt < Date.now()) return sendError(res, 403, "انتهت جلسة التشغيل؛ أعد فتح القناة");
+    if (!(await assetIsAvailable(session.channel.assetId))) return sendError(res, 403, "المحتوى متوقف حاليًا");
     if (sessionRoute[2] === "media") return await sendVodMedia(req, res, session);
     if (sessionRoute[2] === "index.m3u8") {
       const ingestKey = session.channel.assetId;
