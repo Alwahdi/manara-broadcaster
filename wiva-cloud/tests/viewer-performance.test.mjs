@@ -23,6 +23,15 @@ test("common catalog routes use a short cache that admin mutations invalidate", 
   assert.match(providerRoute, /revalidateTag\("wiva-viewer-catalog"/);
 });
 
+test("primary viewer destinations are ISR pages while filters keep server-side search", () => {
+  for (const route of ["live", "movies", "series"]) {
+    assert.match(source(`src/app/(viewer)/${route}/page.tsx`), /export const revalidate = 20/);
+    assert.doesNotMatch(source(`src/app/(viewer)/${route}/page.tsx`), /searchParams/);
+    assert.match(source(`src/app/(viewer)/${route}/filter/page.tsx`), /searchParams/);
+  }
+  assert.match(source("src/components/CatalogPage.tsx"), /filters\}\?\$\{params\}/);
+});
+
 test("viewer mobile experience has route feedback, safe-area navigation, and swipeable rails", () => {
   const loading = source("src/app/(viewer)/loading.tsx");
   const styles = source("src/app/globals.css");

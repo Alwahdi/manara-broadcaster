@@ -5,20 +5,20 @@ import { EmptyState } from "@/components/Section";
 import { listViewerCatalog } from "@/lib/db";
 import type { AssetKind } from "@/lib/types";
 
-export async function CatalogPage({ kind, title, description, searchParams = {} }: { kind: AssetKind; title: string; description: string; searchParams?: { page?: string; category?: string; q?: string } }) {
+export async function CatalogPage({ kind, title, description, searchParams = {}, filterPath }: { kind: AssetKind; title: string; description: string; searchParams?: { page?: string; category?: string; q?: string }; filterPath?: string }) {
   const category = searchParams.category?.trim() || ""; const search = searchParams.q?.trim() || "";
   const requestedPage = Math.max(1, Number(searchParams.page || 1) || 1);
   const { items: assets, categories, total, page, pageSize } = await listViewerCatalog(kind, { page: requestedPage, category, search });
-  const pages = Math.max(1, Math.ceil(total / pageSize)); const base = kind === "live" ? "/live" : kind === "movie" ? "/movies" : "/series";
+  const pages = Math.max(1, Math.ceil(total / pageSize)); const base = kind === "live" ? "/live" : kind === "movie" ? "/movies" : "/series"; const filters = filterPath || `${base}/filter`;
   const href = (nextPage: number, nextCategory = category) => {
     const params = new URLSearchParams(); if (nextPage > 1) params.set("page", String(nextPage)); if (nextCategory) params.set("category", nextCategory); if (search) params.set("q", search);
-    return `${base}${params.size ? `?${params}` : ""}`;
+    return params.size ? `${filters}?${params}` : base;
   };
   return (
     <div className="container">
       <header className="listing-hero">
         <span className="eyebrow"><i /> {total.toLocaleString("ar")} عنصر</span><h1>{title}</h1><p>{description}</p>
-        <form className="catalog-search" action={base}><Search size={19} /><input name="q" defaultValue={search} placeholder={`ابحث في ${title}…`} /><button className="button primary">بحث</button></form>
+        <form className="catalog-search" action={filters}><Search size={19} /><input name="q" defaultValue={search} placeholder={`ابحث في ${title}…`} /><button className="button primary">بحث</button></form>
         <div className="filter-row" aria-label="التصنيفات"><Link href={href(1, "")} className={`filter-chip ${!category ? "active" : ""}`}>الكل</Link>{categories.map((item) => <Link key={item} href={href(1, item)} className={`filter-chip ${category === item ? "active" : ""}`}>{item}</Link>)}</div>
       </header>
       <section className="listing-grid">
