@@ -1,0 +1,1 @@
+export default function Loading() { return <main className="auth-panel" style={{ minHeight: "70vh" }}><div className="auth-card"><h2>جارٍ التحميل…</h2><p>نجهّز المحتوى المتاح لحسابك.</p></div></main>; }

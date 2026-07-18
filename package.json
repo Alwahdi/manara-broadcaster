@@ -5,6 +5,9 @@
   "description": "Workspace entrypoint for the WIVA Agent. The production Electron app lives in electron-broadcaster/.",
   "scripts": {
     "start": "npm --prefix electron-broadcaster start",
+    "dev:cloud": "npm --prefix wiva-cloud run dev",
+    "build:cloud": "npm --prefix wiva-cloud run build",
+    "test:cloud": "npm --prefix wiva-cloud run test",
     "test": "npm --prefix electron-broadcaster test",
     "test:load": "npm --prefix electron-broadcaster run test:load",
     "build:webui": "npm --prefix electron-broadcaster run build:webui",
