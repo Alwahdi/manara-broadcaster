@@ -14,6 +14,12 @@ Packaged apps check for updates on startup and every 6 hours. The WIVA Agent
 window also includes a manual update check and install button when an update is
 ready.
 
+## v2.6.62
+
+- Keeps capture viewers registered while the hidden broadcaster recovers, allowing a replacement offer to arrive without tearing down and rebuilding the viewer WebSocket.
+- Extends transient WebRTC disconnect tolerance from 6–8 seconds to 20–22 seconds so short Wi-Fi, encoder, or high-resolution load spikes do not become visible reconnect loops.
+- Caps 1080p capture delivery at a stable 6Mbps while preserving Full HD resolution and the existing per-device adaptive quality controls.
+
 ## v2.6.61
 
 - Stabilizes IPTV playback with a resilience-first HLS buffer, bounded retries, small-gap recovery, and fast restart when a provider segment stalls.
