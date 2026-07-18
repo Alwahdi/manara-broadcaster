@@ -11,6 +11,7 @@ import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 import postgres from "postgres";
 
 const PORT = Number(process.env.WIVA_LOCAL_GATEWAY_PORT || 5290);
+const HOST = process.env.WIVA_LOCAL_GATEWAY_HOST || "0.0.0.0";
 const TENANT = process.env.WIVA_TENANT_ID || "00000000-0000-0000-0000-000000000001";
 const SIGNING_SECRET = process.env.WIVA_PLAYBACK_SIGNING_SECRET || "";
 const CREDENTIALS_KEY = Buffer.from(process.env.WIVA_CREDENTIALS_KEY || "", "base64");
@@ -379,7 +380,14 @@ async function resolveChannel(assetId) {
 }
 function sendJson(res, status, value) { const body = JSON.stringify(value); res.writeHead(status, { "content-type": "application/json; charset=utf-8", "content-length": Buffer.byteLength(body), "cache-control": "no-store", "access-control-allow-origin": "*" }); res.end(body); }
 function sendError(res, status, message) { metrics.errors += 1; sendJson(res, status, { ok: false, error: message }); }
-function origin(req) { return `http://${req.headers.host || `127.0.0.1:${PORT}`}`; }
+function firstForwarded(value) { return String(value || "").split(",")[0].trim(); }
+function origin(req) {
+  const forwardedProto = firstForwarded(req.headers["x-forwarded-proto"]);
+  const protocol = forwardedProto === "https" ? "https" : "http";
+  const forwardedHost = firstForwarded(req.headers["x-forwarded-host"]);
+  const host = forwardedHost || req.headers.host || `127.0.0.1:${PORT}`;
+  return `${protocol}://${host}`;
+}
 
 const server = createServer(async (req, res) => {
   try {
@@ -430,6 +438,6 @@ const server = createServer(async (req, res) => {
   } catch (error) { sendError(res, 502, error instanceof Error ? error.message.replace(/https?:\/\/\S+/g, "المصدر") : "تعذر تشغيل المصدر"); }
 });
 
-server.listen(PORT, "0.0.0.0", () => console.log(`[WIVA gateway] ready on http://0.0.0.0:${PORT}`));
+server.listen(PORT, HOST, () => console.log(`[WIVA gateway] ready on http://${HOST}:${PORT}`));
 const cleanupTimer = setInterval(cleanExpired, 15_000); cleanupTimer.unref();
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, async () => { clearInterval(cleanupTimer); for (const [key, ingest] of liveIngests) stopLiveIngest(key, ingest); server.close(); await sql.end(); process.exit(0); });

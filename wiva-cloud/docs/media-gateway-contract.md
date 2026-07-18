@@ -36,7 +36,7 @@ redistribution license.
 
 ## Required gateway endpoints
 
-- `GET /healthz`
+- `GET /health` (the bundled gateway; external implementations may also alias `/healthz`)
 - `GET /v1/play/:assetId` — signed playback entry point
 - `GET /v1/hls/:session/master.m3u8`
 - `GET /v1/hls/:session/segment/:opaqueToken`

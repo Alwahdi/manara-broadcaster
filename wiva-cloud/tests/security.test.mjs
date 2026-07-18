@@ -121,7 +121,11 @@ test("local media gateway validates grants and hides upstream URLs behind tokens
   assert.match(gateway, /MAX_CACHE_BYTES/);
   assert.match(gateway, /existing\?\.promise/);
   assert.match(gateway, /redistribution_attested/);
-  assert.match(gateway, /server\.listen\(PORT, "0\.0\.0\.0"/);
+  assert.match(gateway, /const HOST = process\.env\.WIVA_LOCAL_GATEWAY_HOST \|\| "0\.0\.0\.0"/);
+  assert.match(gateway, /server\.listen\(PORT, HOST/);
+  assert.match(gateway, /req\.headers\["x-forwarded-proto"\]/);
+  assert.match(gateway, /req\.headers\["x-forwarded-host"\]/);
+  assert.match(gateway, /forwardedProto === "https" \? "https" : "http"/);
   assert.doesNotMatch(gateway, /Access-Control-Allow-Origin': '\*'/);
 });
 

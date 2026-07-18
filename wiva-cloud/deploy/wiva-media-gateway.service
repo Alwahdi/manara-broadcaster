@@ -1,0 +1,29 @@
+[Unit]
+Description=WIVA Cloud Media Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=wiva-media
+Group=wiva-media
+WorkingDirectory=/opt/wiva-cloud-repo/wiva-cloud
+EnvironmentFile=/etc/wiva-cloud-gateway.env
+ExecStart=/usr/bin/node scripts/local-media-gateway.mjs
+Restart=always
+RestartSec=3
+TimeoutStopSec=20
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

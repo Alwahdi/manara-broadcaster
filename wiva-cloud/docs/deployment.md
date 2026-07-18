@@ -44,6 +44,21 @@ gateway through its secret manager.
 Do not proxy video bytes through Next.js Route Handlers. Keep those handlers for
 authorization, catalog APIs, and short-lived playback grants.
 
+### VPS service
+
+The included `deploy/wiva-media-gateway.service` runs the gateway as the
+unprivileged `wiva-media` user and binds it to `127.0.0.1:5290` through the
+environment file. `deploy/nginx-wiva-media.conf` is a separate virtual host, so
+an existing default Nginx site remains untouched. Replace
+`__WIVA_MEDIA_HOST__`, enable the site, and terminate TLS with a valid
+certificate before exposing playback to the web portal.
+
+The reverse proxy must forward `X-Forwarded-Proto` and `X-Forwarded-Host`.
+Otherwise generated HLS segment URLs can be downgraded to HTTP and blocked as
+mixed content by mobile browsers.
+
+The gateway's current health endpoint is `GET /health`.
+
 ## Go-live gate
 
 - Provider contract explicitly grants internet redistribution.
