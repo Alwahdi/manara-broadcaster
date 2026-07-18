@@ -259,6 +259,7 @@ export interface LibraryBrowsePayload {
   breadcrumbs: { name: string; path: string }[];
   entries: LibraryBrowseEntry[];
   sources?: LibrarySource[];
+  search?: string;
 }
 
 export interface ViewerAccount {

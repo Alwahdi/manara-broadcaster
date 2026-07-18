@@ -4052,6 +4052,50 @@ body.wiva-player-fullscreen-open .player-stage {
   .folder-grid,
   .live-channel-grid:not(.horizontal-rail),
   .media-rail:not(.horizontal-rail) { gap: 12px; }
+
+  /* Mobile viewers should reach content immediately without desktop summaries. */
+  .viewer-home .hero-meta-strip,
+  .viewer-home .hero-device-preview,
+  .library-page > .library-hero {
+    display: none !important;
+  }
+  .library-page {
+    gap: 14px;
+  }
+  .library-page .folder-browser {
+    gap: 14px;
+  }
+  .library-page .viewer-filter-bar {
+    padding: 10px;
+    border-radius: 18px;
+  }
+  .library-page .folder-card-body {
+    position: relative;
+    z-index: 2;
+    display: grid !important;
+    min-height: 70px;
+    align-content: center;
+    gap: 5px;
+    padding: 12px 13px 14px;
+    background: rgba(8, 12, 24, .96);
+  }
+  .library-page .folder-card-title {
+    display: -webkit-box !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    overflow: hidden;
+    color: var(--text);
+    white-space: normal;
+    text-overflow: ellipsis;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-height: 1.45;
+  }
+  .library-page .folder-card-sub {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
 }
 
 @media (max-width: 430px) {

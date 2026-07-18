@@ -844,6 +844,7 @@ function cachedLibraryBrowsePayload(query = {}) {
     mediaRevision: typeof db.mediaRevision === 'function' ? db.mediaRevision() : 0,
     sourceId: query.sourceId ? String(query.sourceId) : '',
     path: normalizeRelativePath(query.path || ''),
+    search: normalizeLibrarySearchText(query.search || ''),
   });
   const cached = libraryBrowseCache.get(key);
   if (cached && Date.now() - cached.at < LIBRARY_BROWSE_CACHE_TTL_MS) {
@@ -888,6 +889,59 @@ function cloneBrowseEntry(entry) {
     ...entry,
     media: entry.media ? { ...entry.media } : entry.media,
   };
+}
+
+function normalizeLibrarySearchText(value = '') {
+  return String(value || '')
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .toLocaleLowerCase('ar')
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+function searchLibraryBrowseEntries(index, term) {
+  const normalizedTerm = normalizeLibrarySearchText(term);
+  if (!normalizedTerm) return [];
+  const tokens = normalizedTerm.split(/\s+/).filter(Boolean);
+  const results = [];
+  const seen = new Set();
+
+  for (const source of index.sources) {
+    const sourceId = String(source.id);
+    const sourceBuckets = index.bucketsBySource.get(sourceId);
+    if (!sourceBuckets) continue;
+    for (const bucket of sourceBuckets.values()) {
+      for (const entry of [...bucket.folders.values(), ...bucket.files]) {
+        const resultKey = `${sourceId}:${entry.type}:${entry.path}`;
+        if (seen.has(resultKey)) continue;
+        const media = entry.media || {};
+        const haystack = normalizeLibrarySearchText([
+          entry.name,
+          entry.path,
+          media.title,
+          media.name,
+          media.category,
+          media.kind,
+          media.format,
+        ].filter(Boolean).join(' '));
+        if (!tokens.every((token) => haystack.includes(token))) continue;
+        seen.add(resultKey);
+        results.push(cloneBrowseEntry(entry));
+      }
+    }
+  }
+
+  return results.sort((a, b) => {
+    const aName = normalizeLibrarySearchText(a.name);
+    const bName = normalizeLibrarySearchText(b.name);
+    const aExact = aName === normalizedTerm ? 0 : aName.startsWith(normalizedTerm) ? 1 : 2;
+    const bExact = bName === normalizedTerm ? 0 : bName.startsWith(normalizedTerm) ? 1 : 2;
+    return aExact - bExact || a.name.localeCompare(b.name, undefined, { numeric: true });
+  }).slice(0, 500);
 }
 
 function buildLibraryBrowseIndex() {
@@ -1015,6 +1069,19 @@ function libraryBrowsePayload(query = {}) {
   const sources = index.sources;
   const sourceId = query.sourceId ? String(query.sourceId) : '';
   const currentPath = normalizeRelativePath(query.path || '');
+  const search = String(query.search || '').trim();
+
+  if (search) {
+    return {
+      sourceId: '',
+      source: null,
+      path: '',
+      breadcrumbs: [],
+      entries: searchLibraryBrowseEntries(index, search),
+      sources,
+      search,
+    };
+  }
 
   if (!sourceId) {
     const entries = sources.flatMap((source) => {

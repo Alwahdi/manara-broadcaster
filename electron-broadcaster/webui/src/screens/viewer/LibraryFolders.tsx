@@ -13,6 +13,7 @@ export function LibraryFolders() {
   const [sourceId, setSourceId] = useState<string>(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("sourceId") || "");
   const [path, setPath] = useState<string>(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("path") || "");
   const [term, setTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadNotice, setUploadNotice] = useState("");
@@ -34,6 +35,21 @@ export function LibraryFolders() {
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
+  const librarySearch = useQuery({
+    queryKey: ["library-browse-search", searchTerm],
+    queryFn: () => api.libraryBrowse({ search: searchTerm }),
+    enabled: Boolean(searchTerm),
+    staleTime: 10 * 60_000,
+    gcTime: 30 * 60_000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSearchTerm(term.trim()), 180);
+    return () => window.clearTimeout(timer);
+  }, [term]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -77,6 +93,8 @@ export function LibraryFolders() {
   const openSource = (id: string | number) => navigateTo(String(id), "");
   const openFolder = (entry: LibraryBrowseEntry) => {
     if (!entry.sourceId) return;
+    setTerm("");
+    setSearchTerm("");
     navigateTo(String(entry.sourceId), entry.path || "");
   };
 
@@ -118,15 +136,16 @@ export function LibraryFolders() {
       </section>
       <QueryBoundary
         query={browse}
-        isEmpty={(d) => !d.entries || d.entries.length === 0}
-        empty={<EmptyState icon="W" title="لا يوجد محتوى متاح حاليًا" text="ستظهر الأقسام هنا عند توفر محتوى جديد على الشبكة." />}
+        isEmpty={() => false}
+        empty={null}
       >
         {(data) => {
           const q = term.trim().toLowerCase();
-          const entries = data.entries.filter((entry) => {
+          const localMatches = data.entries.filter((entry) => {
             const matchesTerm = !q || `${entry.name} ${entry.path || ""} ${entry.media?.title || ""}`.toLowerCase().includes(q);
             return matchesTerm;
           });
+          const entries = searchTerm ? (librarySearch.data?.entries || localMatches) : localMatches;
           const singleSourceMode = (data.sources?.length || 0) === 1;
           const parentPath = data.breadcrumbs.length > 1 ? data.breadcrumbs.at(-2)?.path || "" : "";
           const canGoBack = Boolean(sourceId || path);
@@ -136,9 +155,10 @@ export function LibraryFolders() {
               <div className="viewer-filter-bar">
                 <label className="search-shell">
                   <Search size={19} aria-hidden />
-                  <input value={term} onChange={(event) => setTerm(event.target.value)} placeholder="ابحث داخل هذا المجلد" />
+                  <input value={term} onChange={(event) => setTerm(event.target.value)} placeholder="ابحث في الاستراحة" />
                 </label>
               </div>
+              {librarySearch.isFetching ? <div className="folder-refresh-line" aria-label="جاري البحث" /> : null}
               <nav className="folder-breadcrumbs" aria-label="تنقل الاستراحة">
                 {canGoBack ? (
                   <button
@@ -207,7 +227,11 @@ export function LibraryFolders() {
                     )}
                   </div>
                 ) : (
-                  <EmptyState icon="W" title="لا توجد نتائج" text="جرّب إزالة البحث أو تغيير الفلتر." />
+                  <EmptyState
+                    icon="W"
+                    title={searchTerm ? "لا توجد نتائج" : "لا يوجد محتوى متاح حاليًا"}
+                    text={searchTerm ? "جرّب كلمة أخرى أو اكتب جزءًا من اسم المحتوى." : "ستظهر الأقسام هنا عند توفر محتوى جديد على الشبكة."}
+                  />
                 )}
               </ContentSection>
               {browse.isLoading ? <ViewerSkeleton variant="folders" count={6} /> : null}

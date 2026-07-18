@@ -640,6 +640,22 @@ async function main() {
     const browseNested = await res.json();
     assert.ok(browseNested.entries.some((entry) => entry.type === 'media' && entry.media?.title === 'فيلم smoke'), 'folder browser shows media files inside nested folders');
 
+    res = await request(base, '/api/library/browse?search=' + encodeURIComponent('افلام عربيه'));
+    assert.equal(res.status, 200);
+    const browseSearch = await res.json();
+    assert.ok(
+      browseSearch.entries.some((entry) => entry.type === 'folder' && entry.name === 'أفلام عربية'),
+      'library search finds nested folders across the full indexed library and normalizes Arabic spelling',
+    );
+
+    res = await request(base, '/api/library/browse?search=' + encodeURIComponent('فيلم smoke'));
+    assert.equal(res.status, 200);
+    const mediaSearch = await res.json();
+    assert.ok(
+      mediaSearch.entries.some((entry) => entry.type === 'media' && entry.media?.title === 'فيلم smoke'),
+      'library search finds nested media without opening each parent folder',
+    );
+
     res = await request(base, `/api/media/${mediaId}`);
     assert.equal(res.status, 200);
     const mediaDetails = await res.json();
