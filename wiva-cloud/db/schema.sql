@@ -52,6 +52,10 @@ create table if not exists wiva_cloud_assets (
   sort_order integer not null default 100,
   is_featured boolean not null default false,
   is_active boolean not null default false,
+  is_restricted boolean not null default false,
+  is_playable boolean not null default true,
+  metadata_review text not null default 'approved'
+    check (metadata_review in ('approved','needs_review')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique(tenant_id, provider_id, provider_asset_ref)
@@ -64,7 +68,21 @@ alter table wiva_cloud_assets add column if not exists parent_asset_id uuid refe
 alter table wiva_cloud_assets add column if not exists season_number integer;
 alter table wiva_cloud_assets add column if not exists episode_number integer;
 alter table wiva_cloud_assets add column if not exists delivery_mode text not null default 'auto';
+alter table wiva_cloud_assets add column if not exists is_restricted boolean not null default false;
+alter table wiva_cloud_assets add column if not exists is_playable boolean not null default true;
+alter table wiva_cloud_assets add column if not exists metadata_review text not null default 'approved';
 create index if not exists wiva_cloud_assets_parent_idx on wiva_cloud_assets(tenant_id, parent_asset_id, season_number, episode_number);
+create index if not exists wiva_cloud_assets_public_idx on wiva_cloud_assets(tenant_id, kind, is_active, is_restricted, is_playable);
+
+-- Safe migration for previously imported provider metadata. Explicitly restricted
+-- titles are hidden from public pages until an administrator reviews them.
+update wiva_cloud_assets
+set is_restricted = true, metadata_review = 'needs_review'
+where lower(concat_ws(' ', title, category, description)) ~ '(adult|xxx|18\s*\+|porno|pornography|playboy|brazzers|hustler|redlight|dorcel|penthouse|hardcore|vivid\s*(tv|red|touch)?|erotic|إباحي|اباحي|للبالغين)';
+
+update wiva_cloud_assets
+set is_playable = false, metadata_review = 'needs_review'
+where lower(concat_ws(' ', title, category, description)) ~ '(جدول\s*(المباريات|المباراة)|مواعيد\s*(المباريات|المباراة)|match(es)?\s*schedule|fixtures?|epg)';
 
 create table if not exists wiva_cloud_viewers (
   id uuid primary key default gen_random_uuid(),
@@ -98,6 +116,28 @@ create table if not exists wiva_cloud_viewer_sessions (
 
 create index if not exists wiva_cloud_sessions_expiry_idx
   on wiva_cloud_viewer_sessions(expires_at);
+
+create table if not exists wiva_cloud_viewer_favorites (
+  tenant_id uuid not null references wiva_cloud_tenants(id) on delete cascade,
+  viewer_id uuid not null references wiva_cloud_viewers(id) on delete cascade,
+  asset_id uuid not null references wiva_cloud_assets(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (tenant_id, viewer_id, asset_id)
+);
+
+create table if not exists wiva_cloud_viewer_progress (
+  tenant_id uuid not null references wiva_cloud_tenants(id) on delete cascade,
+  viewer_id uuid not null references wiva_cloud_viewers(id) on delete cascade,
+  asset_id uuid not null references wiva_cloud_assets(id) on delete cascade,
+  position_seconds integer not null default 0 check (position_seconds >= 0),
+  duration_seconds integer not null default 0 check (duration_seconds >= 0),
+  completed boolean not null default false,
+  updated_at timestamptz not null default now(),
+  primary key (tenant_id, viewer_id, asset_id)
+);
+
+create index if not exists wiva_cloud_viewer_progress_recent_idx
+  on wiva_cloud_viewer_progress(tenant_id, viewer_id, updated_at desc);
 
 create table if not exists wiva_cloud_payment_requests (
   id uuid primary key default gen_random_uuid(),

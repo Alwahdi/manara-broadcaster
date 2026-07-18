@@ -1,9 +1,13 @@
 import Link from "next/link";
-import { CalendarClock, ChevronLeft, LogOut, MonitorSmartphone, RefreshCw, ShieldCheck, UserRound } from "lucide-react";
+import { CalendarClock, ChevronLeft, FileText, KeyRound, LogOut, MonitorSmartphone, RefreshCw, ShieldCheck, UserRound } from "lucide-react";
 import { redirect } from "next/navigation";
 import { currentViewerAccount } from "@/lib/auth";
 import { listPaymentRequests } from "@/lib/db";
 import { PaymentRequestForm } from "@/components/PaymentRequestForm";
+import { DeviceSessions } from "@/components/DeviceSessions";
+import { currentViewerSessionHash } from "@/lib/auth";
+import { listViewerSessions } from "@/lib/db";
+import { PasswordChangeForm } from "@/components/PasswordChangeForm";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +19,7 @@ export default async function AccountPage() {
   const viewer = await currentViewerAccount();
   if (!viewer) redirect("/login");
   const requests = await listPaymentRequests(viewer.id);
+  const sessions = await listViewerSessions(viewer.id, await currentViewerSessionHash());
   const expired = viewer.status === "expired" || Boolean(viewer.expiresAt && new Date(viewer.expiresAt).getTime() <= Date.now());
   const expiry = viewer.expiresAt ? new Date(viewer.expiresAt).toLocaleDateString("ar") : "بدون تاريخ انتهاء";
 
@@ -39,12 +44,17 @@ export default async function AccountPage() {
         <h2>الإجراءات</h2>
         <div className="account-action-list">
           <Link href="#payment"><span className="account-action-icon"><RefreshCw /></span><span><strong>تجديد الاشتراك</strong><small>إرسال رقم الحوالة للمراجعة</small></span><ChevronLeft /></Link>
-          <div><span className="account-action-icon"><MonitorSmartphone /></span><span><strong>الأجهزة</strong><small>مسموح بالمشاهدة على {viewer.maxConcurrentStreams} {viewer.maxConcurrentStreams === 1 ? "جهاز" : "أجهزة"} في الوقت نفسه</small></span></div>
+          <Link href="#devices"><span className="account-action-icon"><MonitorSmartphone /></span><span><strong>الأجهزة</strong><small>{sessions.length.toLocaleString("ar")} جلسة مسجّلة · إدارة تسجيل الدخول</small></span><ChevronLeft /></Link>
+          <Link href="#security"><span className="account-action-icon"><KeyRound /></span><span><strong>الأمان</strong><small>تغيير كلمة المرور وحماية الحساب</small></span><ChevronLeft /></Link>
           <form action="/api/auth/viewer/logout" method="post"><button type="submit"><span className="account-action-icon danger"><LogOut /></span><span><strong>تسجيل الخروج</strong><small>الخروج من الحساب على هذا الجهاز</small></span><ChevronLeft /></button></form>
         </div>
       </section>
 
+      <DeviceSessions initial={sessions} />
+      <PasswordChangeForm />
+
       <PaymentRequestForm initial={requests} />
+      <nav className="account-legal-links" aria-label="المعلومات القانونية"><Link href="/privacy"><ShieldCheck /> الخصوصية</Link><Link href="/terms"><FileText /> الشروط</Link></nav>
     </div>
   );
 }

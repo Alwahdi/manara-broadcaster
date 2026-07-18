@@ -2,12 +2,17 @@ import Link from "next/link";
 import { Clapperboard, Film, Radio, Search } from "lucide-react";
 import { CatalogSection } from "@/components/Section";
 import { listViewerAssets } from "@/lib/db";
+import { listContinueWatching, listViewerFavorites } from "@/lib/db";
+import { currentViewerAccount } from "@/lib/auth";
 
 export const revalidate = 20;
 
 export default async function HomePage() {
-  const [live, movies, series] = await Promise.all([
+  const viewer = await currentViewerAccount();
+  const [live, movies, series, continueWatching, favorites] = await Promise.all([
     listViewerAssets("live"), listViewerAssets("movie"), listViewerAssets("series"),
+    viewer ? listContinueWatching(viewer.id) : Promise.resolve([]),
+    viewer ? listViewerFavorites(viewer.id) : Promise.resolve([]),
   ]);
   return (
     <>
@@ -22,7 +27,9 @@ export default async function HomePage() {
           <Link href="/series" className="home-destination"><span><Clapperboard /></span><strong>المسلسلات</strong><small>تصفح المسلسلات</small></Link>
         </div>
       </section>
-      <CatalogSection title="على الهواء الآن" description="اختر قناة وابدأ المشاهدة" href="/live" assets={live} />
+      {continueWatching.length ? <CatalogSection title="تابع المشاهدة" description="أكمل من حيث توقفت" href="/account" assets={continueWatching} /> : null}
+      {favorites.length ? <CatalogSection title="المفضلة" description="المحتوى الذي حفظته" href="/account" assets={favorites} /> : null}
+      <CatalogSection title="مباشر الآن" description="اختر قناة وابدأ المشاهدة" href="/live" assets={live} />
       <CatalogSection title="أفلام" description="جاهزة للمشاهدة" href="/movies" assets={movies} />
       <CatalogSection title="مسلسلات" description="اختر الموسم والحلقة" href="/series" assets={series} />
     </>

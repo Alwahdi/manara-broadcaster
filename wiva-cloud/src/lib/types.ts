@@ -14,6 +14,9 @@ export type CatalogAsset = {
   language: string;
   isFeatured: boolean;
   isActive: boolean;
+  isRestricted: boolean;
+  isPlayable: boolean;
+  metadataReview: "approved" | "needs_review";
   providerId?: string | null;
   providerAssetRef?: string;
   parentAssetId?: string | null;
@@ -51,6 +54,8 @@ export type ProviderCatalogItem = {
   rating: number | null;
   quality: string;
   language: string;
+  restricted?: boolean;
+  playable?: boolean;
 };
 
 export type ProviderSeriesEpisode = {
@@ -75,6 +80,21 @@ export type ViewerIdentity = {
 export type ViewerSummary = ViewerIdentity & {
   lastLoginAt: string | null;
   createdAt: string;
+};
+
+export type ViewerSessionSummary = {
+  id: string;
+  device: string;
+  lastSeenAt: string;
+  createdAt: string;
+  current: boolean;
+};
+
+export type ViewerActivity = {
+  favorite: boolean;
+  positionSeconds: number;
+  durationSeconds: number;
+  completed: boolean;
 };
 
 export type PaymentRequestSummary = {

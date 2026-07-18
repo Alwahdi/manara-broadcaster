@@ -33,7 +33,7 @@ function formatTime(value: number) {
   return hours ? `${hours}:${minutes.toString().padStart(2, "0")}:${seconds}` : `${minutes}:${seconds}`;
 }
 
-export function PlayerClient({ assetId, title, active }: { assetId: string; title: string; active: boolean }) {
+export function PlayerClient({ assetId, title, active, resumeAt = 0, authenticated = false }: { assetId: string; title: string; active: boolean; resumeAt?: number; authenticated?: boolean }) {
   const shellRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -323,7 +323,14 @@ export function PlayerClient({ assetId, title, active }: { assetId: string; titl
     const video = videoRef.current; const shell = shellRef.current;
     if (!video || !shell) return;
     try { const saved = Number(localStorage.getItem("wiva-cloud-volume")); if (saved >= 0 && saved <= 1) video.volume = saved; } catch {}
-    let lastSavedAt = 0;
+    let lastSavedAt = 0; let lastCloudSavedAt = 0;
+    const saveCloudProgress = (completed = false) => {
+      if (!authenticated || live || !Number.isFinite(video.duration) || video.duration <= 0) return;
+      void fetch(`/api/viewer/activity/${encodeURIComponent(assetId)}`, {
+        method: "PATCH", headers: { "content-type": "application/json" }, credentials: "include", keepalive: true,
+        body: JSON.stringify({ positionSeconds: completed ? video.duration : video.currentTime, durationSeconds: video.duration, completed }),
+      }).catch(() => undefined);
+    };
     const sync = () => {
       setCurrentTime(video.currentTime || 0);
       setDuration(Number.isFinite(video.duration) ? video.duration : 0);
@@ -332,12 +339,13 @@ export function PlayerClient({ assetId, title, active }: { assetId: string; titl
       if (!live && performance.now() - lastSavedAt > 3000 && video.currentTime > 5 && video.duration > 0) {
         lastSavedAt = performance.now();
         try { localStorage.setItem(`wiva-progress:${assetId}`, String(video.currentTime)); } catch {}
+        if (authenticated && performance.now() - lastCloudSavedAt > 12_000) { lastCloudSavedAt = performance.now(); saveCloudProgress(); }
       }
     };
     const restoreProgress = () => {
       if (live || !Number.isFinite(video.duration)) return;
       try {
-        const saved = Number(localStorage.getItem(`wiva-progress:${assetId}`));
+        const saved = Math.max(resumeAt, Number(localStorage.getItem(`wiva-progress:${assetId}`)) || 0);
         if (saved > 5 && saved < video.duration * 0.95) video.currentTime = saved;
       } catch {}
     };
@@ -369,7 +377,7 @@ export function PlayerClient({ assetId, title, active }: { assetId: string; titl
       } else setMessage("جارٍ الانتقال إلى الموضع المطلوب…");
     };
     const onCanPlay = () => { clearBuffering(); if (live) recoverLivePlayback(); else setMessage(""); };
-    const onEnded = () => { setState("paused"); try { localStorage.removeItem(`wiva-progress:${assetId}`); } catch {} };
+    const onEnded = () => { setState("paused"); saveCloudProgress(true); try { localStorage.removeItem(`wiva-progress:${assetId}`); } catch {} };
     const onMediaError = () => { setState("error"); setMessage("تعذر تشغيل الفيديو الآن. جرّب مرة أخرى."); };
     const onVolume = () => { sync(); try { localStorage.setItem("wiva-cloud-volume", String(video.volume)); } catch {} };
     const onFullscreen = () => {
@@ -394,6 +402,7 @@ export function PlayerClient({ assetId, title, active }: { assetId: string; titl
     video.addEventListener("loadedmetadata", restoreProgress); video.addEventListener("playing", onPlaying); video.addEventListener("pause", onPause); video.addEventListener("waiting", onWaiting); video.addEventListener("stalled", onWaiting); video.addEventListener("canplay", onCanPlay); video.addEventListener("ended", onEnded); video.addEventListener("error", onMediaError); video.addEventListener("volumechange", onVolume);
     document.addEventListener("fullscreenchange", onFullscreen); video.addEventListener("webkitbeginfullscreen", onWebkitBeginFullscreen); video.addEventListener("webkitendfullscreen", onWebkitEndFullscreen); shell.addEventListener("keydown", onKey);
     return () => {
+      if (!live && video.currentTime > 5 && video.duration > 0) saveCloudProgress();
       for (const name of ["timeupdate", "durationchange", "loadedmetadata", "progress", "seeking", "seeked"]) video.removeEventListener(name, sync);
       video.removeEventListener("progress", recoverLivePlayback);
       if (liveRecoveryTimerRef.current) clearInterval(liveRecoveryTimerRef.current);
@@ -403,7 +412,7 @@ export function PlayerClient({ assetId, title, active }: { assetId: string; titl
       video.removeEventListener("loadedmetadata", restoreProgress); video.removeEventListener("playing", onPlaying); video.removeEventListener("pause", onPause); video.removeEventListener("waiting", onWaiting); video.removeEventListener("stalled", onWaiting); video.removeEventListener("canplay", onCanPlay); video.removeEventListener("ended", onEnded); video.removeEventListener("error", onMediaError); video.removeEventListener("volumechange", onVolume);
       document.removeEventListener("fullscreenchange", onFullscreen); video.removeEventListener("webkitbeginfullscreen", onWebkitBeginFullscreen); video.removeEventListener("webkitendfullscreen", onWebkitEndFullscreen); shell.removeEventListener("keydown", onKey);
     };
-  }, [assetId, live, revealControls, seekBy, setLandscape, toggleFullscreen, togglePlayback]);
+  }, [assetId, authenticated, live, resumeAt, revealControls, seekBy, setLandscape, toggleFullscreen, togglePlayback]);
 
   useEffect(() => () => stop(), [stop]);
 

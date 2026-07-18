@@ -13,9 +13,10 @@ export function publicLanguage(value: string) {
 
 export function publicAssetTitle(asset: CatalogAsset) {
   let title = asset.title.trim()
-    .replace(/^(?:AR|EN|FR|DE|ES|TR|US|UK|CA|AU|BE)\s*:\s*/i, "")
+    .replace(/^(?:AR|EN|FR|DE|ES|TR|US|UK|CA|AU|BE|IN)\s*:\s*/i, "")
     .replace(/\s*\((?:FHD|HD|SD|UHD|4K|HEVC|H265)(?:\/[^)]*)?\)\s*$/i, "")
     .replace(/\s*[-–]\s*S\d{1,2}E\d{1,3}\s*[-–]\s*Episode\s*#?\d+\s*$/i, "")
+    .replace(/\s*\([A-Z]\)\s*$/i, "")
     .trim();
   if (!title) title = asset.title.trim();
   if (asset.parentAssetId && asset.episodeNumber) return `${title} — الحلقة ${asset.episodeNumber.toLocaleString("ar")}`;

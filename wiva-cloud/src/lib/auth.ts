@@ -119,6 +119,12 @@ export async function currentViewerAccount() {
   return token ? viewerAccountBySessionHash(hashToken(token)) : null;
 }
 
+export async function currentViewerSessionHash() {
+  const store = await cookies();
+  const token = store.get(VIEWER_COOKIE)?.value;
+  return token ? hashToken(token) : "";
+}
+
 function encodePreview(payload: PreviewPayload) {
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const signature = createHmac("sha256", sessionSecret()).update(`preview.${body}`).digest("base64url");

@@ -15,6 +15,9 @@ export const demoAssets: CatalogAsset[] = [
     language: "متعدد",
     isFeatured: true,
     isActive: true,
+    isRestricted: false,
+    isPlayable: true,
+    metadataReview: "approved",
     demoPlaybackUrl: "https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_16x9/bipbop_16x9_variant.m3u8",
   },
   {
@@ -31,6 +34,9 @@ export const demoAssets: CatalogAsset[] = [
     language: "العربية",
     isFeatured: true,
     isActive: false,
+    isRestricted: false,
+    isPlayable: true,
+    metadataReview: "approved",
   },
   {
     id: "demo-live-3",
@@ -46,6 +52,9 @@ export const demoAssets: CatalogAsset[] = [
     language: "العربية",
     isFeatured: false,
     isActive: false,
+    isRestricted: false,
+    isPlayable: true,
+    metadataReview: "approved",
   },
   {
     id: "demo-movie-1",
@@ -61,6 +70,9 @@ export const demoAssets: CatalogAsset[] = [
     language: "العربية",
     isFeatured: true,
     isActive: false,
+    isRestricted: false,
+    isPlayable: true,
+    metadataReview: "approved",
   },
   {
     id: "demo-movie-2",
@@ -76,6 +88,9 @@ export const demoAssets: CatalogAsset[] = [
     language: "العربية",
     isFeatured: false,
     isActive: false,
+    isRestricted: false,
+    isPlayable: true,
+    metadataReview: "approved",
   },
   {
     id: "demo-series-1",
@@ -91,5 +106,8 @@ export const demoAssets: CatalogAsset[] = [
     language: "العربية",
     isFeatured: true,
     isActive: false,
+    isRestricted: false,
+    isPlayable: true,
+    metadataReview: "approved",
   },
 ];

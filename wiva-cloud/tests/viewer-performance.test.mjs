@@ -57,3 +57,35 @@ test("viewer home and account use a direct app-first information architecture", 
   assert.doesNotMatch(shell, /viewer-footer/);
   assert.match(styles, /\.mobile-nav a\.primary-destination/);
 });
+
+test("public catalog fails closed for restricted and non-playable provider metadata", () => {
+  const database = source("src/lib/db.ts");
+  const schema = source("db/schema.sql");
+  const safety = source("src/lib/catalog-safety.ts");
+  assert.match(database, /a\.is_restricted = false and a\.is_playable = true/);
+  assert.match(schema, /metadata_review text not null default 'approved'/);
+  assert.match(schema, /set is_restricted = true, metadata_review = 'needs_review'/);
+  assert.match(safety, /isRestrictedMetadata/);
+  assert.match(safety, /isScheduleMetadata/);
+});
+
+test("viewer activity is account-backed and device sessions are revocable", () => {
+  const schema = source("db/schema.sql");
+  const activity = source("src/app/api/viewer/activity/[id]/route.ts");
+  const sessions = source("src/components/DeviceSessions.tsx");
+  const player = source("src/components/PlayerClient.tsx");
+  assert.match(schema, /wiva_cloud_viewer_favorites/);
+  assert.match(schema, /wiva_cloud_viewer_progress/);
+  assert.match(activity, /setViewerFavorite/);
+  assert.match(activity, /saveViewerProgress/);
+  assert.match(player, /keepalive: true/);
+  assert.match(sessions, /خروج البقية/);
+});
+
+test("admin dashboard prioritizes operational queues instead of architecture copy", () => {
+  const dashboard = source("src/app/admin/(panel)/page.tsx");
+  assert.match(dashboard, /قائمة العمل/);
+  assert.match(dashboard, /مراجعة سلامة المحتوى/);
+  assert.match(dashboard, /طلبات التجديد/);
+  assert.doesNotMatch(dashboard, /كيف يصل المحتوى إلى المشاهد/);
+});

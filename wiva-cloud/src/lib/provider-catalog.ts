@@ -4,6 +4,7 @@ import { isIP } from "node:net";
 import { decryptCredentials } from "@/lib/crypto";
 import { getProviderSecret } from "@/lib/db";
 import { HttpError } from "@/lib/security";
+import { prepareCatalogItem } from "@/lib/catalog-safety";
 import type { AssetKind, ProviderCatalogCategory, ProviderCatalogItem, ProviderSeriesEpisode, ProviderSummary } from "@/lib/types";
 
 type ProviderConnection = {
@@ -231,7 +232,7 @@ export async function discoverProviderCatalog(connection: ProviderConnection, se
   const cached = cache.get(key);
   if (!fresh && cached && cached.expiresAt > Date.now()) return cached.items;
   const all = connection.kind === "licensed_hls" ? await discoverM3u(connection) : await discoverXtream(connection, section);
-  const items = connection.kind === "licensed_hls" ? all.filter((item) => item.kind === section) : all;
+  const items = (connection.kind === "licensed_hls" ? all.filter((item) => item.kind === section) : all).map(prepareCatalogItem);
   if (!cache.has(key) && cache.size >= MAX_CACHED_CATALOGS) cache.delete(cache.keys().next().value!);
   cache.set(key, { expiresAt: Date.now() + 60_000, items });
   return items;

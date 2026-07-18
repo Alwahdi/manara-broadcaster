@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, CheckCircle2, CircleAlert, Clapperboard, Eye, EyeOff, LoaderCircle, Plus, Power, RotateCcw, Search, Trash2 } from "lucide-react";
+import { Check, CheckCircle2, CircleAlert, Clapperboard, Eye, EyeOff, LoaderCircle, PlayCircle, Plus, Power, RotateCcw, Search, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
 import type { AssetKind, CatalogAsset, ProviderSummary } from "@/lib/types";
 
@@ -13,13 +13,14 @@ export function ChannelManager({ initial, providers }: { initial: CatalogAsset[]
   const [kind, setKind] = useState<AssetKind | "">("");
   const [category, setCategory] = useState("");
   const [status, setStatus] = useState<"" | "active" | "disabled">("");
+  const [safety, setSafety] = useState<"" | "safe" | "restricted" | "non_playable">("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const categories = useMemo(() => [...new Set(assets.map((asset) => asset.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ar")), [assets]);
   const visible = useMemo(() => {
     const search = query.trim().toLocaleLowerCase("ar");
-    return assets.filter((asset) => (!kind || asset.kind === kind) && (!category || asset.category === category) && (!status || (status === "active" ? asset.isActive : !asset.isActive)) && (!search || `${asset.title} ${asset.category}`.toLocaleLowerCase("ar").includes(search)));
-  }, [assets, query, kind, category, status]);
+    return assets.filter((asset) => (!kind || asset.kind === kind) && (!category || asset.category === category) && (!status || (status === "active" ? asset.isActive : !asset.isActive)) && (!safety || (safety === "safe" ? !asset.isRestricted && asset.isPlayable : safety === "restricted" ? asset.isRestricted : !asset.isPlayable)) && (!search || `${asset.title} ${asset.category}`.toLocaleLowerCase("ar").includes(search)));
+  }, [assets, query, kind, category, status, safety]);
   const allVisibleSelected = Boolean(visible.length) && visible.every((asset) => selected.has(asset.id));
 
   async function create(event: FormEvent<HTMLFormElement>) {
@@ -39,6 +40,17 @@ export function ChannelManager({ initial, providers }: { initial: CatalogAsset[]
       const response = await fetch(`/api/admin/assets/${asset.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ active: !asset.isActive }) });
       const payload = await response.json(); if (!response.ok) throw new Error(payload.error); setAssets(payload.assets); setMessageTone("success"); setMessage(`تم ${asset.isActive ? "إخفاء" : "نشر"} «${asset.title}».`);
     } catch (error) { setMessageTone("error"); setMessage(error instanceof Error ? error.message : "تعذر تغيير الحالة"); }
+    finally { setPending(false); }
+  }
+
+  async function updateSafety(asset: CatalogAsset, change: { restricted?: boolean; playable?: boolean }) {
+    setPending(true); setMessage("");
+    try {
+      const response = await fetch(`/api/admin/assets/${asset.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(change) });
+      const payload = await response.json(); if (!response.ok) throw new Error(payload.error);
+      setAssets(payload.assets); setMessageTone("success");
+      setMessage(change.restricted !== undefined ? (change.restricted ? "تم تقييد المحتوى وإخفاؤه عن الجمهور." : "تم اعتماد المحتوى كملائم للعرض.") : (change.playable ? "تم اعتماد العنصر كفيديو قابل للتشغيل." : "تم تحويل العنصر إلى معلومة غير قابلة للتشغيل."));
+    } catch (error) { setMessageTone("error"); setMessage(error instanceof Error ? error.message : "تعذر تحديث التصنيف"); }
     finally { setPending(false); }
   }
 
@@ -69,8 +81,8 @@ export function ChannelManager({ initial, providers }: { initial: CatalogAsset[]
 
   function toggleSelected(id: string) { setSelected((current) => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; }); }
   function toggleVisible() { setSelected((current) => { const next = new Set(current); for (const asset of visible) allVisibleSelected ? next.delete(asset.id) : next.add(asset.id); return next; }); }
-  function clearFilters() { setQuery(""); setKind(""); setCategory(""); setStatus(""); }
-  const filtersActive = Boolean(query || kind || category || status);
+  function clearFilters() { setQuery(""); setKind(""); setCategory(""); setStatus(""); setSafety(""); }
+  const filtersActive = Boolean(query || kind || category || status || safety);
 
   return <div className="manager-grid content-manager-grid">
     <section className="ops-card">
@@ -80,6 +92,7 @@ export function ChannelManager({ initial, providers }: { initial: CatalogAsset[]
         <select aria-label="تصفية حسب النوع" value={kind} onChange={(event) => setKind(event.target.value as AssetKind | "")}><option value="">كل الأنواع</option><option value="live">مباشر</option><option value="movie">أفلام</option><option value="series">مسلسلات</option></select>
         <select aria-label="تصفية حسب التصنيف" value={category} onChange={(event) => setCategory(event.target.value)}><option value="">كل التصنيفات</option>{categories.map((value) => <option key={value}>{value}</option>)}</select>
         <select aria-label="تصفية حسب الحالة" value={status} onChange={(event) => setStatus(event.target.value as typeof status)}><option value="">كل الحالات</option><option value="active">منشور</option><option value="disabled">متوقف</option></select>
+        <select aria-label="تصفية حسب الأمان" value={safety} onChange={(event) => setSafety(event.target.value as typeof safety)}><option value="">كل تصنيفات العرض</option><option value="safe">ملائم وقابل للتشغيل</option><option value="restricted">مقيّد</option><option value="non_playable">معلومة وليست فيديو</option></select>
       </div>
       {filtersActive ? <button className="clear-filters" type="button" onClick={clearFilters}><RotateCcw size={15} />مسح عوامل التصفية</button> : null}
       <div className="asset-bulk-bar"><button className="button secondary" onClick={toggleVisible} disabled={!visible.length}>{allVisibleSelected ? "إلغاء تحديد النتائج" : "تحديد النتائج"}</button><span>{selected.size} محدد</span><div><button onClick={() => void bulk(false)} disabled={pending || !selected.size}><EyeOff />إخفاء</button><button onClick={() => void bulk(true)} disabled={pending || !selected.size}><Eye />نشر</button></div></div>
@@ -87,9 +100,11 @@ export function ChannelManager({ initial, providers }: { initial: CatalogAsset[]
       <div className="asset-admin-grid content-asset-grid">
         {visible.map((asset) => <article key={asset.id} className={`asset-admin-card ${selected.has(asset.id) ? "selected" : ""}`}>
           <button className="mini-art asset-select" onClick={() => toggleSelected(asset.id)} aria-label="تحديد العنصر">{selected.has(asset.id) ? <Check /> : asset.title.slice(0, 2)}</button>
-          <div><span className="asset-kind">{asset.kind === "live" ? "مباشر" : asset.kind === "movie" ? "فيلم" : "مسلسل"}</span><strong>{asset.title}</strong><small>{asset.category || "غير مصنف"} · {asset.quality}</small></div>
+          <div><span className="asset-kind">{asset.kind === "live" ? "مباشر" : asset.kind === "movie" ? "فيلم" : "مسلسل"}</span><strong>{asset.title}</strong><small>{asset.category || "غير مصنف"} · {asset.quality}</small><span className={`asset-safety ${asset.isRestricted ? "restricted" : !asset.isPlayable ? "info" : "safe"}`}>{asset.isRestricted ? <><ShieldAlert /> مقيّد</> : !asset.isPlayable ? <><CircleAlert /> معلومة فقط</> : <><ShieldCheck /> ملائم</>}</span></div>
           <div className="asset-card-actions">
             <button className={`toggle-button ${asset.isActive ? "on" : ""}`} onClick={() => void toggle(asset)} disabled={pending}><Power size={16} />{asset.isActive ? "منشور" : "متوقف"}</button>
+            <button className="asset-safety-button" onClick={() => void updateSafety(asset, { restricted: !asset.isRestricted })} disabled={pending}>{asset.isRestricted ? <ShieldCheck /> : <ShieldAlert />}{asset.isRestricted ? "اعتماد" : "تقييد"}</button>
+            <button className="asset-safety-button" onClick={() => void updateSafety(asset, { playable: !asset.isPlayable })} disabled={pending}>{asset.isPlayable ? <CircleAlert /> : <PlayCircle />}{asset.isPlayable ? "معلومة" : "فيديو"}</button>
             <button className="asset-delete-button" onClick={() => void remove(asset)} disabled={pending} aria-label={`حذف ${asset.title}`}><Trash2 size={16} />حذف</button>
           </div>
         </article>)}

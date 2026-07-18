@@ -2,8 +2,9 @@ import { neon } from "@neondatabase/serverless";
 import { unstable_cache } from "next/cache";
 import postgres from "postgres";
 import { demoAssets } from "@/lib/demo";
+import { normalizeProviderTitle, prepareCatalogItem } from "@/lib/catalog-safety";
 import { databaseConfigured, isDemoMode, tenantId } from "@/lib/env";
-import type { AssetKind, CatalogAsset, PaymentRequestSummary, ProviderCatalogItem, ProviderSeriesEpisode, ProviderSummary, ViewerIdentity, ViewerSummary } from "@/lib/types";
+import type { AssetKind, CatalogAsset, PaymentRequestSummary, ProviderCatalogItem, ProviderSeriesEpisode, ProviderSummary, ViewerActivity, ViewerIdentity, ViewerSessionSummary, ViewerSummary } from "@/lib/types";
 
 const globalForDb = globalThis as typeof globalThis & {
   wivaLocalSql?: ReturnType<typeof postgres>;
@@ -37,6 +38,9 @@ function assetFromRow(row: Record<string, unknown>): CatalogAsset {
     language: String(row.language || ""),
     isFeatured: Boolean(row.is_featured),
     isActive: Boolean(row.is_active),
+    isRestricted: Boolean(row.is_restricted),
+    isPlayable: row.is_playable == null ? true : Boolean(row.is_playable),
+    metadataReview: row.metadata_review === "needs_review" ? "needs_review" : "approved",
     providerId: row.provider_id == null ? null : String(row.provider_id),
     providerAssetRef: String(row.provider_asset_ref || ""),
     parentAssetId: row.parent_asset_id == null ? null : String(row.parent_asset_id),
@@ -58,13 +62,14 @@ export async function listAssets(kind?: AssetKind, includeDisabled = false) {
           select a.* from wiva_cloud_assets a
           join wiva_cloud_providers p on p.id = a.provider_id and p.tenant_id = a.tenant_id
           where a.tenant_id = ${tenant} and a.kind = ${kind} and (${kind !== "series"} or a.parent_asset_id is null)
-            and a.is_active = true and p.status = 'active' and p.redistribution_attested = true
+            and a.is_active = true and a.is_restricted = false and a.is_playable = true
+            and p.status = 'active' and p.redistribution_attested = true
           order by a.sort_order, a.title
         `
       : await query`
           select a.* from wiva_cloud_assets a
           join wiva_cloud_providers p on p.id = a.provider_id and p.tenant_id = a.tenant_id
-          where a.tenant_id = ${tenant} and a.is_active = true
+          where a.tenant_id = ${tenant} and a.is_active = true and a.is_restricted = false and a.is_playable = true
             and p.status = 'active' and p.redistribution_attested = true
           order by a.is_featured desc, a.sort_order, a.title
         `;
@@ -79,7 +84,8 @@ async function queryViewerAssets(kind: AssetKind, limit = 5) {
     select a.* from wiva_cloud_assets a
     join wiva_cloud_providers p on p.id = a.provider_id and p.tenant_id = a.tenant_id
     where a.tenant_id = ${tenant} and a.kind = ${kind} and (${kind !== "series"} or a.parent_asset_id is null)
-      and a.is_active = true and p.status = 'active' and p.redistribution_attested = true
+      and a.is_active = true and a.is_restricted = false and a.is_playable = true
+      and p.status = 'active' and p.redistribution_attested = true
     order by a.is_featured desc, a.sort_order, a.title
     limit ${safeLimit}
   `;
@@ -111,7 +117,8 @@ async function queryViewerCatalog(kind: AssetKind, options: { page?: number; pag
       select a.* from wiva_cloud_assets a
       join wiva_cloud_providers p on p.id = a.provider_id and p.tenant_id = a.tenant_id
       where a.tenant_id = ${tenant} and a.kind = ${kind} and (${kind !== "series"} or a.parent_asset_id is null)
-        and a.is_active = true and p.status = 'active' and p.redistribution_attested = true
+        and a.is_active = true and a.is_restricted = false and a.is_playable = true
+        and p.status = 'active' and p.redistribution_attested = true
         and (${category} = '' or a.category = ${category})
         and (${search} = '' or a.title ilike ${pattern} or a.category ilike ${pattern})
       order by a.is_featured desc, a.sort_order, a.title limit ${pageSize} offset ${offset}
@@ -120,7 +127,8 @@ async function queryViewerCatalog(kind: AssetKind, options: { page?: number; pag
       select count(*)::int as total from wiva_cloud_assets a
       join wiva_cloud_providers p on p.id = a.provider_id and p.tenant_id = a.tenant_id
       where a.tenant_id = ${tenant} and a.kind = ${kind} and (${kind !== "series"} or a.parent_asset_id is null)
-        and a.is_active = true and p.status = 'active' and p.redistribution_attested = true
+        and a.is_active = true and a.is_restricted = false and a.is_playable = true
+        and p.status = 'active' and p.redistribution_attested = true
         and (${category} = '' or a.category = ${category})
         and (${search} = '' or a.title ilike ${pattern} or a.category ilike ${pattern})
     `,
@@ -128,6 +136,7 @@ async function queryViewerCatalog(kind: AssetKind, options: { page?: number; pag
       select distinct a.category from wiva_cloud_assets a
       join wiva_cloud_providers p on p.id = a.provider_id and p.tenant_id = a.tenant_id
       where a.tenant_id = ${tenant} and a.kind = ${kind} and a.is_active = true
+        and a.is_restricted = false and a.is_playable = true
         and p.status = 'active' and p.redistribution_attested = true and a.category <> ''
       order by a.category limit 80
     `,
@@ -159,7 +168,8 @@ export async function searchViewerAssets(search: string, limit = 48) {
   const rows = await query`
     select a.* from wiva_cloud_assets a
     join wiva_cloud_providers p on p.id = a.provider_id and p.tenant_id = a.tenant_id
-    where a.tenant_id = ${tenant} and a.is_active = true and p.status = 'active' and p.redistribution_attested = true
+    where a.tenant_id = ${tenant} and a.is_active = true and a.is_restricted = false and a.is_playable = true
+      and p.status = 'active' and p.redistribution_attested = true
       and (a.title ilike ${pattern} or a.category ilike ${pattern}) and (a.kind <> 'series' or a.parent_asset_id is null)
     order by a.is_featured desc, a.sort_order, a.title limit ${safeLimit}
   `;
@@ -174,6 +184,7 @@ export async function listSeriesEpisodes(parentId: string, includeDisabled = fal
         select a.* from wiva_cloud_assets a
         join wiva_cloud_providers p on p.id = a.provider_id and p.tenant_id = a.tenant_id
         where a.tenant_id=${tenantId()} and a.parent_asset_id=${parentId} and a.is_active=true
+          and a.is_restricted=false and a.is_playable=true
           and p.status='active' and p.redistribution_attested=true
         order by a.season_number, a.episode_number, a.title
       `;
@@ -189,6 +200,7 @@ export async function getAsset(id: string, includeUnavailable = false) {
         select a.* from wiva_cloud_assets a
         join wiva_cloud_providers p on p.id = a.provider_id and p.tenant_id = a.tenant_id
         where a.tenant_id = ${tenantId()} and a.id = ${id} and a.is_active = true
+          and a.is_restricted = false and a.is_playable = true
           and p.status = 'active' and p.redistribution_attested = true
         limit 1
       `;
@@ -275,7 +287,7 @@ export async function createAsset(input: {
 export async function importProviderAssets(providerId: string, items: ProviderCatalogItem[], active: boolean) {
   if (!items.length) return 0;
   const query = sql();
-  const payload = items.map((item) => ({
+  const payload = items.map(prepareCatalogItem).map((item) => ({
     provider_id: providerId,
     provider_asset_ref: item.ref,
     kind: item.kind,
@@ -287,21 +299,26 @@ export async function importProviderAssets(providerId: string, items: ProviderCa
     rating: item.rating,
     quality: item.quality,
     language: item.language,
+    is_restricted: item.restricted,
+    is_playable: item.playable,
+    metadata_review: item.restricted || !item.playable ? "needs_review" : "approved",
   }));
   const rows = await query`
     insert into wiva_cloud_assets
-      (tenant_id, provider_id, provider_asset_ref, kind, title, description, category, artwork_url, year, rating, quality, language, is_active)
+      (tenant_id, provider_id, provider_asset_ref, kind, title, description, category, artwork_url, year, rating, quality, language, is_active, is_restricted, is_playable, metadata_review)
     select ${tenantId()}, x.provider_id::uuid, x.provider_asset_ref, x.kind, x.title, x.description,
-      x.category, x.artwork_url, x.year, x.rating, x.quality, x.language, ${active}
+      x.category, x.artwork_url, x.year, x.rating, x.quality, x.language, ${active}, x.is_restricted, x.is_playable, x.metadata_review
     from jsonb_to_recordset(((${JSON.stringify(payload)}::jsonb) #>> '{}')::jsonb) as x(
       provider_id text, provider_asset_ref text, kind text, title text, description text,
-      category text, artwork_url text, year integer, rating numeric, quality text, language text
+      category text, artwork_url text, year integer, rating numeric, quality text, language text,
+      is_restricted boolean, is_playable boolean, metadata_review text
     )
     on conflict (tenant_id, provider_id, provider_asset_ref) do update set
       kind = excluded.kind, title = excluded.title, description = excluded.description,
       category = excluded.category, artwork_url = excluded.artwork_url, year = excluded.year,
       rating = excluded.rating, quality = excluded.quality, language = excluded.language,
-      is_active = excluded.is_active, updated_at = now()
+      is_active = excluded.is_active, is_restricted = excluded.is_restricted,
+      is_playable = excluded.is_playable, metadata_review = excluded.metadata_review, updated_at = now()
     returning id
   `;
   return rows.length;
@@ -309,19 +326,20 @@ export async function importProviderAssets(providerId: string, items: ProviderCa
 
 export async function importProviderSeries(providerId: string, series: ProviderCatalogItem, episodes: ProviderSeriesEpisode[], active: boolean) {
   const query = sql();
+  const prepared = prepareCatalogItem(series);
   const parents = await query`
-    insert into wiva_cloud_assets (tenant_id,provider_id,provider_asset_ref,kind,title,description,category,artwork_url,year,rating,quality,language,is_active)
-    values (${tenantId()},${providerId},${series.ref},'series',${series.title},${series.description},${series.category},${series.artworkUrl || null},${series.year},${series.rating},${series.quality},${series.language},${active})
-    on conflict (tenant_id,provider_id,provider_asset_ref) do update set title=excluded.title,description=excluded.description,category=excluded.category,artwork_url=excluded.artwork_url,year=excluded.year,rating=excluded.rating,is_active=excluded.is_active,updated_at=now()
+    insert into wiva_cloud_assets (tenant_id,provider_id,provider_asset_ref,kind,title,description,category,artwork_url,year,rating,quality,language,is_active,is_restricted,is_playable,metadata_review)
+    values (${tenantId()},${providerId},${prepared.ref},'series',${prepared.title},${prepared.description},${prepared.category},${prepared.artworkUrl || null},${prepared.year},${prepared.rating},${prepared.quality},${prepared.language},${active},${prepared.restricted},${prepared.playable},${prepared.restricted || !prepared.playable ? "needs_review" : "approved"})
+    on conflict (tenant_id,provider_id,provider_asset_ref) do update set title=excluded.title,description=excluded.description,category=excluded.category,artwork_url=excluded.artwork_url,year=excluded.year,rating=excluded.rating,is_active=excluded.is_active,is_restricted=excluded.is_restricted,is_playable=excluded.is_playable,metadata_review=excluded.metadata_review,updated_at=now()
     returning id
   `;
   const parentId = String(parents[0].id);
-  const payload = episodes.map((episode) => ({ ref: episode.ref, title: episode.title, description: episode.description, artwork_url: episode.artworkUrl || series.artworkUrl || null, season: episode.seasonNumber, episode: episode.episodeNumber }));
+  const payload = episodes.map((episode) => ({ ref: episode.ref, title: normalizeProviderTitle(episode.title), description: episode.description, artwork_url: episode.artworkUrl || prepared.artworkUrl || null, season: episode.seasonNumber, episode: episode.episodeNumber }));
   const rows = await query`
-    insert into wiva_cloud_assets (tenant_id,provider_id,provider_asset_ref,parent_asset_id,season_number,episode_number,kind,title,description,category,artwork_url,quality,is_active)
-    select ${tenantId()},${providerId},x.ref,${parentId}::uuid,x.season,x.episode,'series',x.title,x.description,${series.title},x.artwork_url,'HD',${active}
+    insert into wiva_cloud_assets (tenant_id,provider_id,provider_asset_ref,parent_asset_id,season_number,episode_number,kind,title,description,category,artwork_url,quality,is_active,is_restricted,is_playable,metadata_review)
+    select ${tenantId()},${providerId},x.ref,${parentId}::uuid,x.season,x.episode,'series',x.title,x.description,${prepared.title},x.artwork_url,'HD',${active},${prepared.restricted},true,${prepared.restricted ? "needs_review" : "approved"}
     from jsonb_to_recordset(((${JSON.stringify(payload)}::jsonb) #>> '{}')::jsonb) as x(ref text,title text,description text,artwork_url text,season integer,episode integer)
-    on conflict (tenant_id,provider_id,provider_asset_ref) do update set parent_asset_id=excluded.parent_asset_id,season_number=excluded.season_number,episode_number=excluded.episode_number,title=excluded.title,description=excluded.description,artwork_url=excluded.artwork_url,is_active=excluded.is_active,updated_at=now()
+    on conflict (tenant_id,provider_id,provider_asset_ref) do update set parent_asset_id=excluded.parent_asset_id,season_number=excluded.season_number,episode_number=excluded.episode_number,title=excluded.title,description=excluded.description,artwork_url=excluded.artwork_url,is_active=excluded.is_active,is_restricted=excluded.is_restricted,is_playable=excluded.is_playable,metadata_review=excluded.metadata_review,updated_at=now()
     returning id
   `;
   return { parentId, imported: rows.length };
@@ -331,6 +349,19 @@ export async function setAssetActive(id: string, active: boolean) {
   const query = sql();
   const rows = await query`
     update wiva_cloud_assets set is_active = ${active}
+    where tenant_id = ${tenantId()} and id = ${id}
+    returning id
+  `;
+  return Boolean(rows[0]);
+}
+
+export async function setAssetSafety(id: string, input: { restricted?: boolean; playable?: boolean }) {
+  const query = sql();
+  const rows = await query`
+    update wiva_cloud_assets set
+      is_restricted = coalesce(${input.restricted ?? null}, is_restricted),
+      is_playable = coalesce(${input.playable ?? null}, is_playable),
+      metadata_review = 'approved'
     where tenant_id = ${tenantId()} and id = ${id}
     returning id
   `;
@@ -473,6 +504,110 @@ export async function deleteViewerSession(tokenHash: string) {
   await query`delete from wiva_cloud_viewer_sessions where tenant_id = ${tenantId()} and token_hash = ${tokenHash}`;
 }
 
+function deviceName(userAgent: string) {
+  if (/iphone|ipad|ipod/i.test(userAgent)) return "جهاز Apple";
+  if (/android/i.test(userAgent)) return "جهاز Android";
+  if (/windows/i.test(userAgent)) return "كمبيوتر Windows";
+  if (/macintosh|mac os x/i.test(userAgent)) return "جهاز Mac";
+  if (/smart-tv|smarttv|tizen|webos|hbbtv/i.test(userAgent)) return "تلفاز ذكي";
+  return "متصفح ويب";
+}
+
+export async function listViewerSessions(viewerId: string, currentTokenHash: string): Promise<ViewerSessionSummary[]> {
+  const query = sql();
+  const rows = await query`
+    select id, token_hash, user_agent, last_seen_at, created_at
+    from wiva_cloud_viewer_sessions
+    where tenant_id=${tenantId()} and viewer_id=${viewerId} and expires_at > now()
+    order by last_seen_at desc limit 20
+  `;
+  return rows.map((row) => ({
+    id: String(row.id), device: deviceName(String(row.user_agent || "")),
+    lastSeenAt: new Date(String(row.last_seen_at)).toISOString(),
+    createdAt: new Date(String(row.created_at)).toISOString(),
+    current: String(row.token_hash) === currentTokenHash,
+  }));
+}
+
+export async function deleteViewerSessionById(viewerId: string, sessionId: string) {
+  const query = sql();
+  const rows = await query`delete from wiva_cloud_viewer_sessions where tenant_id=${tenantId()} and viewer_id=${viewerId} and id=${sessionId} returning id`;
+  return Boolean(rows[0]);
+}
+
+export async function deleteOtherViewerSessions(viewerId: string, currentTokenHash: string) {
+  const query = sql();
+  const rows = await query`delete from wiva_cloud_viewer_sessions where tenant_id=${tenantId()} and viewer_id=${viewerId} and token_hash <> ${currentTokenHash} returning id`;
+  return rows.length;
+}
+
+export async function updateViewerPassword(viewerId: string, passwordHash: string, currentTokenHash: string) {
+  const query = sql();
+  const rows = await query`update wiva_cloud_viewers set password_hash=${passwordHash} where tenant_id=${tenantId()} and id=${viewerId} returning id`;
+  if (!rows[0]) return false;
+  await query`delete from wiva_cloud_viewer_sessions where tenant_id=${tenantId()} and viewer_id=${viewerId} and token_hash <> ${currentTokenHash}`;
+  return true;
+}
+
+export async function getViewerActivity(viewerId: string, assetId: string): Promise<ViewerActivity> {
+  const query = sql();
+  const [favoriteRows, progressRows] = await Promise.all([
+    query`select 1 from wiva_cloud_viewer_favorites where tenant_id=${tenantId()} and viewer_id=${viewerId} and asset_id=${assetId} limit 1`,
+    query`select position_seconds, duration_seconds, completed from wiva_cloud_viewer_progress where tenant_id=${tenantId()} and viewer_id=${viewerId} and asset_id=${assetId} limit 1`,
+  ]);
+  const progress = progressRows[0];
+  return { favorite: Boolean(favoriteRows[0]), positionSeconds: Number(progress?.position_seconds || 0), durationSeconds: Number(progress?.duration_seconds || 0), completed: Boolean(progress?.completed) };
+}
+
+export async function setViewerFavorite(viewerId: string, assetId: string, favorite: boolean) {
+  const query = sql();
+  if (favorite) {
+    await query`insert into wiva_cloud_viewer_favorites (tenant_id,viewer_id,asset_id) values (${tenantId()},${viewerId},${assetId}) on conflict do nothing`;
+  } else {
+    await query`delete from wiva_cloud_viewer_favorites where tenant_id=${tenantId()} and viewer_id=${viewerId} and asset_id=${assetId}`;
+  }
+}
+
+export async function saveViewerProgress(viewerId: string, assetId: string, positionSeconds: number, durationSeconds: number, completed: boolean) {
+  const query = sql();
+  await query`
+    insert into wiva_cloud_viewer_progress (tenant_id,viewer_id,asset_id,position_seconds,duration_seconds,completed)
+    values (${tenantId()},${viewerId},${assetId},${positionSeconds},${durationSeconds},${completed})
+    on conflict (tenant_id,viewer_id,asset_id) do update set
+      position_seconds=excluded.position_seconds,duration_seconds=excluded.duration_seconds,
+      completed=excluded.completed,updated_at=now()
+  `;
+}
+
+export async function listViewerFavorites(viewerId: string, limit = 10) {
+  if (!databaseConfigured()) return [];
+  const query = sql(); const safeLimit = Math.min(30, Math.max(1, limit));
+  const rows = await query`
+    select a.* from wiva_cloud_viewer_favorites f
+    join wiva_cloud_assets a on a.id=f.asset_id and a.tenant_id=f.tenant_id
+    join wiva_cloud_providers p on p.id=a.provider_id and p.tenant_id=a.tenant_id
+    where f.tenant_id=${tenantId()} and f.viewer_id=${viewerId} and a.is_active=true
+      and a.is_restricted=false and a.is_playable=true and p.status='active' and p.redistribution_attested=true
+    order by f.created_at desc limit ${safeLimit}
+  `;
+  return rows.map((row) => assetFromRow(row as Record<string, unknown>));
+}
+
+export async function listContinueWatching(viewerId: string, limit = 10) {
+  if (!databaseConfigured()) return [];
+  const query = sql(); const safeLimit = Math.min(30, Math.max(1, limit));
+  const rows = await query`
+    select a.* from wiva_cloud_viewer_progress h
+    join wiva_cloud_assets a on a.id=h.asset_id and a.tenant_id=h.tenant_id
+    join wiva_cloud_providers p on p.id=a.provider_id and p.tenant_id=a.tenant_id
+    where h.tenant_id=${tenantId()} and h.viewer_id=${viewerId} and h.completed=false and h.position_seconds > 5
+      and a.kind <> 'live' and a.is_active=true and a.is_restricted=false and a.is_playable=true
+      and p.status='active' and p.redistribution_attested=true
+    order by h.updated_at desc limit ${safeLimit}
+  `;
+  return rows.map((row) => assetFromRow(row as Record<string, unknown>));
+}
+
 export async function audit(action: string, targetType: string, targetId: string | null, metadata: Record<string, unknown> = {}) {
   return auditEvent("admin", "environment-admin", action, targetType, targetId, metadata);
 }
@@ -559,19 +694,24 @@ export async function reviewPaymentRequest(id: string, status: "approved" | "rej
 export async function dashboardCounts() {
   if (!databaseConfigured()) {
     const assets = isDemoMode() ? demoAssets : [];
-    return { assets: assets.length, live: assets.filter((x) => x.kind === "live").length, providers: 0, viewers: 0 };
+    return { assets: assets.length, live: assets.filter((x) => x.kind === "live").length, providers: 0, activeProviders: 0, viewers: 0, pendingPayments: 0, needsReview: 0, hiddenAssets: 0 };
   }
   const query = sql();
   const tenant = tenantId();
-  const [assetRows, providerRows, viewerRows] = await Promise.all([
-    query`select count(*)::int as total, count(*) filter (where kind='live')::int as live from wiva_cloud_assets where tenant_id=${tenant}`,
-    query`select count(*)::int as total from wiva_cloud_providers where tenant_id=${tenant}`,
+  const [assetRows, providerRows, viewerRows, paymentRows] = await Promise.all([
+    query`select count(*)::int as total, count(*) filter (where kind='live')::int as live, count(*) filter (where is_active=false)::int as hidden, count(*) filter (where metadata_review='needs_review')::int as review from wiva_cloud_assets where tenant_id=${tenant}`,
+    query`select count(*)::int as total, count(*) filter (where status='active')::int as active from wiva_cloud_providers where tenant_id=${tenant}`,
     query`select count(*)::int as total from wiva_cloud_viewers where tenant_id=${tenant}`,
+    query`select count(*)::int as total from wiva_cloud_payment_requests where tenant_id=${tenant} and status='pending'`,
   ]);
   return {
     assets: Number(assetRows[0]?.total || 0),
     live: Number(assetRows[0]?.live || 0),
     providers: Number(providerRows[0]?.total || 0),
+    activeProviders: Number(providerRows[0]?.active || 0),
     viewers: Number(viewerRows[0]?.total || 0),
+    pendingPayments: Number(paymentRows[0]?.total || 0),
+    needsReview: Number(assetRows[0]?.review || 0),
+    hiddenAssets: Number(assetRows[0]?.hidden || 0),
   };
 }
