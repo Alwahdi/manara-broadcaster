@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckCircle2, CircleAlert, LoaderCircle, Plus, Search, ShieldBan, UserCheck, UsersRound } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { ViewerSummary } from "@/lib/types";
 
 export function ViewerManager({ initial }: { initial: ViewerSummary[] }) {
@@ -11,10 +11,13 @@ export function ViewerManager({ initial }: { initial: ViewerSummary[] }) {
   const [message, setMessage] = useState("");
   const [messageTone, setMessageTone] = useState<"success" | "error">("success");
   const [query, setQuery] = useState("");
+  const [displayLimit, setDisplayLimit] = useState(80);
   const visibleViewers = useMemo(() => {
     const value = query.trim().toLocaleLowerCase("ar");
     return value ? viewers.filter((viewer) => `${viewer.name} ${viewer.email}`.toLocaleLowerCase("ar").includes(value)) : viewers;
   }, [query, viewers]);
+  useEffect(() => { setDisplayLimit(80); }, [query]);
+  const renderedViewers = visibleViewers.slice(0, displayLimit);
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -64,7 +67,7 @@ export function ViewerManager({ initial }: { initial: ViewerSummary[] }) {
         <label className="asset-search viewer-search"><span className="sr-only">البحث عن مشاهد</span><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ابحث بالاسم أو البريد الإلكتروني" /></label>
         {message ? <p className={`form-message ${messageTone}`} role={messageTone === "error" ? "alert" : "status"}>{messageTone === "error" ? <CircleAlert size={17} /> : <CheckCircle2 size={17} />}{message}</p> : null}
         <div className="provider-list">
-          {visibleViewers.map((viewer) => (
+          {renderedViewers.map((viewer) => (
             <article className="provider-row" key={viewer.id}>
               <div className="provider-avatar">{viewer.name.slice(0, 2)}</div>
               <div><strong>{viewer.name}</strong><span dir="ltr">{viewer.email}</span><small>{viewer.maxConcurrentStreams} بث متزامن {viewer.expiresAt ? `· ينتهي ${new Date(viewer.expiresAt).toLocaleDateString("ar")}` : "· بلا تاريخ انتهاء"}</small></div>
@@ -74,6 +77,7 @@ export function ViewerManager({ initial }: { initial: ViewerSummary[] }) {
           ))}
           {!visibleViewers.length ? <div className="inline-empty"><UsersRound /><p>{query ? "لا توجد حسابات تطابق بحثك." : "لا توجد حسابات. أنشئ أول مشاهد من النموذج."}</p></div> : null}
         </div>
+        {renderedViewers.length < visibleViewers.length ? <div className="admin-load-more"><span>يظهر {renderedViewers.length.toLocaleString("ar")} من {visibleViewers.length.toLocaleString("ar")}</span><button className="button secondary" type="button" onClick={() => setDisplayLimit((value) => value + 80)}>عرض المزيد</button></div> : null}
       </section>
       <section className="ops-card sticky-card">
         <div className="ops-card-heading"><div><Plus /><span><h2>مشاهد جديد</h2><p>أنشئ حسابًا وحدد مدة صلاحيته.</p></span></div></div>

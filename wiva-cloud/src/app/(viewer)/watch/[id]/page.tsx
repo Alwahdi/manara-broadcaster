@@ -22,7 +22,7 @@ export default async function WatchPage({ params }: { params: Promise<{ id: stri
         <PlayerClient assetId={asset.id} title={title} active={asset.isActive} authenticated={Boolean(viewer)} resumeAt={activity.positionSeconds} />
         <aside className="watch-info">
           <div className="watch-tags"><span>{asset.kind === "live" ? "مباشر" : asset.kind === "movie" ? "فيلم" : "مسلسل"}</span><span>{asset.quality}</span>{asset.year ? <span>{asset.year}</span> : null}{asset.rating ? <span>★ {asset.rating}</span> : null}</div>
-          <h1>{title}</h1>
+          <h1 dir="auto">{title}</h1>
           <p>{asset.description || "لا يوجد وصف لهذا المحتوى."}</p>
           <div className="watch-tags">{asset.category ? <span>{publicLanguage(asset.category)}</span> : null}{language ? <span>{language}</span> : null}</div>
           <ViewerLibraryActions assetId={asset.id} initialFavorite={activity.favorite} authenticated={Boolean(viewer)} />

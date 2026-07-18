@@ -70,6 +70,27 @@ test("viewer player mirrors familiar media gestures without copying YouTube bran
   assert.doesNotMatch(player, /YouTube|youtube/i);
 });
 
+test("viewer design system uses layered glass surfaces with motion and browser fallbacks", () => {
+  const styles = source("src/app/globals.css");
+  assert.match(styles, /--glass:/);
+  assert.match(styles, /backdrop-filter:\s*blur/);
+  assert.match(styles, /@supports not \(\(backdrop-filter/);
+  assert.match(styles, /prefers-reduced-motion:\s*reduce/);
+  assert.match(styles, /max-width:\s*360px/);
+  assert.match(styles, /safe-area-inset-bottom/);
+});
+
+test("large series and admin collections render in progressive batches", () => {
+  const series = source("src/components/SeriesEpisodesBrowser.tsx");
+  const channels = source("src/components/ChannelManager.tsx");
+  const viewers = source("src/components/ViewerManager.tsx");
+  assert.match(series, /PAGE_SIZE = 24/);
+  assert.match(series, /role="tablist"/);
+  assert.match(series, /عرض حلقات أكثر/);
+  assert.match(channels, /visible\.slice\(0, displayLimit\)/);
+  assert.match(viewers, /visibleViewers\.slice\(0, displayLimit\)/);
+});
+
 test("public catalog fails closed for restricted and non-playable provider metadata", () => {
   const database = source("src/lib/db.ts");
   const schema = source("db/schema.sql");

@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, CheckCircle2, CircleAlert, Clapperboard, Eye, EyeOff, LoaderCircle, PlayCircle, Plus, Power, RotateCcw, Search, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { AssetKind, CatalogAsset, ProviderSummary } from "@/lib/types";
 
 export function ChannelManager({ initial, providers }: { initial: CatalogAsset[]; providers: ProviderSummary[] }) {
@@ -15,12 +15,15 @@ export function ChannelManager({ initial, providers }: { initial: CatalogAsset[]
   const [status, setStatus] = useState<"" | "active" | "disabled">("");
   const [safety, setSafety] = useState<"" | "safe" | "restricted" | "non_playable">("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [displayLimit, setDisplayLimit] = useState(60);
 
   const categories = useMemo(() => [...new Set(assets.map((asset) => asset.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ar")), [assets]);
   const visible = useMemo(() => {
     const search = query.trim().toLocaleLowerCase("ar");
     return assets.filter((asset) => (!kind || asset.kind === kind) && (!category || asset.category === category) && (!status || (status === "active" ? asset.isActive : !asset.isActive)) && (!safety || (safety === "safe" ? !asset.isRestricted && asset.isPlayable : safety === "restricted" ? asset.isRestricted : !asset.isPlayable)) && (!search || `${asset.title} ${asset.category}`.toLocaleLowerCase("ar").includes(search)));
   }, [assets, query, kind, category, status, safety]);
+  useEffect(() => { setDisplayLimit(60); }, [query, kind, category, status, safety]);
+  const renderedAssets = visible.slice(0, displayLimit);
   const allVisibleSelected = Boolean(visible.length) && visible.every((asset) => selected.has(asset.id));
 
   async function create(event: FormEvent<HTMLFormElement>) {
@@ -109,7 +112,7 @@ export function ChannelManager({ initial, providers }: { initial: CatalogAsset[]
       <div className="asset-bulk-bar"><button className="button secondary" onClick={toggleVisible} disabled={!visible.length}>{allVisibleSelected ? "إلغاء تحديد النتائج" : "تحديد النتائج"}</button><span>{selected.size} محدد</span><div><button onClick={() => void bulk(false)} disabled={pending || !selected.size}><EyeOff />إخفاء</button><button onClick={() => void bulk(true)} disabled={pending || !selected.size}><Eye />نشر</button><button className="danger" onClick={() => void bulkDelete()} disabled={pending || !selected.size}><Trash2 />حذف</button></div></div>
       {message ? <p className={`form-message ${messageTone}`} role={messageTone === "error" ? "alert" : "status"}>{messageTone === "error" ? <CircleAlert size={17} /> : <CheckCircle2 size={17} />}{message}</p> : null}
       <div className="asset-admin-grid content-asset-grid">
-        {visible.map((asset) => <article key={asset.id} className={`asset-admin-card ${selected.has(asset.id) ? "selected" : ""}`}>
+        {renderedAssets.map((asset) => <article key={asset.id} className={`asset-admin-card ${selected.has(asset.id) ? "selected" : ""}`}>
           <button className="mini-art asset-select" onClick={() => toggleSelected(asset.id)} aria-label="تحديد العنصر">{selected.has(asset.id) ? <Check /> : asset.title.slice(0, 2)}</button>
           <div><span className="asset-kind">{asset.kind === "live" ? "مباشر" : asset.kind === "movie" ? "فيلم" : "مسلسل"}</span><strong>{asset.title}</strong><small>{asset.category || "غير مصنف"} · {asset.quality}</small><span className={`asset-safety ${asset.isRestricted ? "restricted" : !asset.isPlayable ? "info" : "safe"}`}>{asset.isRestricted ? <><ShieldAlert /> مقيّد</> : !asset.isPlayable ? <><CircleAlert /> معلومة فقط</> : <><ShieldCheck /> ملائم</>}</span></div>
           <div className="asset-card-actions">
@@ -121,6 +124,7 @@ export function ChannelManager({ initial, providers }: { initial: CatalogAsset[]
         </article>)}
         {!visible.length ? <div className="inline-empty"><Search /><p>لا يوجد محتوى يطابق البحث والفلاتر الحالية.</p></div> : null}
       </div>
+      {renderedAssets.length < visible.length ? <div className="admin-load-more"><span>يظهر {renderedAssets.length.toLocaleString("ar")} من {visible.length.toLocaleString("ar")}</span><button className="button secondary" type="button" onClick={() => setDisplayLimit((value) => value + 60)}>عرض المزيد</button></div> : null}
     </section>
     <section className="ops-card sticky-card">
       <div className="ops-card-heading"><div><Plus /><span><h2>إضافة عنصر يدويًا</h2><p>للقنوات أو العناصر غير الموجودة في فهرس المزوّد.</p></span></div></div>

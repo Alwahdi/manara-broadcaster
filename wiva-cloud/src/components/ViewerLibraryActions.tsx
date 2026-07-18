@@ -1,12 +1,14 @@
 "use client";
 
 import { Heart, LoaderCircle } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 export function ViewerLibraryActions({ assetId, initialFavorite, authenticated }: { assetId: string; initialFavorite: boolean; authenticated: boolean }) {
+  const router = useRouter();
   const [favorite, setFavorite] = useState(initialFavorite); const [pending, setPending] = useState(false); const [message, setMessage] = useState("");
   async function toggle() {
-    if (!authenticated) { window.location.href = "/login"; return; }
+    if (!authenticated) { router.push("/login"); return; }
     const next = !favorite; setPending(true); setMessage("");
     try {
       const response = await fetch(`/api/viewer/activity/${encodeURIComponent(assetId)}`, { method: "PATCH", headers: { "content-type": "application/json" }, credentials: "include", body: JSON.stringify({ favorite: next }) });
