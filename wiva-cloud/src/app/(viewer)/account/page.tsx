@@ -1,12 +1,50 @@
+import Link from "next/link";
+import { CalendarClock, ChevronLeft, LogOut, MonitorSmartphone, RefreshCw, ShieldCheck, UserRound } from "lucide-react";
 import { redirect } from "next/navigation";
-import { LogOut, ShieldCheck, UserRound } from "lucide-react";
 import { currentViewerAccount } from "@/lib/auth";
 import { listPaymentRequests } from "@/lib/db";
 import { PaymentRequestForm } from "@/components/PaymentRequestForm";
 
 export const dynamic = "force-dynamic";
+
+function initials(name: string) {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("");
+}
+
 export default async function AccountPage() {
-  const viewer = await currentViewerAccount(); if (!viewer) redirect("/login");
-  const requests = await listPaymentRequests(viewer.id); const expired = viewer.status === "expired" || Boolean(viewer.expiresAt && new Date(viewer.expiresAt).getTime() <= Date.now());
-  return <div className="container"><header className="listing-hero"><span className="eyebrow"><i /> {expired ? "التجربة منتهية" : "حساب نشط"}</span><h1>مرحبًا، {viewer.name}</h1><p>{expired ? "جدّد اشتراكك للعودة إلى المشاهدة." : `يمكنك المشاهدة على ${viewer.maxConcurrentStreams} جهاز في الوقت نفسه.`}</p></header><section className="architecture-card"><div className="ops-card-heading"><div><UserRound /><span><h2>{viewer.email}</h2><p>{viewer.expiresAt ? `متاح حتى ${new Date(viewer.expiresAt).toLocaleDateString("ar")}` : "حساب بلا تاريخ انتهاء"}</p></span></div></div><div className="watch-notice"><ShieldCheck /><span>{expired ? "المشاهدة متوقفة مؤقتًا حتى اعتماد طلب التجديد." : "حسابك جاهز والمشاهدة محمية على هذا الجهاز."}</span></div><div className="account-actions"><div><strong>تسجيل الخروج</strong><p>اخرج من حسابك على هذا الجهاز.</p></div><form action="/api/auth/viewer/logout" method="post"><button className="button danger" type="submit"><LogOut size={18} /> تسجيل الخروج</button></form></div></section><PaymentRequestForm initial={requests} /></div>;
+  const viewer = await currentViewerAccount();
+  if (!viewer) redirect("/login");
+  const requests = await listPaymentRequests(viewer.id);
+  const expired = viewer.status === "expired" || Boolean(viewer.expiresAt && new Date(viewer.expiresAt).getTime() <= Date.now());
+  const expiry = viewer.expiresAt ? new Date(viewer.expiresAt).toLocaleDateString("ar") : "بدون تاريخ انتهاء";
+
+  return (
+    <div className="container account-page">
+      <header className="app-page-heading"><span>الحساب</span><h1>إدارة حسابك</h1></header>
+      <section className="account-profile-card">
+        <div className="account-avatar" aria-hidden="true">{initials(viewer.name) || <UserRound />}</div>
+        <div className="account-profile-copy">
+          <span className={`account-status ${expired ? "expired" : "active"}`}><i />{expired ? "يحتاج إلى تجديد" : "الحساب نشط"}</span>
+          <h2>{viewer.name}</h2>
+          <p dir="ltr">{viewer.email}</p>
+        </div>
+        <div className="account-summary-grid">
+          <div><MonitorSmartphone /><span><small>المشاهدة المتزامنة</small><strong>{viewer.maxConcurrentStreams} {viewer.maxConcurrentStreams === 1 ? "جهاز" : "أجهزة"}</strong></span></div>
+          <div><CalendarClock /><span><small>الصلاحية</small><strong>{expiry}</strong></span></div>
+        </div>
+        <div className={`account-state-note ${expired ? "expired" : ""}`}><ShieldCheck /><span>{expired ? "المشاهدة متوقفة حتى اعتماد طلب التجديد." : "حسابك جاهز للمشاهدة على هذا الجهاز."}</span></div>
+      </section>
+
+      <section className="account-actions-card">
+        <h2>الإجراءات</h2>
+        <div className="account-action-list">
+          <Link href="#payment"><span className="account-action-icon"><RefreshCw /></span><span><strong>تجديد الاشتراك</strong><small>إرسال رقم الحوالة للمراجعة</small></span><ChevronLeft /></Link>
+          <div><span className="account-action-icon"><MonitorSmartphone /></span><span><strong>الأجهزة</strong><small>مسموح بالمشاهدة على {viewer.maxConcurrentStreams} {viewer.maxConcurrentStreams === 1 ? "جهاز" : "أجهزة"} في الوقت نفسه</small></span></div>
+          <form action="/api/auth/viewer/logout" method="post"><button type="submit"><span className="account-action-icon danger"><LogOut /></span><span><strong>تسجيل الخروج</strong><small>الخروج من الحساب على هذا الجهاز</small></span><ChevronLeft /></button></form>
+        </div>
+      </section>
+
+      <PaymentRequestForm initial={requests} />
+    </div>
+  );
 }

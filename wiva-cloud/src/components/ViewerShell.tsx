@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Search, Tv2, UserRound } from "lucide-react";
+import { Search, UserRound } from "lucide-react";
 import { BrandMark } from "@/components/BrandMark";
 import { ViewerNavigation } from "@/components/ViewerNavigation";
 
@@ -21,11 +21,6 @@ export function ViewerShell({ children }: { children: React.ReactNode }) {
       </header>
       <main>{children}</main>
       <ViewerNavigation mobile />
-      <footer className="viewer-footer">
-        <BrandMark compact />
-        <p>كل قنواتك وأفلامك ومسلسلاتك في مكان واحد.</p>
-        <span><Tv2 size={16} /> يعمل على الجوال والتلفزيون والمتصفح</span>
-      </footer>
     </div>
   );
 }

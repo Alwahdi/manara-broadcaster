@@ -41,3 +41,19 @@ test("viewer mobile experience has route feedback, safe-area navigation, and swi
   assert.match(styles, /scroll-snap-type:\s*inline mandatory/);
   assert.match(section, /media-rail/);
 });
+
+test("viewer home and account use a direct app-first information architecture", () => {
+  const home = source("src/app/(viewer)/page.tsx");
+  const account = source("src/app/(viewer)/account/page.tsx");
+  const shell = source("src/components/ViewerShell.tsx");
+  const navigation = source("src/components/ViewerNavigation.tsx");
+  const styles = source("src/app/globals.css");
+  assert.match(home, /home-destinations/);
+  assert.match(home, /ماذا تريد أن تشاهد/);
+  assert.doesNotMatch(home, /لماذا WIVA|كل شاشتك في|className="hero"/);
+  assert.match(account, /account-profile-card/);
+  assert.match(account, /account-action-list/);
+  assert.match(navigation, /primary-destination/);
+  assert.doesNotMatch(shell, /viewer-footer/);
+  assert.match(styles, /\.mobile-nav a\.primary-destination/);
+});
