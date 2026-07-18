@@ -107,7 +107,7 @@ type HlsInstance = {
   attachMedia: (media: HTMLMediaElement) => void;
   on: (event: string, callback: (event: string, data: HlsErrorData) => void) => void;
   destroy: () => void;
-  startLoad?: () => void;
+  startLoad?: (startPosition?: number) => void;
   recoverMediaError?: () => void;
 };
 
@@ -165,6 +165,7 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
     let closed = false;
     let recoveryTimer: ReturnType<typeof setTimeout> | null = null;
     let bufferingTimer: ReturnType<typeof setTimeout> | null = null;
+    let stallRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
     let startupTimer: ReturnType<typeof setTimeout> | null = null;
     let hasPlayed = false;
 
@@ -176,6 +177,11 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
     function clearStartupTimer() {
       if (startupTimer) clearTimeout(startupTimer);
       startupTimer = null;
+    }
+
+    function clearStallRecoveryTimer() {
+      if (stallRecoveryTimer) clearTimeout(stallRecoveryTimer);
+      stallRecoveryTimer = null;
     }
 
     function scheduleRestart(delay = 3500) {
@@ -190,6 +196,7 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
       if (recoveryTimer) clearTimeout(recoveryTimer);
       recoveryTimer = null;
       clearBufferingTimer();
+      clearStallRecoveryTimer();
       clearStartupTimer();
       try { hlsRef.current?.destroy(); } catch {}
       hlsRef.current = null;
@@ -201,12 +208,29 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
     }
 
     function markBuffering() {
-      if (closed || bufferingTimer) return;
+      if (closed) return;
+      if (!stallRecoveryTimer) {
+        stallRecoveryTimer = setTimeout(() => {
+          stallRecoveryTimer = null;
+          if (closed || media.readyState >= 3) return;
+          const current = media.currentTime || 0;
+          for (let index = 0; index < media.buffered.length; index += 1) {
+            const start = media.buffered.start(index);
+            if (start > current && start - current <= 2) {
+              media.currentTime = start + 0.05;
+              break;
+            }
+          }
+          try { hlsRef.current?.startLoad?.(-1); } catch {}
+          media.play().catch(() => {});
+        }, 1200);
+      }
+      if (bufferingTimer) return;
       bufferingTimer = setTimeout(() => {
         bufferingTimer = null;
         if (closed || error) return;
-        if (hasPlayed && media.readyState < 3) setStatus("توقف البث مؤقتًا، نحاول استئنافه...");
-      }, 8000);
+        if (hasPlayed && media.readyState < 3) setStatus("نعيد استقرار البث...");
+      }, 4000);
     }
 
     function markPlaying() {
@@ -215,6 +239,7 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
       recoveryTimer = null;
       setStarted(true);
       clearBufferingTimer();
+      clearStallRecoveryTimer();
       clearStartupTimer();
       if (!closed) {
         setError("");
@@ -269,7 +294,7 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
         return;
       }
       const hls = new Hls({
-        lowLatencyMode: true,
+        lowLatencyMode: false,
         progressive: true,
         startFragPrefetch: true,
         startLevel: 0,
@@ -280,13 +305,17 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
         abrBandWidthFactor: 0.8,
         abrBandWidthUpFactor: 0.6,
         abrMaxWithRealBitrate: true,
-        maxStarvationDelay: 2,
-        maxLoadingDelay: 3,
+        maxStarvationDelay: 4,
+        maxLoadingDelay: 5,
         backBufferLength: 30,
-        maxBufferLength: 30,
-        maxMaxBufferLength: 60,
-        liveSyncDurationCount: 3,
-        liveMaxLatencyDurationCount: 10,
+        maxBufferLength: 45,
+        maxMaxBufferLength: 90,
+        maxBufferHole: 0.75,
+        highBufferWatchdogPeriod: 2,
+        nudgeOffset: 0.1,
+        nudgeMaxRetry: 5,
+        liveSyncDurationCount: 4,
+        liveMaxLatencyDurationCount: 12,
         manifestLoadingTimeOut: 12000,
         manifestLoadingMaxRetry: 3,
         manifestLoadingRetryDelay: 600,
@@ -296,9 +325,9 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
         levelLoadingRetryDelay: 600,
         levelLoadingMaxRetryTimeout: 4000,
         fragLoadingTimeOut: 15000,
-        fragLoadingMaxRetry: 4,
-        fragLoadingRetryDelay: 600,
-        fragLoadingMaxRetryTimeout: 6000,
+        fragLoadingMaxRetry: 6,
+        fragLoadingRetryDelay: 500,
+        fragLoadingMaxRetryTimeout: 8000,
       });
       hlsRef.current = hls;
       hls.loadSource(src);
@@ -402,9 +431,18 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
     let qualityTimer: ReturnType<typeof setInterval> | null = null;
     let startupTimer: ReturnType<typeof setTimeout> | null = null;
     let streamReady = false;
-    let previousPackets = { received: 0, lost: 0 };
+    let previousVideoStats = {
+      received: 0,
+      lost: 0,
+      decoded: 0,
+      dropped: 0,
+      freezes: 0,
+      jitterBufferDelay: 0,
+      jitterBufferEmitted: 0,
+    };
     let weakQualitySamples = 0;
     let stableQualitySamples = 0;
+    let decoderStallSamples = 0;
     let lastAutomaticQualityChangeAt = 0;
 
     function clearRetry() {
@@ -439,6 +477,7 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
         if (qualityModeRef.current !== "auto" || pc.connectionState !== "connected") {
           weakQualitySamples = 0;
           stableQualitySamples = 0;
+          decoderStallSamples = 0;
           return;
         }
         try {
@@ -446,20 +485,58 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
           let received = 0;
           let lost = 0;
           let jitter = 0;
+          let decoded = 0;
+          let dropped = 0;
+          let freezes = 0;
+          let jitterBufferDelay = 0;
+          let jitterBufferEmitted = 0;
           report.forEach((stat) => {
             if (stat.type === "inbound-rtp" && stat.kind === "video") {
               received += Number(stat.packetsReceived || 0);
               lost += Number(stat.packetsLost || 0);
               jitter = Math.max(jitter, Number(stat.jitter || 0));
+              decoded += Number(stat.framesDecoded || 0);
+              dropped += Number(stat.framesDropped || 0);
+              freezes += Number(stat.freezeCount || 0);
+              jitterBufferDelay += Number(stat.jitterBufferDelay || 0);
+              jitterBufferEmitted += Number(stat.jitterBufferEmittedCount || 0);
             }
           });
-          const receivedDelta = Math.max(0, received - previousPackets.received);
-          const lostDelta = Math.max(0, lost - previousPackets.lost);
-          previousPackets = { received, lost };
+          const receivedDelta = Math.max(0, received - previousVideoStats.received);
+          const lostDelta = Math.max(0, lost - previousVideoStats.lost);
+          const decodedDelta = Math.max(0, decoded - previousVideoStats.decoded);
+          const droppedDelta = Math.max(0, dropped - previousVideoStats.dropped);
+          const freezeDelta = Math.max(0, freezes - previousVideoStats.freezes);
+          const jitterDelayDelta = Math.max(0, jitterBufferDelay - previousVideoStats.jitterBufferDelay);
+          const jitterEmittedDelta = Math.max(0, jitterBufferEmitted - previousVideoStats.jitterBufferEmitted);
+          previousVideoStats = {
+            received,
+            lost,
+            decoded,
+            dropped,
+            freezes,
+            jitterBufferDelay,
+            jitterBufferEmitted,
+          };
           const total = receivedDelta + lostDelta;
           const lossRate = total ? lostDelta / total : 0;
-          const weak = lossRate > 0.05 || jitter > 0.14;
-          const severelyWeak = lossRate > 0.12 || jitter > 0.25;
+          const frameTotal = decodedDelta + droppedDelta;
+          const dropRate = frameTotal ? droppedDelta / frameTotal : 0;
+          const averageJitterBufferDelay = jitterEmittedDelta ? jitterDelayDelta / jitterEmittedDelta : 0;
+          const decoderStalled = receivedDelta > 0 && decodedDelta === 0;
+          decoderStallSamples = decoderStalled ? decoderStallSamples + 1 : 0;
+          const weak = lossRate > 0.03
+            || jitter > 0.1
+            || dropRate > 0.1
+            || freezeDelta > 0
+            || averageJitterBufferDelay > 0.22
+            || decoderStallSamples >= 2;
+          const severelyWeak = lossRate > 0.1
+            || jitter > 0.22
+            || dropRate > 0.3
+            || freezeDelta >= 2
+            || averageJitterBufferDelay > 0.45
+            || decoderStallSamples >= 3;
           if (weak) {
             weakQualitySamples += 1;
             stableQualitySamples = 0;
@@ -486,7 +563,19 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
             ws.send(JSON.stringify({ type: "set-quality", quality: next }));
           }
         } catch {}
-      }, 8000);
+      }, 5000);
+    }
+
+    function tuneReceiverBuffer(pc: RTCPeerConnection) {
+      for (const receiver of pc.getReceivers()) {
+        const tunable = receiver as RTCRtpReceiver & {
+          jitterBufferTarget?: number;
+          playoutDelayHint?: number;
+        };
+        const target = receiver.track?.kind === "audio" ? 0.12 : 0.18;
+        try { tunable.jitterBufferTarget = target; } catch {}
+        try { tunable.playoutDelayHint = target; } catch {}
+      }
     }
 
     function cleanupPeer() {
@@ -638,6 +727,7 @@ function BroadcastPlayer({ channelId, livePort }: { channelId: string; livePort?
           };
           await pc.setRemoteDescription({ type: "offer", sdp: msg.sdp });
           if (pcRef.current !== pc) return;
+          tuneReceiverBuffer(pc);
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           if (pcRef.current === pc && ws.readyState === WebSocket.OPEN) {

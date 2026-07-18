@@ -51,6 +51,21 @@ function positiveFloat(value, fallback, min, max) {
   return Math.max(min, Math.min(max, next));
 }
 
+function captureCapacityProfile() {
+  const cores = positiveNumber(navigator.hardwareConcurrency, 4, 1, 64);
+  const memory = positiveFloat(navigator.deviceMemory, 4, 1, 64);
+  if (cores <= 2 || memory <= 2) {
+    return { label: 'constrained', crowdedAt: 3, heavyAt: 7, normalAt: 1, crowdedRecoveryAt: 5 };
+  }
+  if (cores <= 4 || memory <= 4) {
+    return { label: 'balanced', crowdedAt: 6, heavyAt: 14, normalAt: 3, crowdedRecoveryAt: 10 };
+  }
+  return { label: 'performance', crowdedAt: 10, heavyAt: 24, normalAt: 6, crowdedRecoveryAt: 18 };
+}
+
+const CAPTURE_CAPACITY = captureCapacityProfile();
+log('capture capacity profile:', CAPTURE_CAPACITY.label, CAPTURE_CAPACITY);
+
 function audioProfile() {
   const mode = ['direct', 'voice', 'cinema'].includes(String(config.audioMode || '').trim())
     ? String(config.audioMode).trim()
@@ -76,7 +91,8 @@ function viewerQuality(value, tier = capacityTier) {
   const source = targetQuality();
   const crowded = tier === 'crowded' || tier === 'heavy';
   const heavilyCrowded = tier === 'heavy';
-  const requestedHeight = heavilyCrowded ? 480 : (mode === '1080' ? 1080 : mode === '480' ? 480 : 720);
+  const requested = mode === '1080' ? 1080 : mode === '480' ? 480 : 720;
+  const requestedHeight = heavilyCrowded ? 480 : crowded ? Math.min(720, requested) : requested;
   const height = Math.min(source.height, requestedHeight);
   const scaleResolutionDownBy = Math.max(1, source.height / height);
   const targetBitrate = mode === '1080' ? 8000 : mode === '480' ? 1500 : mode === '720' ? 3500 : 3000;
@@ -84,7 +100,11 @@ function viewerQuality(value, tier = capacityTier) {
   return {
     mode,
     maxBitrate: Math.min(source.bitrateKbps, targetBitrate, capacityBitrate) * 1000,
-    maxFramerate: heavilyCrowded ? Math.min(source.fps, 24) : (mode === '480' ? Math.min(source.fps, 30) : source.fps),
+    maxFramerate: heavilyCrowded
+      ? Math.min(source.fps, 24)
+      : crowded || mode === '480'
+        ? Math.min(source.fps, 30)
+        : source.fps,
     scaleResolutionDownBy,
   };
 }
@@ -423,9 +443,10 @@ async function tuneSender(sender, track, requestedQuality = 'auto', tier = capac
       scaleResolutionDownBy: profile.scaleResolutionDownBy,
     };
   } else if (track.kind === 'audio') {
+    const capacityAudioBitrate = tier === 'heavy' ? 128 : tier === 'crowded' ? 160 : quality.audioBitrateKbps;
     params.encodings[0] = {
       ...params.encodings[0],
-      maxBitrate: quality.audioBitrateKbps * 1000,
+      maxBitrate: Math.min(quality.audioBitrateKbps, capacityAudioBitrate) * 1000,
     };
   }
   try { await sender.setParameters(params); } catch (error) { log('sender tuning skipped:', track.kind, error.message); }
@@ -433,17 +454,17 @@ async function tuneSender(sender, track, requestedQuality = 'auto', tier = capac
 
 function nextCapacityTier(viewerCount) {
   if (capacityTier === 'heavy') {
-    if (viewerCount <= 8) return 'normal';
-    if (viewerCount <= 30) return 'crowded';
+    if (viewerCount <= CAPTURE_CAPACITY.normalAt) return 'normal';
+    if (viewerCount <= CAPTURE_CAPACITY.crowdedRecoveryAt) return 'crowded';
     return 'heavy';
   }
   if (capacityTier === 'crowded') {
-    if (viewerCount >= 40) return 'heavy';
-    if (viewerCount <= 8) return 'normal';
+    if (viewerCount >= CAPTURE_CAPACITY.heavyAt) return 'heavy';
+    if (viewerCount <= CAPTURE_CAPACITY.normalAt) return 'normal';
     return 'crowded';
   }
-  if (viewerCount >= 40) return 'heavy';
-  if (viewerCount >= 16) return 'crowded';
+  if (viewerCount >= CAPTURE_CAPACITY.heavyAt) return 'heavy';
+  if (viewerCount >= CAPTURE_CAPACITY.crowdedAt) return 'crowded';
   return 'normal';
 }
 

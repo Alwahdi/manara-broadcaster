@@ -382,6 +382,7 @@ function segmentResponseHeaders(upstreamHeaders = {}) {
 
 function attachSegmentSubscriber(entry, res) {
   return new Promise((resolve) => {
+    try { res.socket?.setNoDelay?.(true); } catch {}
     const subscriber = { res, resolve, queue: [], queuedBytes: 0, flushing: false, finished: false };
     entry.subscribers.add(subscriber);
     res.once('close', () => {
