@@ -1,6 +1,7 @@
 "use client";
 
 import { Eye, EyeOff, LoaderCircle, Sparkles } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
@@ -32,6 +33,7 @@ export function SignupForm() {
       </span>
       <small className="field-help" id="signup-password-help">استخدم 12 حرفًا على الأقل لحماية حسابك.</small>
     </label>
+    <label className="auth-consent"><input name="termsAccepted" type="checkbox" value="true" required /><span>أوافق على <Link href="/terms">شروط الاستخدام</Link> و<Link href="/privacy">سياسة الخصوصية</Link>.</span></label>
     {error ? <p className="form-error" role="alert">{error}</p> : null}
     <button className="button primary wide" type="submit" disabled={pending}>{pending ? <LoaderCircle className="spin" size={19} /> : <Sparkles size={19} />}{pending ? "جارٍ إنشاء حسابك…" : "ابدأ 3 أيام مجانًا"}</button>
   </form>;

@@ -6,6 +6,7 @@ import { assertSameOrigin, cleanText, errorResponse, HttpError, jsonBody } from 
 import type { AssetKind } from "@/lib/types";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 const sections = new Set<AssetKind>(["live", "movie", "series"]);
 
 function sectionFrom(value: unknown) {

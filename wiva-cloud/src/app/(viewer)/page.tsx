@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Clapperboard, Film, Radio, Search } from "lucide-react";
-import { CatalogSection } from "@/components/Section";
+import { CatalogSection, EmptyState } from "@/components/Section";
 import { MatchScheduleSection } from "@/components/MatchScheduleSection";
 import { listViewerAssets } from "@/lib/db";
 import { listContinueWatching, listPublicMatchSchedule, listViewerFavorites } from "@/lib/db";
@@ -20,7 +20,7 @@ export default async function HomePage() {
     <>
       <section className="app-home container">
         <header className="app-home-heading">
-          <div><span>مرحبًا بك</span><h1>ماذا تريد أن تشاهد؟</h1></div>
+          <div><span>{viewer ? `مرحبًا ${viewer.name}` : "مرحبًا بك"}</span><h1>ماذا تريد أن تشاهد؟</h1></div>
           <Link href="/search" className="icon-button" aria-label="البحث في المحتوى"><Search size={20} /></Link>
         </header>
         <div className="home-destinations" aria-label="أقسام المشاهدة">
@@ -32,9 +32,11 @@ export default async function HomePage() {
       <MatchScheduleSection matches={matchSchedule} />
       {continueWatching.length ? <CatalogSection title="تابع المشاهدة" description="أكمل من حيث توقفت" href="/account" assets={continueWatching} /> : null}
       {favorites.length ? <CatalogSection title="المفضلة" description="المحتوى الذي حفظته" href="/account" assets={favorites} /> : null}
-      <CatalogSection title="مباشر الآن" description="اختر قناة وابدأ المشاهدة" href="/live" assets={live} />
-      <CatalogSection title="أفلام" description="جاهزة للمشاهدة" href="/movies" assets={movies} />
-      <CatalogSection title="مسلسلات" description="اختر الموسم والحلقة" href="/series" assets={series} />
+      {live.length || movies.length || series.length ? <>
+        {live.length ? <CatalogSection title="مباشر الآن" description="اختر قناة وابدأ المشاهدة" href="/live" assets={live} /> : null}
+        {movies.length ? <CatalogSection title="أفلام" description="جاهزة للمشاهدة" href="/movies" assets={movies} /> : null}
+        {series.length ? <CatalogSection title="مسلسلات" description="اختر الموسم والحلقة" href="/series" assets={series} /> : null}
+      </> : <section className="catalog-section container"><EmptyState title="المكتبة قيد التجهيز" body="نعمل على إضافة المحتوى. عد قريبًا لاكتشاف الجديد." /></section>}
     </>
   );
 }

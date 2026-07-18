@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { decryptCredentials } from "@/lib/crypto";
-import { getProviderSecret } from "@/lib/db";
+import { getProviderCatalogCache, getProviderSecret, saveProviderCatalogCache } from "@/lib/db";
 import { HttpError } from "@/lib/security";
 import { prepareCatalogItem } from "@/lib/catalog-safety";
 import type { AssetKind, ProviderCatalogCategory, ProviderCatalogItem, ProviderSeriesEpisode, ProviderSummary } from "@/lib/types";
@@ -231,10 +231,18 @@ export async function discoverProviderCatalog(connection: ProviderConnection, se
   const key = `${connection.id}:${section}`;
   const cached = cache.get(key);
   if (!fresh && cached && cached.expiresAt > Date.now()) return cached.items;
+  if (!fresh) {
+    const persistent = await getProviderCatalogCache(connection.id, section);
+    if (persistent) {
+      cache.set(key, { expiresAt: Date.now() + 60_000, items: persistent });
+      return persistent;
+    }
+  }
   const all = connection.kind === "licensed_hls" ? await discoverM3u(connection) : await discoverXtream(connection, section);
   const items = (connection.kind === "licensed_hls" ? all.filter((item) => item.kind === section) : all).map(prepareCatalogItem);
   if (!cache.has(key) && cache.size >= MAX_CACHED_CATALOGS) cache.delete(cache.keys().next().value!);
   cache.set(key, { expiresAt: Date.now() + 60_000, items });
+  await saveProviderCatalogCache(connection.id, section, items);
   return items;
 }
 

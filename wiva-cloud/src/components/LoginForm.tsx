@@ -38,7 +38,7 @@ export function LoginForm({ admin = false }: { admin?: boolean }) {
       <label htmlFor={`${prefix}-email`}>البريد الإلكتروني<input id={`${prefix}-email`} name="email" type="email" dir="ltr" autoComplete="email" inputMode="email" placeholder="name@example.com" required autoFocus aria-invalid={Boolean(error)} /></label>
       <label htmlFor={`${prefix}-password`}>كلمة المرور
         <span className="password-input">
-          <input id={`${prefix}-password`} name="password" type={showPassword ? "text" : "password"} dir="ltr" autoComplete="current-password" minLength={8} required aria-invalid={Boolean(error)} aria-describedby={error ? `${prefix}-login-error` : undefined} />
+          <input id={`${prefix}-password`} name="password" type={showPassword ? "text" : "password"} dir="ltr" autoComplete="current-password" minLength={admin ? 8 : 12} required aria-invalid={Boolean(error)} aria-describedby={error ? `${prefix}-login-error` : undefined} />
           <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"} aria-pressed={showPassword}>
             {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
           </button>

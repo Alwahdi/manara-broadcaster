@@ -12,7 +12,7 @@ export function MediaCard({ asset, priority = false }: { asset: CatalogAsset; pr
   return (
     <Link href={asset.kind === "series" && !asset.parentAssetId ? `/series/${asset.id}` : `/watch/${asset.id}`} className="media-card" data-kind={asset.kind} data-priority={priority || undefined} prefetch={priority ? true : null}>
       <div className="media-art">
-        {asset.artworkUrl ? <img className="media-poster" src={asset.artworkUrl} alt="" loading={priority ? "eager" : "lazy"} decoding="async" fetchPriority={priority ? "high" : "auto"} referrerPolicy="no-referrer" /> : null}
+        {asset.artworkUrl ? <img className="media-poster" src={asset.artworkUrl} alt="" width={480} height={asset.kind === "live" ? 270 : 720} loading={priority ? "eager" : "lazy"} decoding="async" fetchPriority={priority ? "high" : "auto"} referrerPolicy="no-referrer" /> : null}
         {!asset.artworkUrl ? <span className="media-initials">{initials(title)}</span> : null}
         <span className="quality-pill">{asset.quality}</span>
         {asset.kind === "live" ? <span className="live-pill"><i /> مباشر</span> : null}
@@ -23,7 +23,7 @@ export function MediaCard({ asset, priority = false }: { asset: CatalogAsset; pr
         <strong>{title}</strong>
         <span>{asset.category || (asset.kind === "live" ? "قنوات" : "مكتبة")}</span>
         <div>
-          {asset.rating ? <span className="rating"><Star size={14} fill="currentColor" /> {asset.rating}</span> : null}
+          {asset.rating ? <span className="rating" aria-label={`التقييم ${asset.rating} من 5`}><Star size={14} fill="currentColor" /> {asset.rating}/5</span> : null}
           {asset.year ? <span>{asset.year}</span> : null}
           {language ? <span>{language}</span> : null}
         </div>

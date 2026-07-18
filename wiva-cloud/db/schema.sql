@@ -30,6 +30,17 @@ create table if not exists wiva_cloud_providers (
 create index if not exists wiva_cloud_providers_tenant_idx
   on wiva_cloud_providers(tenant_id, priority, name);
 
+create table if not exists wiva_cloud_provider_catalog_cache (
+  tenant_id uuid not null references wiva_cloud_tenants(id) on delete cascade,
+  provider_id uuid not null references wiva_cloud_providers(id) on delete cascade,
+  section text not null check (section in ('live','movie','series')),
+  payload jsonb not null,
+  item_count integer not null default 0,
+  expires_at timestamptz not null,
+  updated_at timestamptz not null default now(),
+  primary key (tenant_id, provider_id, section)
+);
+
 create table if not exists wiva_cloud_assets (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references wiva_cloud_tenants(id) on delete cascade,
@@ -56,6 +67,9 @@ create table if not exists wiva_cloud_assets (
   is_playable boolean not null default true,
   metadata_review text not null default 'approved'
     check (metadata_review in ('approved','needs_review')),
+  consecutive_failures integer not null default 0,
+  last_failure_at timestamptz,
+  last_success_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique(tenant_id, provider_id, provider_asset_ref)
@@ -71,6 +85,9 @@ alter table wiva_cloud_assets add column if not exists delivery_mode text not nu
 alter table wiva_cloud_assets add column if not exists is_restricted boolean not null default false;
 alter table wiva_cloud_assets add column if not exists is_playable boolean not null default true;
 alter table wiva_cloud_assets add column if not exists metadata_review text not null default 'approved';
+alter table wiva_cloud_assets add column if not exists consecutive_failures integer not null default 0;
+alter table wiva_cloud_assets add column if not exists last_failure_at timestamptz;
+alter table wiva_cloud_assets add column if not exists last_success_at timestamptz;
 create index if not exists wiva_cloud_assets_parent_idx on wiva_cloud_assets(tenant_id, parent_asset_id, season_number, episode_number);
 create index if not exists wiva_cloud_assets_public_idx on wiva_cloud_assets(tenant_id, kind, is_active, is_restricted, is_playable);
 
@@ -96,7 +113,7 @@ create index if not exists wiva_cloud_match_schedule_public_idx
 -- titles are hidden from public pages until an administrator reviews them.
 update wiva_cloud_assets
 set is_restricted = true, metadata_review = 'needs_review'
-where lower(concat_ws(' ', title, category, description)) ~ '(adult|xxx|18\s*\+|porno|pornography|playboy|brazzers|hustler|redlight|dorcel|penthouse|hardcore|vivid\s*(tv|red|touch)?|erotic|إباحي|اباحي|للبالغين)';
+where lower(concat_ws(' ', title, category, description)) ~ '(adult|xxx|18\s*\+|porn|porno|pornography|pornhub|playboy|brazzers|hustler|redlight|dorcel|penthouse|hardcore|vivid\s*(tv|red|touch)?|erotic|sex|sexy|stepdaughter|stepsister|stepmom|milf|nude|nudity|onlyfans|إباحي|اباحي|للبالغين|عاري|عري|جنس)';
 
 update wiva_cloud_assets
 set is_playable = false, metadata_review = 'needs_review'
@@ -134,6 +151,21 @@ create table if not exists wiva_cloud_viewer_sessions (
 
 create index if not exists wiva_cloud_sessions_expiry_idx
   on wiva_cloud_viewer_sessions(expires_at);
+
+create table if not exists wiva_cloud_playback_leases (
+  lease_id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references wiva_cloud_tenants(id) on delete cascade,
+  viewer_id uuid not null references wiva_cloud_viewers(id) on delete cascade,
+  session_hash text not null,
+  asset_id uuid not null references wiva_cloud_assets(id) on delete cascade,
+  expires_at timestamptz not null,
+  last_seen_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  unique (tenant_id, viewer_id, session_hash)
+);
+
+create index if not exists wiva_cloud_playback_leases_active_idx
+  on wiva_cloud_playback_leases(tenant_id, viewer_id, expires_at);
 
 create table if not exists wiva_cloud_viewer_favorites (
   tenant_id uuid not null references wiva_cloud_tenants(id) on delete cascade,
@@ -189,6 +221,17 @@ create table if not exists wiva_cloud_audit_log (
 
 create index if not exists wiva_cloud_audit_tenant_time_idx
   on wiva_cloud_audit_log(tenant_id, created_at desc);
+
+create table if not exists wiva_cloud_rate_limits (
+  tenant_id uuid not null references wiva_cloud_tenants(id) on delete cascade,
+  scope text not null,
+  key_hash text not null,
+  count integer not null default 1,
+  expires_at timestamptz not null,
+  primary key (tenant_id, scope, key_hash)
+);
+
+create index if not exists wiva_cloud_rate_limits_expiry_idx on wiva_cloud_rate_limits(expires_at);
 
 create or replace function wiva_cloud_set_updated_at()
 returns trigger language plpgsql as $$

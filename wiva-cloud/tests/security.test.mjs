@@ -333,3 +333,38 @@ test("admin and authentication flows expose clear navigation, feedback, and mobi
   assert.match(styles, /\.viewer-auth-page \.auth-promo \{ display: none; \}/);
   assert.match(styles, /\.form-message\.error/);
 });
+
+test("viewer concurrency is enforced with expiring playback leases", () => {
+  const schema = readFileSync(join(root, "db/schema.sql"), "utf8");
+  const database = readFileSync(join(root, "src/lib/db.ts"), "utf8");
+  const playback = readFileSync(join(root, "src/app/api/playback/[id]/route.ts"), "utf8");
+  const gateway = readFileSync(join(root, "scripts/local-media-gateway.mjs"), "utf8");
+  assert.match(schema, /wiva_cloud_playback_leases/);
+  assert.match(database, /acquirePlaybackLease/);
+  assert.match(playback, /وصل الحساب إلى الحد المسموح للمشاهدة المتزامنة/);
+  assert.match(gateway, /leaseIsActive/);
+});
+
+test("catalog purge preserves providers and records an audit event", () => {
+  const purge = readFileSync(join(root, "scripts/purge-content.mjs"), "utf8");
+  assert.match(purge, /delete from wiva_cloud_assets/);
+  assert.doesNotMatch(purge, /delete from wiva_cloud_providers/);
+  assert.match(purge, /catalog\.purge/);
+});
+
+test("provider catalogs use a persistent cache and imported series require episodes", () => {
+  const schema = readFileSync(join(root, "db/schema.sql"), "utf8");
+  const catalog = readFileSync(join(root, "src/lib/provider-catalog.ts"), "utf8");
+  const database = readFileSync(join(root, "src/lib/db.ts"), "utf8");
+  assert.match(schema, /wiva_cloud_provider_catalog_cache/);
+  assert.match(catalog, /getProviderCatalogCache/);
+  assert.match(database, /اختر حلقة واحدة على الأقل قبل استيراد المسلسل/);
+  assert.match(database, /catalogIdentity/);
+});
+
+test("public health is minimal while gateway metrics require a signed health request", () => {
+  const health = readFileSync(join(root, "src/app/api/health/route.ts"), "utf8");
+  const gateway = readFileSync(join(root, "scripts/local-media-gateway.mjs"), "utf8");
+  assert.doesNotMatch(health, /WIVA_ADMIN_EMAIL|databaseConfigured|mediaGateway/);
+  assert.match(gateway, /hmac\(`health\.\$\{ts\}`\)/);
+});

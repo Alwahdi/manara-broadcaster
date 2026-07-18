@@ -43,6 +43,8 @@ export function PlayerClient({ assetId, title, active, resumeAt = 0, authenticat
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bufferingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const leaseHeartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const leaseRef = useRef("");
   const gestureTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pointerStartRef = useRef<{ x: number; y: number; pointerId: number } | null>(null);
   const lastTouchTapRef = useRef<{ at: number; x: number } | null>(null);
@@ -83,6 +85,10 @@ export function PlayerClient({ assetId, title, active, resumeAt = 0, authenticat
     clickTimerRef.current = null;
     if (bufferingTimerRef.current) clearTimeout(bufferingTimerRef.current);
     bufferingTimerRef.current = null;
+    if (leaseHeartbeatRef.current) clearInterval(leaseHeartbeatRef.current);
+    leaseHeartbeatRef.current = null;
+    const leaseId = leaseRef.current; leaseRef.current = "";
+    if (leaseId) void fetch(`/api/playback/lease/${encodeURIComponent(leaseId)}`, { method: "DELETE", credentials: "include", keepalive: true }).catch(() => undefined);
     if (gestureTimerRef.current) clearTimeout(gestureTimerRef.current);
     gestureTimerRef.current = null;
     pointerStartRef.current = null; lastTouchTapRef.current = null; touchGestureAtRef.current = 0; ignoreClickRef.current = false; scrubbingRef.current = false;
@@ -116,6 +122,18 @@ export function PlayerClient({ assetId, title, active, resumeAt = 0, authenticat
       const video = videoRef.current;
       if (!video) return;
       const url = String(payload.url); const isLive = payload.live === true;
+      if (payload.leaseId) {
+        leaseRef.current = String(payload.leaseId);
+        leaseHeartbeatRef.current = setInterval(() => {
+          const currentLease = leaseRef.current;
+          if (!currentLease) return;
+          void fetch(`/api/playback/lease/${encodeURIComponent(currentLease)}`, { method: "PATCH", credentials: "include", keepalive: true })
+            .then((heartbeat) => {
+              if (heartbeat.ok) return;
+              stop(); setState("error"); setMessage("توقف التشغيل لأن الحساب وصل إلى حد الأجهزة المسموح. اضغط تشغيل للمحاولة مجددًا.");
+            }).catch(() => undefined);
+        }, 30_000);
+      }
       setLive(isLive);
       if (payload.preview === true && Number(payload.previewEndsAt) > Date.now()) {
         previewTimerRef.current = setTimeout(() => {

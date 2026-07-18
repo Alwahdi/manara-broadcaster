@@ -65,6 +65,17 @@ export function ChannelManager({ initial, providers }: { initial: CatalogAsset[]
     finally { setPending(false); }
   }
 
+  async function bulkDelete() {
+    if (!selected.size || !window.confirm(`حذف ${selected.size} عنصرًا نهائيًا؟ يشمل ذلك حلقات المسلسلات المحددة.`)) return;
+    setPending(true); setMessage("");
+    try {
+      const response = await fetch("/api/admin/assets/bulk", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ ids: [...selected], confirmation: "delete-selected-content" }) });
+      const payload = await response.json(); if (!response.ok) throw new Error(payload.error);
+      setAssets(payload.assets); setSelected(new Set()); setMessageTone("success"); setMessage(`تم حذف ${payload.deleted} عنصرًا ومحتواه المرتبط.`);
+    } catch (error) { setMessageTone("error"); setMessage(error instanceof Error ? error.message : "تعذر حذف العناصر"); }
+    finally { setPending(false); }
+  }
+
   async function remove(asset: CatalogAsset) {
     const detail = asset.kind === "series" && !asset.parentAssetId ? " وسيتم حذف جميع مواسمه وحلقاته" : "";
     if (!window.confirm(`حذف «${asset.title}» نهائيًا${detail}؟`)) return;
@@ -95,7 +106,7 @@ export function ChannelManager({ initial, providers }: { initial: CatalogAsset[]
         <select aria-label="تصفية حسب الأمان" value={safety} onChange={(event) => setSafety(event.target.value as typeof safety)}><option value="">كل تصنيفات العرض</option><option value="safe">ملائم وقابل للتشغيل</option><option value="restricted">مقيّد</option><option value="non_playable">معلومة وليست فيديو</option></select>
       </div>
       {filtersActive ? <button className="clear-filters" type="button" onClick={clearFilters}><RotateCcw size={15} />مسح عوامل التصفية</button> : null}
-      <div className="asset-bulk-bar"><button className="button secondary" onClick={toggleVisible} disabled={!visible.length}>{allVisibleSelected ? "إلغاء تحديد النتائج" : "تحديد النتائج"}</button><span>{selected.size} محدد</span><div><button onClick={() => void bulk(false)} disabled={pending || !selected.size}><EyeOff />إخفاء</button><button onClick={() => void bulk(true)} disabled={pending || !selected.size}><Eye />نشر</button></div></div>
+      <div className="asset-bulk-bar"><button className="button secondary" onClick={toggleVisible} disabled={!visible.length}>{allVisibleSelected ? "إلغاء تحديد النتائج" : "تحديد النتائج"}</button><span>{selected.size} محدد</span><div><button onClick={() => void bulk(false)} disabled={pending || !selected.size}><EyeOff />إخفاء</button><button onClick={() => void bulk(true)} disabled={pending || !selected.size}><Eye />نشر</button><button className="danger" onClick={() => void bulkDelete()} disabled={pending || !selected.size}><Trash2 />حذف</button></div></div>
       {message ? <p className={`form-message ${messageTone}`} role={messageTone === "error" ? "alert" : "status"}>{messageTone === "error" ? <CircleAlert size={17} /> : <CheckCircle2 size={17} />}{message}</p> : null}
       <div className="asset-admin-grid content-asset-grid">
         {visible.map((asset) => <article key={asset.id} className={`asset-admin-card ${selected.has(asset.id) ? "selected" : ""}`}>

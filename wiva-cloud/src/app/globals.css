@@ -220,6 +220,7 @@ img, video { display: block; max-width: 100%; }
 .viewer-pagination a[aria-disabled="true"] { opacity: .35; pointer-events: none; }
 .viewer-pagination svg { width: 17px; }
 .viewer-pagination span { color: var(--dim); font-size: .78rem; }
+.viewer-pagination > span[aria-disabled="true"] { min-height: 42px; padding: 0 13px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); opacity: .35; }
 .search-form { max-width: 760px; margin-top: 24px; padding: 7px; display: grid; grid-template-columns: auto minmax(0,1fr) auto auto; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 15px; background: rgba(255,255,255,.035); }
 .search-form > svg { margin-inline-start: 8px; color: var(--muted); }
 .search-form input { min-height: 42px; border: 0; background: transparent; }
@@ -325,6 +326,9 @@ img, video { display: block; max-width: 100%; }
 .auth-card > p { margin: 0 0 24px; color: var(--muted); }
 .auth-form { display: grid; gap: 16px; }
 .auth-form label, .stack-form label { display: grid; gap: 7px; color: var(--muted); font-size: .82rem; font-weight: 700; }
+.auth-form label.auth-consent { display: flex; align-items: flex-start; gap: 9px; line-height: 1.7; font-weight: 500; }
+.auth-consent input { width: 18px; height: 18px; margin-top: 4px; accent-color: var(--gold); }
+.auth-consent a { color: var(--gold); text-decoration: underline; text-underline-offset: 3px; }
 .password-input { position: relative; display: block; }
 .password-input input { padding-inline-end: 48px; }
 .password-input button { position: absolute; inset-inline-end: 5px; top: 5px; width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 9px; color: var(--muted); background: transparent; cursor: pointer; }
@@ -544,6 +548,7 @@ select { appearance: none; }
 .asset-bulk-bar > div { margin-inline-start: auto; display: flex; gap: 6px; }
 .asset-bulk-bar > div button { min-height: 36px; padding: 0 10px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); background: rgba(255,255,255,.03); cursor: pointer; font-size: .69rem; font-weight: 700; }
 .asset-bulk-bar > div button:last-child { color: #bff5df; border-color: rgba(69,221,163,.2); background: rgba(69,221,163,.06); }
+.asset-bulk-bar > div button.danger { color: #ffd1d4; border-color: rgba(255,116,125,.28); background: rgba(255,116,125,.08); }
 .asset-bulk-bar svg { width: 15px; }
 .content-asset-grid { margin-top: 12px; }
 

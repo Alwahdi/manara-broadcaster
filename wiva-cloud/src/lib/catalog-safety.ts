@@ -15,8 +15,9 @@ const restrictedTerms = [
   /\bvivid\s*(?:tv|red|touch)?\b/i,
   /\berotic\b/i,
   /\bsex(?:y)?\b/i,
+  /\b(?:stepdaughter|stepsister|stepmom|milf|nude|nudity|onlyfans|pornhub)\b/i,
   /\bhot\s*(?:club|night|girls?)\b/i,
-  /للبالغين|إباحي|اباحي|جنس(?:ي|ية)?/i,
+  /للبالغين|إباحي|اباحي|عاري|عري|جنس(?:ي|ية)?/i,
 ];
 
 const scheduleTerms = [
@@ -86,4 +87,9 @@ export function prepareCatalogItem(item: ProviderCatalogItem) {
     restricted: isRestrictedMetadata(item.title, item.category, item.description),
     playable: !isScheduleMetadata(item.title, item.category, item.description),
   };
+}
+
+export function catalogIdentity(item: ProviderCatalogItem) {
+  const prepared = prepareCatalogItem(item);
+  return [prepared.kind, prepared.title.toLocaleLowerCase("ar"), prepared.year || "", prepared.quality.toUpperCase(), prepared.category.toLocaleLowerCase("ar")].join("|");
 }

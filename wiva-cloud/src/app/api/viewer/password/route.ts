@@ -6,7 +6,7 @@ import { assertSameOrigin, cleanText, errorResponse, HttpError, jsonBody } from 
 
 export async function PATCH(request: Request) {
   try {
-    assertSameOrigin(request); enforceRateLimit(request, "viewer-password", 5, 60 * 60 * 1000);
+    assertSameOrigin(request); await enforceRateLimit(request, "viewer-password", 5, 60 * 60 * 1000);
     const viewer = await currentViewerAccount(); const tokenHash = await currentViewerSessionHash();
     if (!viewer || !tokenHash) throw new HttpError(401, "سجّل الدخول أولًا");
     const body = await jsonBody<{ currentPassword?: unknown; newPassword?: unknown }>(request);

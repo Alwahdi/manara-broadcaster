@@ -1,6 +1,6 @@
-import { currentViewer, previewAccess } from "@/lib/auth";
+import { currentViewer, currentViewerSessionHash, previewAccess } from "@/lib/auth";
 import { hashToken } from "@/lib/crypto";
-import { getAsset } from "@/lib/db";
+import { acquirePlaybackLease, getAsset } from "@/lib/db";
 import { isDemoMode } from "@/lib/env";
 import { createPlaybackUrl } from "@/lib/playback";
 import { HttpError, errorResponse } from "@/lib/security";
@@ -32,6 +32,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     let accessExpiresAt = viewer?.expiresAt ? new Date(viewer.expiresAt).getTime() : Date.now() + 2 * 60 * 60 * 1000;
     let previewCookie: string | null = null;
     let preview = false;
+    let leaseId = "";
     if (!viewer) {
       const access = await previewAccess();
       if (access.payload.exp <= Date.now()) {
@@ -41,8 +42,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       accessExpiresAt = access.payload.exp;
       previewCookie = access.cookie;
       preview = true;
+    } else {
+      const sessionHash = await currentViewerSessionHash();
+      leaseId = sessionHash ? await acquirePlaybackLease(viewer.id, sessionHash, asset.id) || "" : "";
+      if (!leaseId) throw new HttpError(409, "وصل الحساب إلى الحد المسموح للمشاهدة المتزامنة. أوقف التشغيل على جهاز آخر ثم حاول مجددًا");
     }
-    const grant = createPlaybackUrl(asset, viewerId || (isDemoMode() ? "demo-viewer" : "preview"), gatewayForRequest(request), accessExpiresAt);
+    const grant = createPlaybackUrl(asset, viewerId || (isDemoMode() ? "demo-viewer" : "preview"), gatewayForRequest(request), accessExpiresAt, leaseId);
     const headers: Record<string, string> = { "cache-control": "private, no-store", "referrer-policy": "no-referrer" };
     if (previewCookie) headers["set-cookie"] = previewCookie;
     return Response.json({ ok: true, ...grant, live: asset.kind === "live", preview, previewEndsAt: preview ? accessExpiresAt : null }, { headers });

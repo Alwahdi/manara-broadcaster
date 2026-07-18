@@ -1,6 +1,6 @@
 import { revalidateTag } from "next/cache";
 import { requireAdminRequest } from "@/lib/auth";
-import { audit, deleteAsset, getAsset, listAssets, listProviders, setAssetActive, setAssetSafety } from "@/lib/db";
+import { audit, deleteAsset, getAsset, listAssets, listProviders, listSeriesEpisodes, setAssetActive, setAssetSafety } from "@/lib/db";
 import { assertSameOrigin, errorResponse, HttpError, jsonBody } from "@/lib/security";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -15,8 +15,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const asset = await getAsset(id, true);
     if (!asset) throw new HttpError(404, "المحتوى غير موجود");
     if (body.active === true) {
+      if (asset.isRestricted || !asset.isPlayable || asset.metadataReview === "needs_review") throw new HttpError(409, "راجع سلامة المحتوى وقابلية تشغيله قبل النشر");
       const provider = (await listProviders()).find((item) => item.id === asset.providerId);
       if (!provider || provider.status !== "active" || !provider.redistributionAttested) throw new HttpError(409, "فعّل مزوّدًا مرخّصًا أولًا");
+      if (asset.kind === "series" && !asset.parentAssetId) {
+        const episodes = await listSeriesEpisodes(asset.id, true);
+        if (!episodes.some((episode) => episode.isActive && !episode.isRestricted && episode.isPlayable)) throw new HttpError(409, "فعّل حلقة صالحة واحدة على الأقل قبل نشر المسلسل");
+      }
     }
     if (body.active !== undefined && !(await setAssetActive(id, body.active))) throw new HttpError(404, "المحتوى غير موجود");
     if ((body.restricted !== undefined || body.playable !== undefined) && !(await setAssetSafety(id, {

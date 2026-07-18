@@ -6,11 +6,12 @@ import { assertSameOrigin, cleanText, errorResponse, HttpError, jsonBody } from 
 
 export async function POST(request: Request) {
   try {
-    assertSameOrigin(request); enforceRateLimit(request, "viewer-signup", 4, 60 * 60 * 1000);
+    assertSameOrigin(request); await enforceRateLimit(request, "viewer-signup", 4, 60 * 60 * 1000);
     const body = await jsonBody<Record<string, unknown>>(request, 10_000);
     const name = cleanText(body.name, 120);
     const email = cleanText(body.email, 254).toLowerCase();
     const password = cleanText(body.password, 512);
+    if (body.termsAccepted !== "true" && body.termsAccepted !== true) throw new HttpError(400, "وافق على شروط الاستخدام وسياسة الخصوصية لإنشاء الحساب");
     if (!name || !email.includes("@") || password.length < 12) throw new HttpError(400, "أدخل الاسم والبريد وكلمة مرور من 12 حرفًا على الأقل");
     const expiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
     let id: string;

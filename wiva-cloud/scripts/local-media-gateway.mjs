@@ -47,6 +47,7 @@ const vodStates = new Map();
 const vodChunks = new Map();
 const resolvedChannels = new Map();
 const assetAvailability = new Map();
+const leaseAvailability = new Map();
 const safeHosts = new Map();
 const metrics = { upstreamRequests: 0, upstreamBytes: 0, downstreamBytes: 0, cacheHits: 0, coalesced: 0, errors: 0 };
 let cacheBytes = 0;
@@ -87,6 +88,7 @@ function cleanExpired() {
   for (const [key, ingest] of liveIngests) if (ingest.lastAccess + LIVE_IDLE_MS < now) stopLiveIngest(key, ingest);
   for (const [key, state] of vodStates) if (state.lastAccess + VOD_IDLE_MS < now && state.pending.size === 0) dropVodState(key, state);
   for (const [key, value] of assetAvailability) if (value.expiresAt + 60_000 < now) assetAvailability.delete(key);
+  for (const [key, value] of leaseAvailability) if (value.expiresAt + 60_000 < now) leaseAvailability.delete(key);
 }
 
 function vodState(channel) {
@@ -344,6 +346,7 @@ async function assetIsAvailable(assetId) {
         select 1 from wiva_cloud_assets a
         join wiva_cloud_providers p on p.id = a.provider_id and p.tenant_id = a.tenant_id
         where a.tenant_id = ${TENANT} and a.id = ${assetId} and a.is_active = true
+          and a.is_restricted = false and a.is_playable = true
           and p.status = 'active' and p.redistribution_attested = true
       ) as available
     `;
@@ -359,6 +362,44 @@ async function assetIsAvailable(assetId) {
     assetAvailability.delete(assetId);
     throw error;
   }
+}
+
+async function markAssetHealthy(assetId) {
+  await sql`
+    update wiva_cloud_assets set consecutive_failures=0, last_success_at=now()
+    where tenant_id=${TENANT} and id=${assetId} and consecutive_failures <> 0
+  `.catch(() => undefined);
+}
+
+async function markAssetFailure(assetId) {
+  await sql`
+    update wiva_cloud_assets set
+      consecutive_failures=consecutive_failures + 1,
+      last_failure_at=now(),
+      is_playable=case when consecutive_failures + 1 >= 3 then false else is_playable end,
+      metadata_review=case when consecutive_failures + 1 >= 3 then 'needs_review' else metadata_review end
+    where tenant_id=${TENANT} and id=${assetId}
+  `.catch(() => undefined);
+  assetAvailability.delete(assetId);
+}
+
+async function leaseIsActive(session) {
+  if (!session.leaseId) return true;
+  const cached = leaseAvailability.get(session.leaseId);
+  if (cached && cached.expiresAt > Date.now()) return cached.active;
+  const rows = await sql`
+    select exists(
+      select 1 from wiva_cloud_playback_leases l
+      join wiva_cloud_viewers v on v.id=l.viewer_id and v.tenant_id=l.tenant_id
+      where l.tenant_id=${TENANT} and l.lease_id=${session.leaseId}
+        and l.viewer_id::text=${session.viewer} and l.asset_id=${session.channel.assetId}
+        and l.expires_at > now() and v.status='active'
+        and (v.expires_at is null or v.expires_at > now())
+    ) as active
+  `;
+  const active = Boolean(rows[0]?.active);
+  leaseAvailability.set(session.leaseId, { active, expiresAt: Date.now() + 12_000 });
+  return active;
 }
 
 async function waitForLivePlaylist(ingest, timeoutMs = 15_000, minimumSegments = 3) {
@@ -438,8 +479,8 @@ async function ensureLiveIngest(channel, ingestKey = channel.assetId) {
   });
   ingest.ready = waitForLivePlaylist(ingest, channel.mediaType === "live" ? 15_000 : 60_000, 1);
   liveIngests.set(ingestKey, ingest);
-  try { await ingest.ready; return ingest; }
-  catch (error) { stopLiveIngest(ingestKey, ingest); throw error; }
+  try { await ingest.ready; void markAssetHealthy(channel.assetId); return ingest; }
+  catch (error) { void markAssetFailure(channel.assetId); stopLiveIngest(ingestKey, ingest); throw error; }
 }
 
 function rewriteLocalLivePlaylist(body, session, requestOrigin) {
@@ -500,7 +541,8 @@ async function resolveChannelFresh(assetId) {
   const rows = await sql`
     select a.id, a.kind, a.provider_asset_ref, a.delivery_mode, p.status, p.redistribution_attested, p.credentials_cipher
     from wiva_cloud_assets a join wiva_cloud_providers p on p.id = a.provider_id and p.tenant_id = a.tenant_id
-    where a.tenant_id=${TENANT} and a.id=${assetId} and a.is_active=true limit 1
+    where a.tenant_id=${TENANT} and a.id=${assetId} and a.is_active=true
+      and a.is_restricted=false and a.is_playable=true limit 1
   `;
   const row = rows[0];
   if (!row || row.status !== "active" || !row.redistribution_attested) throw new Error("asset is not available");
@@ -550,19 +592,28 @@ function origin(req) {
 const server = createServer(async (req, res) => {
   try {
     cleanExpired(); const url = new URL(req.url || "/", origin(req));
-    if (url.pathname === "/health") return sendJson(res, 200, { ok: true, service: "wiva-local-media-gateway", sessions: sessions.size, cacheEntries: cache.size, ...metrics });
+    if (url.pathname === "/health") {
+      const ts = Number(url.searchParams.get("ts") || 0); const signature = url.searchParams.get("sig") || "";
+      const authorized = Math.abs(Math.floor(Date.now() / 1000) - ts) <= 30 && safeEqual(signature, hmac(`health.${ts}`));
+      return sendJson(res, 200, authorized ? { ok: true, service: "wiva-local-media-gateway", sessions: sessions.size, activeIngests: liveIngests.size, cacheEntries: cache.size, ...metrics } : { ok: true, service: "wiva-local-media-gateway" });
+    }
     const play = url.pathname.match(/^\/v1\/play\/([0-9a-f-]+)\/(index\.m3u8|media)$/i);
     if (play) {
-      const viewer = url.searchParams.get("viewer") || ""; const exp = Number(url.searchParams.get("exp") || 0); const accessExp = Number(url.searchParams.get("accessExp") || 0); const nonce = url.searchParams.get("nonce") || ""; const signature = url.searchParams.get("sig") || ""; const tenant = url.searchParams.get("tenant") || "";
+      const viewer = url.searchParams.get("viewer") || ""; const leaseId = url.searchParams.get("lease") || ""; const exp = Number(url.searchParams.get("exp") || 0); const accessExp = Number(url.searchParams.get("accessExp") || 0); const nonce = url.searchParams.get("nonce") || ""; const signature = url.searchParams.get("sig") || ""; const tenant = url.searchParams.get("tenant") || "";
       const nowSeconds = Math.floor(Date.now() / 1000);
       const legacyGrant = !accessExp;
       const effectiveAccessExp = legacyGrant ? nowSeconds + Math.floor(SESSION_TTL_MS / 1000) : accessExp;
-      const expected = legacyGrant
-        ? hmac(`${tenant}.${play[1]}.${viewer}.${exp}.${nonce}`)
-        : hmac(`${tenant}.${play[1]}.${viewer}.${exp}.${accessExp}.${nonce}`);
-      if (tenant !== TENANT || !viewer || !nonce || exp < nowSeconds || exp > nowSeconds + 120 || effectiveAccessExp < nowSeconds || !safeEqual(signature, expected)) return sendError(res, 403, "رابط التشغيل غير صالح أو منتهي");
+      const expected = leaseId
+        ? hmac(`${tenant}.${play[1]}.${viewer}.${leaseId}.${exp}.${accessExp}.${nonce}`)
+        : legacyGrant
+          ? hmac(`${tenant}.${play[1]}.${viewer}.${exp}.${nonce}`)
+          : hmac(`${tenant}.${play[1]}.${viewer}..${exp}.${accessExp}.${nonce}`);
+      const rollingLegacy = !leaseId && !legacyGrant ? hmac(`${tenant}.${play[1]}.${viewer}.${exp}.${accessExp}.${nonce}`) : "";
+      if (tenant !== TENANT || !viewer || !nonce || exp < nowSeconds || exp > nowSeconds + 120 || effectiveAccessExp < nowSeconds || !(safeEqual(signature, expected) || (rollingLegacy && safeEqual(signature, rollingLegacy)))) return sendError(res, 403, "رابط التشغيل غير صالح أو منتهي");
       if (!(await assetIsAvailable(play[1]))) return sendError(res, 403, "المحتوى متوقف حاليًا");
-      const channel = await resolveChannel(play[1]); const token = randomBytes(24).toString("base64url"); const session = { token, channel, viewer, expiresAt: Math.min(Date.now() + SESSION_TTL_MS, effectiveAccessExp * 1000) }; sessions.set(token, session);
+      const channel = await resolveChannel(play[1]); const token = randomBytes(24).toString("base64url"); const session = { token, channel, viewer, leaseId, expiresAt: Math.min(Date.now() + SESSION_TTL_MS, effectiveAccessExp * 1000) };
+      if (!(await leaseIsActive(session))) return sendError(res, 409, "وصل الحساب إلى الحد المسموح للمشاهدة المتزامنة");
+      sessions.set(token, session);
       const resource = play[2] === "media" && channel.mediaType !== "live" ? "media" : "index.m3u8";
       res.writeHead(302, { location: `/v1/session/${token}/${resource}`, "cache-control": "no-store", "referrer-policy": "no-referrer", "access-control-allow-origin": "*" }); return res.end();
     }
@@ -570,6 +621,7 @@ const server = createServer(async (req, res) => {
     if (!sessionRoute) return sendError(res, 404, "المسار غير موجود");
     const session = sessions.get(sessionRoute[1]); if (!session || session.expiresAt < Date.now()) return sendError(res, 403, "انتهت جلسة التشغيل؛ أعد فتح القناة");
     if (!(await assetIsAvailable(session.channel.assetId))) return sendError(res, 403, "المحتوى متوقف حاليًا");
+    if (!(await leaseIsActive(session))) { sessions.delete(session.token); return sendError(res, 409, "توقفت جلسة المشاهدة لأن حد الأجهزة المسموح قد تغيّر"); }
     if (sessionRoute[2] === "media") return await sendVodMedia(req, res, session);
     if (sessionRoute[2] === "index.m3u8") {
       const ingestKey = session.channel.assetId;

@@ -5,7 +5,7 @@ import { assertSameOrigin, cleanText, errorResponse, HttpError, jsonBody } from 
 
 export async function POST(request: Request) {
   try {
-    assertSameOrigin(request); enforceRateLimit(request, "payment-request", 6, 60 * 60 * 1000);
+    assertSameOrigin(request); await enforceRateLimit(request, "payment-request", 6, 60 * 60 * 1000);
     const viewer = await currentViewerAccount();
     if (!viewer) throw new HttpError(401, "سجّل الدخول لإرسال طلب التجديد");
     const body = await jsonBody<Record<string, unknown>>(request, 12_000);
