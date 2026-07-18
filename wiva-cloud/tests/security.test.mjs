@@ -206,7 +206,9 @@ test("movies and episodes use a seekable bounded shared range cache", () => {
   assert.match(player, /setInterval\(recoverLivePlayback, 450\)/);
   assert.doesNotMatch(player, /onWaiting[\s\S]{0,220}setState\("loading"\)/);
   assert.match(player, /Hls\.Events\.BUFFER_APPENDED/);
-  assert.match(player, /maxLiveSyncPlaybackRate: 1\.04/);
+  assert.match(player, /maxLiveSyncPlaybackRate: 1\.02/);
+  assert.match(player, /maxBufferHole: 1\.2/);
+  assert.match(player, /nudgeOffset: \.12/);
   assert.match(gateway, /channel\.deliveryMode !== "transcode"/);
   assert.doesNotMatch(gateway, /split_by_time/);
   assert.match(player, /ahead >= tuning\.vodStartBuffer/);
@@ -292,7 +294,8 @@ test("viewer catalog is bounded and playback adapts without exposing partial liv
   assert.match(database, /limit \$\{pageSize\} offset \$\{offset\}/);
   assert.match(player, /playbackTuning/);
   assert.match(player, /capLevelToPlayerSize: true/);
-  assert.match(player, /liveStartBuffer: constrained \? 5 : 3\.2/);
+  assert.match(player, /liveStartBuffer: constrained \? 4\.8 : 2\.6/);
+  assert.match(player, /liveRecoveryBuffer: constrained \? 5\.5 : 3\.6/);
   assert.match(gateway, /program_date_time\+temp_file/);
   assert.match(gateway, /max_muxing_queue_size/);
 });

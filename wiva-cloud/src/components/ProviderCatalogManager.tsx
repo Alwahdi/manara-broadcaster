@@ -134,7 +134,7 @@ export function ProviderCatalogManager({ provider }: { provider: ProviderSummary
   return <div className="provider-catalog-workspace">
     <section className="catalog-toolbar ops-card">
       <div className="catalog-section-tabs" role="tablist">
-        {sectionOptions.map((option) => <button key={option.id} className={section === option.id ? "active" : ""} onClick={() => changeSection(option.id)}><option.icon size={17} />{option.label}</button>)}
+        {sectionOptions.map((option) => <button key={option.id} role="tab" className={section === option.id ? "active" : ""} aria-selected={section === option.id} onClick={() => changeSection(option.id)}><option.icon size={17} />{option.label}</button>)}
       </div>
       <form className="catalog-admin-search" onSubmit={submitSearch}>
         <Search size={18} /><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="ابحث باسم قناة، فيلم أو مسلسل…" /><button className="button primary" type="submit">بحث</button>
@@ -163,7 +163,7 @@ export function ProviderCatalogManager({ provider }: { provider: ProviderSummary
     {section === "series" && openSeries ? <section ref={seriesInspectorRef} className="series-inspector ops-card">
       <div className="series-inspector-heading"><div><Tv2 /><span><h2>{openSeries.title}</h2><p>{episodeLoading ? "جارٍ جلب المواسم والحلقات…" : `${episodes.length.toLocaleString("ar")} حلقة متاحة من المزوّد`}</p></span></div><button className="icon-button" onClick={() => setOpenSeries(null)} aria-label="إغلاق"><X /></button></div>
       {episodeLoading ? <div className="series-episode-loading"><LoaderCircle className="spin" /></div> : episodes.length ? <>
-        <div className="season-tabs">{[...new Set(episodes.map((episode) => episode.seasonNumber))].map((value) => <button key={value} className={season === value ? "active" : ""} onClick={() => setSeason(value)}>الموسم {value.toLocaleString("ar")}</button>)}</div>
+        <div className="season-tabs">{[...new Set(episodes.map((episode) => episode.seasonNumber))].map((value) => <button key={value} className={season === value ? "active" : ""} aria-pressed={season === value} onClick={() => setSeason(value)}>الموسم {value.toLocaleString("ar")}</button>)}</div>
         <div className="episode-select-actions"><button className="button secondary" onClick={() => setEpisodeSelection((current) => { const next = new Set(current); for (const episode of episodes.filter((item) => item.seasonNumber === season)) next.add(episode.ref); return next; })}>تحديد الموسم</button><span>{episodeSelection.size.toLocaleString("ar")} حلقة محددة</span><button className="button primary" disabled={!episodeSelection.size || importing} onClick={() => void importEpisodes()}>{importing ? <LoaderCircle className="spin" /> : <CloudDownload />}استيراد الحلقات المحددة</button></div>
         <div className="episode-picker">{episodes.filter((episode) => episode.seasonNumber === season).map((episode) => <button key={episode.ref} className={episodeSelection.has(episode.ref) ? "selected" : ""} onClick={() => setEpisodeSelection((current) => { const next = new Set(current); next.has(episode.ref) ? next.delete(episode.ref) : next.add(episode.ref); return next; })}><i>{episodeSelection.has(episode.ref) ? <Check /> : episode.episodeNumber.toLocaleString("ar")}</i><span><strong>{episode.title}</strong><small>الحلقة {episode.episodeNumber.toLocaleString("ar")} · {episode.containerExtension.toUpperCase()}</small></span></button>)}</div>
       </> : <div className="catalog-loading empty compact"><Tv2 /><h3>لا توجد حلقات</h3><p>المزوّد يعرض عنوان المسلسل لكنه لا يعيد أي مواسم أو حلقات قابلة للاستيراد.</p></div>}
@@ -176,6 +176,6 @@ export function ProviderCatalogManager({ provider }: { provider: ProviderSummary
       </button>)}
     </div> : <div className="catalog-loading empty"><Search /><h3>لا توجد نتائج</h3><p>غيّر التصنيف أو عبارة البحث، أو أعد فحص المزوّد.</p></div>}
 
-    {data && pages > 1 ? <nav className="catalog-pagination"><button disabled={page <= 1 || loading} onClick={() => setPage((value) => value - 1)}><ChevronRight /></button><span>صفحة {page.toLocaleString("ar")} من {pages.toLocaleString("ar")}</span><button disabled={page >= pages || loading} onClick={() => setPage((value) => value + 1)}><ChevronLeft /></button></nav> : null}
+    {data && pages > 1 ? <nav className="catalog-pagination" aria-label="صفحات فهرس المزوّد"><button aria-label="الصفحة السابقة" disabled={page <= 1 || loading} onClick={() => setPage((value) => value - 1)}><ChevronRight /></button><span aria-live="polite">صفحة {page.toLocaleString("ar")} من {pages.toLocaleString("ar")}</span><button aria-label="الصفحة التالية" disabled={page >= pages || loading} onClick={() => setPage((value) => value + 1)}><ChevronLeft /></button></nav> : null}
   </div>;
 }

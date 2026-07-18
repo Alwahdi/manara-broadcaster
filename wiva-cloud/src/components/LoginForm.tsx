@@ -2,13 +2,14 @@
 
 import { Eye, EyeOff, LoaderCircle, LogIn } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 
 export function LoginForm({ admin = false }: { admin?: boolean }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const errorRef = useRef<HTMLParagraphElement>(null);
   const prefix = admin ? "admin" : "viewer";
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -28,6 +29,7 @@ export function LoginForm({ admin = false }: { admin?: boolean }) {
       router.refresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "تعذر تسجيل الدخول");
+      requestAnimationFrame(() => errorRef.current?.focus());
     } finally {
       setPending(false);
     }
@@ -35,7 +37,7 @@ export function LoginForm({ admin = false }: { admin?: boolean }) {
 
   return (
     <form className="auth-form" method="post" onSubmit={submit} aria-busy={pending}>
-      <label htmlFor={`${prefix}-email`}>البريد الإلكتروني<input id={`${prefix}-email`} name="email" type="email" dir="ltr" autoComplete="email" inputMode="email" placeholder="name@example.com" required autoFocus aria-invalid={Boolean(error)} /></label>
+      <label htmlFor={`${prefix}-email`}>البريد الإلكتروني<input id={`${prefix}-email`} name="email" type="email" dir="ltr" autoComplete="email" inputMode="email" enterKeyHint="next" spellCheck={false} placeholder="name@example.com…" required aria-invalid={Boolean(error)} /></label>
       <label htmlFor={`${prefix}-password`}>كلمة المرور
         <span className="password-input">
           <input id={`${prefix}-password`} name="password" type={showPassword ? "text" : "password"} dir="ltr" autoComplete="current-password" minLength={admin ? 8 : 12} required aria-invalid={Boolean(error)} aria-describedby={error ? `${prefix}-login-error` : undefined} />
@@ -44,7 +46,7 @@ export function LoginForm({ admin = false }: { admin?: boolean }) {
           </button>
         </span>
       </label>
-      {error ? <p className="form-error" id={`${prefix}-login-error`} role="alert">{error}</p> : null}
+      {error ? <p className="form-error" id={`${prefix}-login-error`} role="alert" tabIndex={-1} ref={errorRef}>{error}</p> : null}
       <button className="button primary wide" type="submit" disabled={pending}>
         {pending ? <LoaderCircle className="spin" size={19} /> : <LogIn size={19} />}
         {pending ? "جارٍ التحقق…" : admin ? "فتح لوحة الإدارة" : "الدخول إلى WIVA"}

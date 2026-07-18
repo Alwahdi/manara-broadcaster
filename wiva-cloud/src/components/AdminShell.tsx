@@ -2,12 +2,15 @@ import Link from "next/link";
 import { Activity, LogOut, RadioTower, ShieldCheck } from "lucide-react";
 import { AdminNavigation } from "@/components/AdminNavigation";
 import { BrandMark } from "@/components/BrandMark";
+import { NavigationProgress } from "@/components/NavigationProgress";
 import { requireAdminPage } from "@/lib/auth";
 
 export async function AdminShell({ children }: { children: React.ReactNode }) {
   const admin = await requireAdminPage();
   return (
     <div className="admin-shell">
+      <a className="skip-link" href="#admin-content">تجاوز إلى المحتوى</a>
+      <NavigationProgress />
       <aside className="admin-sidebar">
         <Link href="/admin"><BrandMark /></Link>
         <div className="admin-status"><i /><span><strong>لوحة الإدارة</strong><small>جاهزة لإدارة المحتوى والمشاهدين</small></span></div>
@@ -24,7 +27,7 @@ export async function AdminShell({ children }: { children: React.ReactNode }) {
             </form>
           </div>
         </header>
-        <main className="admin-content">{children}</main>
+        <main className="admin-content" id="admin-content">{children}</main>
       </div>
     </div>
   );

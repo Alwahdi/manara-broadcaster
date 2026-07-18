@@ -1,6 +1,7 @@
 "use client";
 
 import Hls, { ErrorTypes } from "hls.js";
+import Link from "next/link";
 import {
   AlertTriangle, FastForward, Gauge, LoaderCircle, LockKeyhole, Maximize, Minimize,
   LogIn, Pause, PictureInPicture2, Play, Radio, Rewind, RotateCcw, Settings, UserPlus, Volume2, VolumeX,
@@ -17,11 +18,11 @@ function playbackTuning() {
   const connection = (navigator as Navigator & { connection?: NetworkInfo }).connection;
   const constrained = connection?.saveData === true || /(^|-)2g$/.test(connection?.effectiveType || "") || (connection?.downlink || 10) < 1.5;
   return {
-    liveStartBuffer: constrained ? 5 : 3.2,
-    liveRecoveryBuffer: constrained ? 4.5 : 2.8,
-    vodStartBuffer: constrained ? 2.4 : 1.2,
+    liveStartBuffer: constrained ? 4.8 : 2.6,
+    liveRecoveryBuffer: constrained ? 5.5 : 3.6,
+    vodStartBuffer: constrained ? 2 : .9,
     liveSyncCount: constrained ? 4 : 3,
-    bandwidthEstimate: constrained ? 900_000 : 5_000_000,
+    bandwidthEstimate: constrained ? 850_000 : 3_500_000,
   };
 }
 
@@ -145,8 +146,8 @@ export function PlayerClient({ assetId, title, active, resumeAt = 0, authenticat
         const hls = new Hls({
           enableWorker: true, lowLatencyMode: false, startFragPrefetch: true,
           liveSyncDurationCount: tuning.liveSyncCount, liveMaxLatencyDurationCount: tuning.liveSyncCount + 6,
-          maxLiveSyncPlaybackRate: 1.04, maxBufferLength: 36, maxMaxBufferLength: 60, backBufferLength: 12,
-          maxBufferHole: .5, highBufferWatchdogPeriod: 3, nudgeMaxRetry: 5,
+          maxLiveSyncPlaybackRate: 1.02, maxBufferLength: 48, maxMaxBufferLength: 72, backBufferLength: 8,
+          maxBufferHole: 1.2, highBufferWatchdogPeriod: 2, nudgeOffset: .12, nudgeMaxRetry: 6,
           fragLoadingMaxRetry: 10, manifestLoadingMaxRetry: 8,
           capLevelToPlayerSize: true, capLevelOnFPSDrop: true,
           abrEwmaDefaultEstimate: tuning.bandwidthEstimate, abrBandWidthFactor: .85, abrBandWidthUpFactor: .7,
@@ -160,8 +161,8 @@ export function PlayerClient({ assetId, title, active, resumeAt = 0, authenticat
           started = true; void resume();
         };
         const fallback = setTimeout(() => {
-          if (!started && video.buffered.length && video.buffered.end(video.buffered.length - 1) - video.currentTime > 1) { started = true; void resume(); }
-        }, 6_000);
+          if (!started && video.buffered.length && video.buffered.end(video.buffered.length - 1) - video.currentTime > 1.2) { started = true; void resume(); }
+        }, 4_800);
         startupCleanupRef.current = () => clearTimeout(fallback);
         hls.on(Hls.Events.MANIFEST_PARSED, () => setMessage("لحظات ويبدأ البث…"));
         hls.on(Hls.Events.BUFFER_APPENDED, startWhenBuffered);
@@ -375,7 +376,11 @@ export function PlayerClient({ assetId, title, active, resumeAt = 0, authenticat
     const onPause = () => setState((value) => value === "playing" ? "paused" : value);
     const recoverLivePlayback = () => {
       if (!live || !video.buffered.length) return;
-      const ahead = video.buffered.end(video.buffered.length - 1) - video.currentTime;
+      const lastRange = video.buffered.length - 1;
+      const rangeStart = video.buffered.start(lastRange);
+      const gap = rangeStart - video.currentTime;
+      if (gap > .12 && gap < 2.5) video.currentTime = rangeStart + .06;
+      const ahead = video.buffered.end(lastRange) - video.currentTime;
       if (ahead < playbackTuning().liveRecoveryBuffer || video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) return;
       if (liveRecoveryTimerRef.current) clearInterval(liveRecoveryTimerRef.current);
       liveRecoveryTimerRef.current = null;
@@ -387,7 +392,7 @@ export function PlayerClient({ assetId, title, active, resumeAt = 0, authenticat
     };
     const onWaiting = () => {
       if (bufferingTimerRef.current) clearTimeout(bufferingTimerRef.current);
-      bufferingTimerRef.current = setTimeout(() => setBuffering(true), 520);
+      bufferingTimerRef.current = setTimeout(() => setBuffering(true), 320);
       if (live) {
         setMessage("لحظات ويعود البث…");
         recoverLivePlayback();
@@ -439,14 +444,14 @@ export function PlayerClient({ assetId, title, active, resumeAt = 0, authenticat
   const progress = duration > 0 ? Math.min(100, (displayedTime / duration) * 100) : 0;
 
   return (
-    <div ref={shellRef} className={`player-stage wiva-cloud-player ${controlsVisible ? "controls-visible" : "controls-hidden"} ${scrubbing ? "is-scrubbing" : ""}`} tabIndex={0} onPointerMove={() => revealControls(!playing)} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={() => { pointerStartRef.current = null; }}>
+    <div ref={shellRef} className={`player-stage wiva-cloud-player ${controlsVisible ? "controls-visible" : "controls-hidden"} ${scrubbing ? "is-scrubbing" : ""}`} tabIndex={0} aria-label={`مشغل ${title}`} aria-busy={state === "loading" || buffering} onPointerMove={() => revealControls(!playing)} onPointerLeave={() => { if (playing) setControlsVisible(false); }} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={() => { pointerStartRef.current = null; }}>
       <video ref={videoRef} playsInline disablePictureInPicture={false} controlsList="nodownload" aria-label={title} onClick={handleVideoClick} onDoubleClick={handleVideoDoubleClick} />
       {showStartup ? <div className="player-overlay">
         {state === "loading" ? <div className="player-startup-loading" role="status"><span className="player-spinner"><LoaderCircle /></span><small className="sr-only">{message || "جارٍ تجهيز التشغيل"}</small></div> : <>
           {state === "paywall" || state === "blocked" ? <LockKeyhole size={38} /> : state === "error" ? <AlertTriangle size={38} /> : <Play size={44} fill="currentColor" />}
           <h2>{state === "paywall" ? "تابع المشاهدة" : state === "blocked" ? "المحتوى غير متاح" : state === "error" ? "تعذر بدء التشغيل" : state === "ready" ? "الفيديو جاهز" : "جاهز للمشاهدة"}</h2>
           <p>{message || (state === "blocked" ? "هذا المحتوى غير متاح حاليًا." : "اضغط تشغيل وابدأ المشاهدة.")}</p>
-          {state === "paywall" ? <div className="player-paywall-actions"><a className="button primary" href="/signup"><UserPlus size={18} /> ابدأ 3 أيام مجانًا</a><a className="button secondary" href="/login"><LogIn size={18} /> تسجيل الدخول</a></div> : active ? <button className="button primary player-start" onClick={state === "ready" ? resume : play}>{state === "error" ? <RotateCcw size={19} /> : <Play size={19} />} {state === "error" ? "إعادة المحاولة" : "تشغيل الآن"}</button> : null}
+          {state === "paywall" ? <div className="player-paywall-actions"><Link className="button primary" href="/signup"><UserPlus size={18} /> ابدأ 3 أيام مجانًا</Link><Link className="button secondary" href="/login"><LogIn size={18} /> تسجيل الدخول</Link></div> : active ? <button className="button primary player-start" onClick={state === "ready" ? resume : play}>{state === "error" ? <RotateCcw size={19} /> : <Play size={19} />} {state === "error" ? "إعادة المحاولة" : "تشغيل الآن"}</button> : null}
         </>}
       </div> : null}
 
@@ -473,8 +478,8 @@ export function PlayerClient({ assetId, title, active, resumeAt = 0, authenticat
             <input className="player-volume" aria-label="مستوى الصوت" type="range" min="0" max="1" step="0.05" value={muted ? 0 : volume} onChange={(event) => { const video = videoRef.current; if (video) { video.volume = Number(event.target.value); video.muted = false; } }} />
           </div>
           <div className="wiva-cloud-control-group">
-            <div className="player-settings-wrap"><button className="player-control-button" onClick={() => setSettingsOpen((value) => !value)} aria-label="إعدادات المشغل"><Settings /></button>
-              {settingsOpen ? <div className="player-settings-menu"><strong><Gauge size={16} /> سرعة التشغيل</strong>{live ? <p>السرعة تلقائية للبث المباشر</p> : <div>{[0.75, 1, 1.25, 1.5, 2].map((value) => <button key={value} className={speed === value ? "active" : ""} onClick={() => { const video = videoRef.current; if (video) video.playbackRate = value; setSpeed(value); setSettingsOpen(false); }}>{value === 1 ? "عادي" : `${value}×`}</button>)}</div>}<small>الجودة: تلقائية</small></div> : null}
+            <div className="player-settings-wrap"><button className="player-control-button" onClick={() => setSettingsOpen((value) => !value)} aria-label="إعدادات المشغل" aria-expanded={settingsOpen} aria-controls="player-settings"><Settings /></button>
+              {settingsOpen ? <div className="player-settings-menu" id="player-settings" role="dialog" aria-label="إعدادات التشغيل"><strong><Gauge size={16} /> سرعة التشغيل</strong>{live ? <p>يضبط المشغل البث تلقائيًا</p> : <div>{[0.75, 1, 1.25, 1.5, 2].map((value) => <button key={value} className={speed === value ? "active" : ""} aria-pressed={speed === value} onClick={() => { const video = videoRef.current; if (video) video.playbackRate = value; setSpeed(value); setSettingsOpen(false); }}>{value === 1 ? "عادي" : `${value}×`}</button>)}</div>}<small>الجودة تلقائية حسب سرعة الاتصال</small></div> : null}
             </div>
             <button className="player-control-button pip-control" onClick={() => void togglePip()} aria-label="صورة داخل صورة"><PictureInPicture2 /></button>
             <button className="player-control-button" onClick={() => void toggleFullscreen()} aria-label={fullscreen ? "الخروج من ملء الشاشة" : "ملء الشاشة"}>{fullscreen ? <Minimize /> : <Maximize />}</button>

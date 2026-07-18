@@ -11,9 +11,8 @@ export const dynamic = "force-dynamic";
 
 export default async function WatchPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const asset = await getAsset(id);
+  const [asset, viewer] = await Promise.all([getAsset(id), currentViewerAccount()]);
   if (!asset) notFound();
-  const viewer = await currentViewerAccount();
   const activity = viewer ? await getViewerActivity(viewer.id, id) : { favorite: false, positionSeconds: 0, durationSeconds: 0, completed: false };
   const title = publicAssetTitle(asset); const language = publicLanguage(asset.language);
   return (

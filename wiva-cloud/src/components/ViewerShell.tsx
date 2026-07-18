@@ -1,11 +1,14 @@
 import Link from "next/link";
 import { Search, UserRound } from "lucide-react";
 import { BrandMark } from "@/components/BrandMark";
+import { NavigationProgress } from "@/components/NavigationProgress";
 import { ViewerNavigation } from "@/components/ViewerNavigation";
 
 export function ViewerShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="viewer-shell">
+      <a className="skip-link" href="#viewer-content">تجاوز إلى المحتوى</a>
+      <NavigationProgress />
       <header className="viewer-header">
         <div className="viewer-header-inner">
           <Link href="/" className="brand-link"><BrandMark /></Link>
@@ -19,7 +22,7 @@ export function ViewerShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
-      <main>{children}</main>
+      <main id="viewer-content">{children}</main>
       <ViewerNavigation mobile />
     </div>
   );

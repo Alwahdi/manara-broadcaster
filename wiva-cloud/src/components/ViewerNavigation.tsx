@@ -29,7 +29,7 @@ export function ViewerNavigation({ mobile = false }: { mobile?: boolean }) {
     {(mobile ? mobileItems : items).map(({ href, label, icon: Icon, ...item }) => {
       const active = activePath(pathname, href) || (href === "/account" && (activePath(pathname, "/login") || activePath(pathname, "/signup")));
       return <Link key={href} href={href} className={`${active ? "active" : ""} ${"primary" in item && item.primary ? "primary-destination" : ""}`.trim()} aria-current={active ? "page" : undefined} prefetch>
-        {mobile ? <Icon size={20} /> : null}<span>{label}</span>
+        {mobile ? <span className="mobile-nav-icon"><Icon size={20} /></span> : null}<span>{label}</span>
       </Link>;
     })}
   </nav>;

@@ -18,8 +18,10 @@ function initials(name: string) {
 export default async function AccountPage() {
   const viewer = await currentViewerAccount();
   if (!viewer) redirect("/login");
-  const requests = await listPaymentRequests(viewer.id);
-  const sessions = await listViewerSessions(viewer.id, await currentViewerSessionHash());
+  const [requests, sessions] = await Promise.all([
+    listPaymentRequests(viewer.id),
+    currentViewerSessionHash().then((sessionHash) => listViewerSessions(viewer.id, sessionHash)),
+  ]);
   const expired = viewer.status === "expired" || Boolean(viewer.expiresAt && new Date(viewer.expiresAt).getTime() <= Date.now());
   const expiry = viewer.expiresAt ? new Date(viewer.expiresAt).toLocaleDateString("ar") : "بدون تاريخ انتهاء";
 

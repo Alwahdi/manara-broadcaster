@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Clapperboard, Film, Radio, Search } from "lucide-react";
+import { Clapperboard, Film, Radio } from "lucide-react";
 import { CatalogSection, EmptyState } from "@/components/Section";
 import { MatchScheduleSection } from "@/components/MatchScheduleSection";
 import { listViewerAssets } from "@/lib/db";
@@ -9,11 +9,12 @@ import { currentViewerAccount } from "@/lib/auth";
 export const revalidate = 20;
 
 export default async function HomePage() {
-  const viewer = await currentViewerAccount();
-  const [live, movies, series, continueWatching, favorites, matchSchedule] = await Promise.all([
+  const viewerPromise = currentViewerAccount();
+  const [viewer, live, movies, series, continueWatching, favorites, matchSchedule] = await Promise.all([
+    viewerPromise,
     listViewerAssets("live"), listViewerAssets("movie"), listViewerAssets("series"),
-    viewer ? listContinueWatching(viewer.id) : Promise.resolve([]),
-    viewer ? listViewerFavorites(viewer.id) : Promise.resolve([]),
+    viewerPromise.then((account) => account ? listContinueWatching(account.id) : []),
+    viewerPromise.then((account) => account ? listViewerFavorites(account.id) : []),
     listPublicMatchSchedule(),
   ]);
   return (
@@ -21,7 +22,6 @@ export default async function HomePage() {
       <section className="app-home container">
         <header className="app-home-heading">
           <div><span>{viewer ? `مرحبًا ${viewer.name}` : "مرحبًا بك"}</span><h1>ماذا تريد أن تشاهد؟</h1></div>
-          <Link href="/search" className="icon-button" aria-label="البحث في المحتوى"><Search size={20} /></Link>
         </header>
         <div className="home-destinations" aria-label="أقسام المشاهدة">
           <Link href="/live" className="home-destination live"><span><Radio /></span><strong>البث المباشر</strong><small>اختر قناة</small></Link>
