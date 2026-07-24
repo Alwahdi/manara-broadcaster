@@ -1,0 +1,74 @@
+name: Auto Tag Stable Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-tag-main
+  cancel-in-progress: true
+
+jobs:
+  auto-tag:
+    name: Create stable tag from package version
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate versions and compute tag
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT_VERSION=$(node -p "require('./package.json').version")
+          APP_VERSION=$(node -p "require('./electron-broadcaster/package.json').version")
+          if [[ "$ROOT_VERSION" != "$APP_VERSION" ]]; then
+            echo "Version mismatch: root=$ROOT_VERSION electron-broadcaster=$APP_VERSION"
+            exit 1
+          fi
+          echo "version=$APP_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$APP_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push tag when missing
+        id: tag
+        shell: bash
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists. Skipping."
+            echo "created=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+          echo "created=true" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        if: always()
+        shell: bash
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          CREATED: ${{ steps.tag.outputs.created }}
+        run: |
+          {
+            echo "## Auto Tag Stable Release"
+            if [[ "$CREATED" == "true" ]]; then
+              echo "Created and pushed tag \`$TAG\`."
+              echo "This will trigger the Release Windows App workflow."
+            else
+              echo "Tag \`$TAG\` already existed. No new stable release tag was created."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

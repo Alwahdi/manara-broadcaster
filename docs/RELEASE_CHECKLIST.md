@@ -47,16 +47,21 @@ Verify:
 
 1. Commit all changes.
 2. Push to `main`.
-3. Create and push tag:
+3. Auto-tag flow (default):
+
+- `Auto Tag Stable Release` creates `vX.Y.Z` automatically from `electron-broadcaster/package.json` when root and app versions match and that tag does not already exist.
+- Pushing that tag triggers `Release Windows App`.
+
+4. Manual fallback (only if needed): create and push tag yourself:
 
 ```bash
 git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-4. Watch the `Release Windows App` workflow.
-5. Confirm the GitHub release is not draft.
-6. Download the installer from the release and smoke test it.
+5. Watch the `Release Windows App` workflow.
+6. Confirm the GitHub release is not draft.
+7. Download the installer from the release and smoke test it.
 
 ## Update Validation
 
