@@ -14,6 +14,13 @@ Packaged apps check for updates on startup and every 6 hours. The WIVA Agent
 window also includes a manual update check and install button when an update is
 ready.
 
+## v2.6.63
+
+- Simplifies the mobile viewer by hiding desktop summary metrics and decorative cards so subscribers reach available content immediately.
+- Keeps folder and media names visible and readable on small screens with polished two-line labels.
+- Expands library search across all indexed sources, nested folders, and media instead of searching only the open folder.
+- Improves Arabic search matching for common spelling variations, ranks exact and prefix matches first, and caches debounced results for responsive browsing.
+
 ## v2.6.62
 
 - Keeps capture viewers registered while the hidden broadcaster recovers, allowing a replacement offer to arrive without tearing down and rebuilding the viewer WebSocket.
