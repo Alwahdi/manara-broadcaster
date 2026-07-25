@@ -1,13 +1,15 @@
 import type { ReactNode } from "react";
+import { Heart, Home, Library, Radio, Search, UserRound, type LucideIcon } from "lucide-react";
 import { AppLink, useAppPath } from "@/components/AppLink";
 import { useBrand } from "@/hooks/useBrand";
 import { OfflineBanner } from "@/components/OfflineBanner";
 
-const NAV = [
-  { to: "/", label: "الرئيسية", short: "الرئيسية", icon: "home", exact: true },
-  { to: "/live", label: "البث المباشر", short: "مباشر", icon: "live" },
-  { to: "/library", label: "الاستراحة", short: "الاستراحة", icon: "library" },
-  { to: "/account", label: "الحساب والإعدادات", short: "حسابي", icon: "user" },
+const NAV: Array<{ to: string; label: string; short: string; icon: LucideIcon; exact?: boolean; primary?: boolean; desktop?: boolean }> = [
+  { to: "/", label: "الرئيسية", short: "الرئيسية", icon: Home, exact: true, desktop: true },
+  { to: "/library", label: "المكتبة", short: "المكتبة", icon: Library, desktop: true },
+  { to: "/live", label: "البث المباشر", short: "مباشر", icon: Radio, primary: true, desktop: true },
+  { to: "/favorites", label: "المفضلة", short: "المفضلة", icon: Heart },
+  { to: "/account", label: "الحساب والإعدادات", short: "حسابي", icon: UserRound, desktop: true },
 ];
 
 function isActive(path: string, href: string, exact?: boolean) {
@@ -25,20 +27,6 @@ function portAwareHref(path: string, state?: ReturnType<typeof useBrand>["state"
   return `${window.location.protocol}//${window.location.hostname}:${targetPort}${path}`;
 }
 
-function NavIcon({ name }: { name: string }) {
-  const common = { width: 22, height: 22, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
-  if (name === "home") {
-    return <svg {...common}><path d="M3 11.5 12 4l9 7.5" /><path d="M5.5 10.5V20h13v-9.5" /><path d="M9.5 20v-5h5v5" /></svg>;
-  }
-  if (name === "live") {
-    return <svg {...common}><rect x="3" y="5" width="18" height="13" rx="3" /><path d="M10 9.5v4l4-2-4-2Z" fill="currentColor" stroke="none" /><path d="M8 21h8" /></svg>;
-  }
-  if (name === "library") {
-    return <svg {...common}><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4H20v15H6.5A2.5 2.5 0 0 0 4 21V6.5Z" /><path d="M8 8h8" /><path d="M8 12h6" /></svg>;
-  }
-  return <svg {...common}><circle cx="12" cy="8" r="4" /><path d="M5 21a7 7 0 0 1 14 0" /></svg>;
-}
-
 export function ViewerLayout({ children }: { children: ReactNode }) {
   const { brand, logo, state } = useBrand();
   const path = useAppPath();
@@ -52,7 +40,7 @@ export function ViewerLayout({ children }: { children: ReactNode }) {
           <span>{brand}</span>
         </AppLink>
         <nav className="topnav grow" aria-label="التنقل الرئيسي">
-          {NAV.map((item) => (
+          {NAV.filter((item) => item.desktop).map((item) => (
             <AppLink
               key={item.to}
               href={portAwareHref(item.to, state)}
@@ -63,11 +51,10 @@ export function ViewerLayout({ children }: { children: ReactNode }) {
             </AppLink>
           ))}
         </nav>
-        <div className="row hide-sm">
-          <AppLink href={portAwareHref("/search", state)} className="top-search-link">
-            ابحث في القنوات والاستراحة
-          </AppLink>
-        </div>
+        <AppLink href={portAwareHref("/search", state)} className="viewer-search-button" aria-label="البحث">
+          <Search size={20} />
+          <span>ابحث في القنوات والمكتبة</span>
+        </AppLink>
       </header>
       <main id="main" className="container page grow">
         {children}
@@ -75,14 +62,15 @@ export function ViewerLayout({ children }: { children: ReactNode }) {
       <nav className="mobile-bottom-nav" aria-label="التنقل الرئيسي للجوال">
         {NAV.map((item) => {
           const active = isActive(path, item.to, item.exact);
+          const Icon = item.icon;
           return (
             <AppLink
               key={item.to}
               href={portAwareHref(item.to, state)}
-              className={`mobile-nav-item ${active ? "active" : ""}`}
+              className={`mobile-nav-item ${item.primary ? "primary-destination" : ""} ${active ? "active" : ""}`}
               aria-current={active ? "page" : undefined}
             >
-              <span className="mobile-nav-glyph" aria-hidden><NavIcon name={item.icon} /></span>
+              <span className="mobile-nav-glyph" aria-hidden><Icon size={20} /></span>
               <span>{item.short}</span>
             </AppLink>
           );

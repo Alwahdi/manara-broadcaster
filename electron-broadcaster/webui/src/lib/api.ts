@@ -289,6 +289,19 @@ export interface ViewerMessage {
   [k: string]: unknown;
 }
 
+export interface AdminSession {
+  ip?: string;
+  userAgent?: string;
+  path?: string;
+  targetType?: string;
+  targetName?: string;
+  requests?: number;
+  bytes?: number;
+  firstSeenAt?: string | number;
+  lastSeenAt?: string | number;
+  [k: string]: unknown;
+}
+
 export interface ViewerState {
   account?: ViewerAccount | null;
   signedIn?: boolean;
@@ -324,7 +337,7 @@ export interface AdminState {
   iptvPolicy?: { iptvGlobalLimitBytes?: number; cloudIptvRefreshMinutes?: number };
   media?: MediaItem[];
   mediaStats?: Record<string, number>;
-  sessions?: unknown[];
+  sessions?: AdminSession[];
   viewerAccounts?: ViewerAccount[];
   viewerMessages?: ViewerMessage[];
   blocks?: unknown[];

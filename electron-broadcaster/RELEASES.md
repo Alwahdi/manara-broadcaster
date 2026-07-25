@@ -14,6 +14,14 @@ Packaged apps check for updates on startup and every 6 hours. The WIVA Agent
 window also includes a manual update check and install button when an update is
 ready.
 
+## v2.6.65
+
+- Aligns the Electron viewer with the compact WIVA Cloud mobile shell using five clear destinations, centered branding, and a dedicated search action.
+- Makes mobile video controls toggle on tap and hide automatically during playback while keeping the centered play action visible when paused.
+- Simplifies the mobile home and account surfaces so content, sign-up, sign-in, favorites, and messages remain easy to reach on small screens.
+- Expands the owner dashboard with actionable live status, active viewers, recent sessions, request and transfer totals, content availability, and pending-message indicators.
+- Verifies viewer registration, sign-in validation, persistent sessions, favorites, and private message history through the runtime smoke suite.
+
 ## v2.6.63
 
 - Simplifies the mobile viewer by hiding desktop summary metrics and decorative cards so subscribers reach available content immediately.

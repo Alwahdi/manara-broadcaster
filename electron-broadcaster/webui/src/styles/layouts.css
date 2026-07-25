@@ -3782,25 +3782,6 @@ body.wiva-player-fullscreen-open .player-stage {
   .account-page .account-hero p { font-size: 0.92rem; }
 }
 
-/* Touch players keep their essential controls visible; tapping video never hides them. */
-@media (hover: none), (pointer: coarse) {
-  .wiva-player:not(.is-blocked) .wiva-player-controls.is-hidden,
-  .wiva-player:not(.is-blocked) .wiva-player-controls.is-visible {
-    opacity: 1;
-    visibility: visible;
-    pointer-events: auto;
-  }
-}
-
-@media (max-width: 720px) {
-  .wiva-player:not(.is-blocked) .wiva-player-controls.is-hidden,
-  .wiva-player:not(.is-blocked) .wiva-player-controls.is-visible {
-    opacity: 1;
-    visibility: visible;
-    pointer-events: auto;
-  }
-}
-
 /* ---------- Shared WIVA Cloud surface and responsive shell ---------- */
 .app-shell {
   position: relative;
@@ -4119,4 +4100,104 @@ body.wiva-player-fullscreen-open .player-stage {
   .admin-topbar,
   .setup-rail,
   .card { background: #111722; }
+}
+
+/* ---------- Cloud-aligned viewer shell and operations dashboard ---------- */
+.viewer-search-button {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 13px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text-dim);
+  background: rgba(17, 23, 34, .62);
+  box-shadow: inset 0 1px rgba(255,255,255,.04);
+  font-size: .82rem;
+}
+.viewer-search-button:hover { color: var(--text); border-color: var(--border-strong); }
+
+.dashboard-health {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.dashboard-health > div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: center;
+  gap: 1px 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(17,23,34,.62);
+}
+.dashboard-health svg { grid-row: 1 / span 2; width: 22px; color: var(--accent); }
+.dashboard-health span { color: var(--text-muted); font-size: .76rem; }
+.dashboard-health strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-stats { margin-top: 18px; }
+.dashboard-stats .stat { min-width: 0; }
+.dashboard-stats .stat-value { overflow-wrap: anywhere; font-size: clamp(1.25rem, 3vw, 1.9rem); }
+.dashboard-panels { margin-top: 18px; }
+.dashboard-panel { display: grid; align-content: start; gap: 16px; }
+.dashboard-panel-heading { display: flex; align-items: center; gap: 11px; }
+.dashboard-panel-heading > svg { width: 22px; color: var(--gold); }
+.dashboard-panel-heading p { margin: 3px 0 0; color: var(--text-muted); font-size: .78rem; }
+.dashboard-breakdown { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.dashboard-breakdown > div { padding: 11px 12px; border-radius: 11px; background: rgba(255,255,255,.035); }
+.dashboard-breakdown span { display: block; color: var(--text-muted); font-size: .75rem; }
+.dashboard-breakdown strong { display: block; margin-top: 3px; font-size: 1.25rem; }
+.dashboard-breakdown .needs-attention { background: rgba(255,207,92,.08); }
+.dashboard-breakdown .needs-attention strong { color: var(--warning); }
+
+@media (max-width: 900px) {
+  .dashboard-health { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dashboard-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 720px) {
+  .topbar { justify-content: center; }
+  .brand { max-width: calc(100% - 96px); margin-inline: auto; }
+  .viewer-search-button {
+    position: absolute;
+    inset-inline-start: 8px;
+    width: 42px;
+    min-height: 42px;
+    justify-content: center;
+    padding: 0;
+  }
+  .viewer-search-button span { display: none; }
+  .mobile-bottom-nav { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px; }
+  .mobile-nav-item { min-width: 0; padding-inline: 2px; }
+  .mobile-nav-glyph { color: var(--text-muted); background: rgba(255,255,255,.05); }
+  .mobile-nav-item.active .mobile-nav-glyph { color: var(--gold); background: rgba(216,198,158,.1); }
+  .mobile-nav-item.primary-destination.active .mobile-nav-glyph {
+    color: #0b1018;
+    background: linear-gradient(135deg,#f3e7ca,var(--gold));
+    box-shadow: 0 8px 22px -12px rgba(216,198,158,.85);
+  }
+  .viewer-home { gap: 20px; }
+  .viewer-home .viewer-hero { min-height: 0; padding: 22px 18px; border-radius: 18px; }
+  .viewer-home .viewer-hero h1 { max-width: 100%; font-size: clamp(1.55rem, 8vw, 2.1rem); }
+  .viewer-home .viewer-hero p { max-width: 36ch; margin-top: 8px; font-size: .78rem; line-height: 1.7; }
+  .viewer-home .viewer-hero-actions { margin-top: 16px; }
+  .viewer-home .viewer-hero-actions .btn { min-height: 42px; padding: 9px 12px; font-size: .76rem; }
+  .viewer-home .quick-action-row { margin-top: -8px; }
+  .viewer-home .content-section { padding-block: 10px; }
+  .viewer-home .section-title { font-size: 1.2rem; }
+  .viewer-home .section-subtitle { font-size: .7rem; }
+  .account-page .account-hero { padding: 18px 16px; border-radius: 18px; }
+  .account-page .account-hero h1 { font-size: 1.65rem; }
+  .viewer-auth-panel { grid-template-columns: 1fr; gap: 14px; padding: 16px; border-radius: 18px; }
+  .viewer-auth-intro h2 { font-size: 1.45rem; }
+  .viewer-auth-benefits { margin-top: 12px; }
+  .viewer-auth-form { padding: 14px; border-radius: 14px; }
+}
+
+@media (max-width: 430px) {
+  .dashboard-health { grid-template-columns: 1fr; }
+  .dashboard-health > div { min-height: 64px; }
 }

@@ -61,7 +61,10 @@ export function WivaPlayerControls({ videoRef, live = false, settings }: Props) 
 
   const canAutoHide = useCallback(() => (
     typeof window !== "undefined"
-    && window.innerWidth > 720
+  ), []);
+
+  const usesFinePointer = useCallback(() => (
+    typeof window !== "undefined"
     && window.matchMedia("(hover: hover) and (pointer: fine)").matches
   ), []);
 
@@ -231,13 +234,11 @@ export function WivaPlayerControls({ videoRef, live = false, settings }: Props) 
         localStorage.setItem("wiva-player-volume", String(video.volume));
       } catch {}
     };
-    const onInteraction = () => revealControls();
+    const onPointerMove = () => {
+      if (usesFinePointer()) revealControls();
+    };
     const onClick = (event: MouseEvent) => {
       if ((event.target as HTMLElement).closest("button, input, select, [role='menu']")) return;
-      if (!canAutoHide()) {
-        revealControls(true);
-        return;
-      }
       if (controlsVisibleRef.current && !video.paused) {
         clearHideTimer();
         controlsVisibleRef.current = false;
@@ -345,8 +346,7 @@ export function WivaPlayerControls({ videoRef, live = false, settings }: Props) 
     video.addEventListener("play", onPlay);
     video.addEventListener("pause", onPause);
     video.addEventListener("volumechange", onVolume);
-    shell.addEventListener("pointermove", onInteraction, { passive: true });
-    shell.addEventListener("pointerdown", onInteraction, { passive: true });
+    shell.addEventListener("pointermove", onPointerMove, { passive: true });
     shell.addEventListener("click", onClick);
     shell.addEventListener("dblclick", onDoubleClick);
     shell.addEventListener("keydown", onKeyDown);
@@ -367,8 +367,7 @@ export function WivaPlayerControls({ videoRef, live = false, settings }: Props) 
       video.removeEventListener("play", onPlay);
       video.removeEventListener("pause", onPause);
       video.removeEventListener("volumechange", onVolume);
-      shell.removeEventListener("pointermove", onInteraction);
-      shell.removeEventListener("pointerdown", onInteraction);
+      shell.removeEventListener("pointermove", onPointerMove);
       shell.removeEventListener("click", onClick);
       shell.removeEventListener("dblclick", onDoubleClick);
       shell.removeEventListener("keydown", onKeyDown);
@@ -378,7 +377,7 @@ export function WivaPlayerControls({ videoRef, live = false, settings }: Props) 
       document.removeEventListener("fullscreenchange", onFullscreen);
       document.removeEventListener("pointerdown", onDocumentPointerDown);
     };
-  }, [applyRotation, canAutoHide, changeVolume, clearHideTimer, live, revealControls, settingsOpen, toggleFullscreen, toggleMute, togglePlayback, unlockOrientation, videoRef]);
+  }, [applyRotation, changeVolume, clearHideTimer, live, revealControls, settingsOpen, toggleFullscreen, toggleMute, togglePlayback, unlockOrientation, usesFinePointer, videoRef]);
 
   useEffect(() => () => {
     const shell = getPlayerShell(videoRef.current);
