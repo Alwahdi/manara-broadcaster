@@ -14,6 +14,13 @@ Packaged apps check for updates on startup and every 6 hours. The WIVA Agent
 window also includes a manual update check and install button when an update is
 ready.
 
+## v2.6.66
+
+- Matches the WIVA Cloud phone catalog with a compact vertical shell, flat header, and fixed five-destination bottom navigation.
+- Keeps library folders and media in a dense two-column grid from 320px through 430px instead of collapsing to one oversized card per row.
+- Uses portrait artwork, compact two-line titles, and restrained metadata spacing so more content remains visible while scrolling.
+- Updates the public viewer wording regression to allow the customer-facing library label used throughout WIVA.
+
 ## v2.6.65
 
 - Aligns the Electron viewer with the compact WIVA Cloud mobile shell using five clear destinations, centered branding, and a dedicated search action.

@@ -76,6 +76,8 @@ assert.doesNotMatch(viewerLayout, /to:\s*["']\/search["']/, 'search is not dupli
 assert.match(viewerLayout, /primary-destination/, 'mobile navigation highlights live as the primary destination');
 assert.match(viewerLayout, /Heart, Home, Library, Radio, Search, UserRound/, 'viewer navigation uses the shared Lucide icon language');
 assert.match(styles, /\.mobile-bottom-nav[\s\S]*?grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)/, 'mobile navigation uses five Cloud-aligned destinations');
+assert.match(styles, /@media \(max-width:\s*430px\)[\s\S]*?\.library-page \.folder-grid,[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/, 'phone library keeps the Cloud two-column catalog layout');
+assert.match(styles, /\.library-page \.folder-card-art\s*\{[\s\S]*?aspect-ratio:\s*2\s*\/\s*3/, 'phone library uses Cloud-style portrait artwork');
 assert.doesNotMatch(styles, /wiva-player:not\(\.is-blocked\) \.wiva-player-controls\.is-hidden[\s\S]{0,180}opacity:\s*1/, 'mobile CSS allows playing controls to hide');
 assert.match(libraryFolders, /permissions\?\.manageLibrary/, 'folder upload controls require an authenticated admin session');
 assert.match(libraryFolders, /\.pdf,\.epub/, 'admin folder uploads include books and documents');
