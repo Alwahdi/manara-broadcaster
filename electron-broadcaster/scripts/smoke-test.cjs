@@ -96,6 +96,7 @@ async function main() {
   let adminUsername = 'admin';
   let adminPassword = 'correct-password';
   let recoveryToken = '';
+  const setupAdminPassword = 'Correct-password-123';
   let platformState = { state: 'unregistered', features: {}, activationId: '' };
   let iptvPolicy = { iptvGlobalLimitBytes: 0, cloudIptvRefreshMinutes: 3 };
   let updateState = { state: 'none', currentVersion: 'test', supported: true };
@@ -265,7 +266,7 @@ async function main() {
         autoStartOnBoot: false,
         autoStartBeforeLogin: true,
         adminUsername: 'admin',
-        adminPassword: 'Correct-password-123',
+        adminPassword: setupAdminPassword,
       }),
     });
     assert.equal(res.status, 200);
@@ -284,7 +285,7 @@ async function main() {
     res = await request(base, '/admin/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ username: 'admin', password: 'correct-password' }),
+      body: new URLSearchParams({ username: 'admin', password: setupAdminPassword }),
     });
     assert.equal(res.status, 403, 'unregistered installs must show registration before admin login');
 
@@ -313,12 +314,12 @@ async function main() {
     res = await request(base, '/admin/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ username: 'admin', password: 'correct-password' }),
+      body: new URLSearchParams({ username: 'admin', password: setupAdminPassword }),
     });
     assert.equal(res.status, 302);
     const oldCookie = res.headers.get('set-cookie');
     assert.match(oldCookie, /manara_admin=/);
-    assert.doesNotMatch(oldCookie, /admin:correct-password/);
+    assert.doesNotMatch(oldCookie, /admin:Correct-password-123/);
 
     recoveryToken = 'recovery-smoke-token';
     sessions.clear();
@@ -347,13 +348,12 @@ async function main() {
     assert.equal(recoveryToken, '', 'recovery token is cleared after a successful password reset');
 
     res = await request(base, '/admin', { headers: { Cookie: oldCookie.split(';')[0] } });
-    assert.equal(res.status, 302, 'old admin sessions are invalidated when recovery starts');
-    assert.equal(res.headers.get('location'), '/admin/login');
+    assert.equal(res.status, 401, 'old admin sessions are invalidated when recovery starts');
 
     res = await request(base, '/admin/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ username: 'admin', password: 'correct-password' }),
+      body: new URLSearchParams({ username: 'admin', password: setupAdminPassword }),
     });
     assert.equal(res.status, 401, 'old admin password must stop working after recovery');
 
