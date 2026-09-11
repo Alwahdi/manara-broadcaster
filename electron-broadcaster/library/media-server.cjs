@@ -25,6 +25,9 @@ const MIME = {
   '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.wav': 'audio/wav',
   '.flac': 'audio/flac', '.ogg': 'audio/ogg', '.aac': 'audio/aac',
   '.opus': 'audio/ogg', '.wma': 'audio/x-ms-wma',
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.jpe': 'image/jpeg',
+  '.jfif': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp',
+  '.avif': 'image/avif', '.gif': 'image/gif', '.bmp': 'image/bmp',
   '.pdf': 'application/pdf', '.epub': 'application/epub+zip',
   '.mobi': 'application/x-mobipocket-ebook', '.azw': 'application/vnd.amazon.ebook',
   '.azw3': 'application/vnd.amazon.ebook', '.cbz': 'application/vnd.comicbook+zip',
@@ -241,6 +244,7 @@ function mediaType(item) {
   const ext = path.extname(item?.path || '').toLowerCase();
   if (['.mp3', '.m4a', '.wav', '.flac', '.ogg', '.aac', '.wma', '.opus'].includes(ext) || item?.kind === 'audio') return 'audio';
   if (['.mp4', '.m4v', '.mkv', '.webm', '.mov', '.avi', '.ts', '.flv', '.wmv'].includes(ext)) return 'video';
+  if (ARTWORK_EXT.includes(ext) || item?.kind === 'image') return 'image';
   if (['.pdf', '.epub', '.mobi', '.azw', '.azw3', '.cbz', '.cbr', '.djvu'].includes(ext) || item?.kind === 'book') return 'book';
   if (['.txt', '.md', '.rtf', '.doc', '.docx', '.odt', '.ppt', '.pptx', '.xls', '.xlsx', '.csv'].includes(ext) || item?.kind === 'document') return 'document';
   return 'unsupported';
@@ -256,6 +260,18 @@ const FOLDER_ARTWORK_NAMES = [
   'folder-poster', 'folder-cover', 'cover-front', 'poster-large',
   'بوستر', 'غلاف', 'صورة', 'خلفية', 'ملصق',
 ];
+const FOLDER_ARTWORK_NAME_SET = new Set(FOLDER_ARTWORK_NAMES.map((name) => String(name || '').toLowerCase()));
+
+function normalizeArtworkBasename(value = '') {
+  return String(value || '').toLowerCase().replace(/[_\-.]+/g, ' ').trim();
+}
+
+function isArtworkCompanionFile(filePath = '') {
+  const ext = path.extname(String(filePath || '')).toLowerCase();
+  if (!ARTWORK_EXT.includes(ext)) return false;
+  const base = normalizeArtworkBasename(path.basename(String(filePath || ''), ext));
+  return FOLDER_ARTWORK_NAME_SET.has(base);
+}
 const artworkDiscoveryCache = new Map();
 const ARTWORK_CACHE_MAX = 3000;
 const ARTWORK_HIT_TTL_MS = 10 * 60 * 1000;
@@ -675,7 +691,7 @@ function diagnosticsPayload(options) {
 function librarySections(items = listLibraryItems({ limit: 5000 })) {
   const sections = new Map();
   for (const item of items) {
-    const section = item.section || (item.kind === 'episode' ? 'مسلسلات' : item.kind === 'audio' ? 'صوتيات' : 'أفلام');
+    const section = item.section || (item.kind === 'episode' ? 'مسلسلات' : item.kind === 'audio' ? 'صوتيات' : item.kind === 'image' ? 'صور' : 'أفلام');
     const folder = item.folder || section;
     if (!sections.has(section)) sections.set(section, { name: section, count: 0, cover: '', folders: new Map() });
     const sec = sections.get(section);
@@ -729,6 +745,8 @@ const UPLOAD_KIND_BY_EXT = new Map([
   ['.mov', 'movie'], ['.avi', 'movie'], ['.ts', 'movie'], ['.flv', 'movie'], ['.wmv', 'movie'],
   ['.mp3', 'audio'], ['.m4a', 'audio'], ['.wav', 'audio'], ['.flac', 'audio'],
   ['.ogg', 'audio'], ['.aac', 'audio'], ['.opus', 'audio'], ['.wma', 'audio'],
+  ['.jpg', 'image'], ['.jpeg', 'image'], ['.jpe', 'image'], ['.jfif', 'image'],
+  ['.png', 'image'], ['.webp', 'image'], ['.avif', 'image'], ['.gif', 'image'], ['.bmp', 'image'],
   ['.pdf', 'book'], ['.epub', 'book'], ['.mobi', 'book'], ['.azw', 'book'], ['.azw3', 'book'],
   ['.cbz', 'book'], ['.cbr', 'book'], ['.djvu', 'book'],
   ['.txt', 'document'], ['.md', 'document'], ['.rtf', 'document'], ['.doc', 'document'],
@@ -1128,6 +1146,34 @@ function srtToVtt(text) {
     .replace(/\r/g, '')
     .replace(/(\d\d:\d\d:\d\d),(\d{3})/g, '$1.$2')
     .replace(/^\d+\n/gm, '');
+}
+
+function assTimeToVtt(value = '') {
+  const match = /^(\d+):(\d{1,2}):(\d{1,2})[.](\d{1,2})$/.exec(String(value || '').trim());
+  if (!match) return '';
+  const [, hh, mm, ss, cs] = match;
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}.${String(Number(cs) * 10).padStart(3, '0')}`;
+}
+
+function assToVtt(text) {
+  const lines = String(text || '').replace(/^\uFEFF/, '').replace(/\r/g, '').split('\n');
+  const cues = [];
+  for (const line of lines) {
+    if (!line.startsWith('Dialogue:')) continue;
+    const fields = line.slice('Dialogue:'.length).split(',');
+    if (fields.length < 10) continue;
+    const start = assTimeToVtt(fields[1]);
+    const end = assTimeToVtt(fields[2]);
+    if (!start || !end) continue;
+    const body = fields.slice(9).join(',')
+      .replace(/\{[^}]+\}/g, '')
+      .replace(/\\N/g, '\n')
+      .replace(/\\n/g, '\n')
+      .trim();
+    if (!body) continue;
+    cues.push(`${start} --> ${end}\n${body}`);
+  }
+  return `WEBVTT\n\n${cues.join('\n\n')}`.trim() + '\n';
 }
 
 function csvEscape(value) {
@@ -2532,7 +2578,7 @@ function createHandler(options = {}) {
         const bytes = await receiveLibraryUpload(req, target);
         let media = null;
         const kind = UPLOAD_KIND_BY_EXT.get(ext);
-        if (kind) {
+        if (kind && !(kind === 'image' && isArtworkCompanionFile(fileName))) {
           const relativePath = normalizeRelativePath(path.relative(root, target));
           const mediaId = db.upsertMedia({
             path: target,
@@ -2718,8 +2764,9 @@ function createHandler(options = {}) {
         if (!sub) { res.writeHead(404); res.end(); return; }
         if (denyIfBlocked(req, res, { targetType: 'subtitle', targetId: sub.id, targetName: sub.label || sub.path })) return;
         attachRequestAccounting(req, res, { action: 'subtitle', targetType: 'subtitle', targetId: sub.id, targetName: sub.label || sub.path });
-        if (path.extname(sub.path || '').toLowerCase() === '.srt') {
-          return send(res, 200, srtToVtt(fs.readFileSync(sub.path, 'utf8')), {
+        const subtitleExt = path.extname(sub.path || '').toLowerCase();
+        if (subtitleExt === '.srt' || subtitleExt === '.ass') {
+          return send(res, 200, subtitleExt === '.srt' ? srtToVtt(fs.readFileSync(sub.path, 'utf8')) : assToVtt(fs.readFileSync(sub.path, 'utf8')), {
             'Content-Type': 'text/vtt; charset=utf-8',
             'Cache-Control': 'public, max-age=86400',
           });

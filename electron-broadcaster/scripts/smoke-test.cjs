@@ -816,6 +816,7 @@ async function main() {
       body: Buffer.from('uploaded legacy video'),
     });
     assert.equal(res.status, 200, 'admin can upload legacy Windows video formats too');
+    const legacyUpload = await res.json();
 
     res = await request(base, '/api/admin/library/upload?' + new URLSearchParams({
       sourceId: String(sourceRow.id),
@@ -827,6 +828,62 @@ async function main() {
       body: Buffer.from('Dialogue: 0,0:00:00.00,0:00:02.00,Default,,0,0,0,,مرحبا'),
     });
     assert.equal(res.status, 200, 'admin can upload ASS subtitle companion files');
+
+    const scenicImage = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+X2MsAAAAASUVORK5CYII=', 'base64');
+    res = await request(base, '/api/admin/library/upload?' + new URLSearchParams({
+      sourceId: String(sourceRow.id),
+      path: 'قسم رئيسي/أفلام عربية',
+      name: 'scenic-photo.png',
+    }), {
+      method: 'POST',
+      headers: { 'Content-Type': 'image/png', ...auth },
+      body: scenicImage,
+    });
+    assert.equal(res.status, 200, 'admin can upload standalone image media');
+    const scenicUpload = await res.json();
+    assert.equal(scenicUpload.media?.kind, 'image', 'standalone image uploads become library media');
+
+    res = await request(base, '/api/library/browse?sourceId=' + encodeURIComponent(sourceRow.id) + '&path=' + encodeURIComponent('قسم رئيسي/أفلام عربية'));
+    const browseAfterImageUpload = await res.json();
+    const scenicEntry = browseAfterImageUpload.entries.find((entry) => entry.type === 'media' && entry.media?.title === 'scenic-photo');
+    assert.ok(scenicEntry, 'uploaded images appear immediately in folder browsing');
+
+    res = await request(base, `/api/media/${scenicEntry.media.id}`);
+    assert.equal(res.status, 200, 'image media items expose details to the viewer');
+    const scenicDetails = await res.json();
+    assert.equal(scenicDetails.kind, 'image');
+
+    res = await request(base, `/media/${scenicDetails.id}`);
+    assert.equal(res.status, 200, 'uploaded image media can be served to viewers');
+    assert.match(String(res.headers.get('content-type') || ''), /^image\/png\b/, 'image media is served with the correct MIME type');
+
+    res = await request(base, '/api/admin/library/upload?' + new URLSearchParams({
+      sourceId: String(sourceRow.id),
+      path: 'قسم رئيسي/أفلام عربية',
+      name: 'cover.jpg',
+    }), {
+      method: 'POST',
+      headers: { 'Content-Type': 'image/jpeg', ...auth },
+      body: Buffer.from('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAgP/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdAAr/2Q==', 'base64'),
+    });
+    assert.equal(res.status, 200, 'admin can still upload cover artwork companions');
+    const coverUpload = await res.json();
+    assert.equal(coverUpload.media ?? null, null, 'artwork-style image names stay as companions instead of cluttering the library');
+
+    res = await request(base, `/api/media/${legacyUpload.media.id}`);
+    assert.equal(res.status, 200, 'uploaded legacy media exposes refreshed details after subtitle scans');
+    const legacyUploaded = await res.json();
+    assert.equal(legacyUploaded.title, 'uploaded-legacy', 'uploaded legacy media stays indexed after a follow-up scan');
+    const legacySubtitle = db.listSubtitles(legacyUpload.media.id).find((sub) => String(sub.path || '').endsWith('.ass'));
+    assert.ok(legacySubtitle, 'uploaded ASS companion files attach to their media item');
+
+    res = await request(base, `/sub/${legacySubtitle.id}`);
+    assert.equal(res.status, 200, 'uploaded ASS subtitles are exposed through the subtitle endpoint');
+    const assBody = await res.text();
+    assert.match(String(res.headers.get('content-type') || ''), /^text\/vtt\b/, 'ASS subtitles are converted to VTT for browsers');
+    assert.match(assBody, /^WEBVTT/m, 'ASS subtitle delivery uses VTT output');
+    assert.match(assBody, /00:00:00\.000 --> 00:00:02\.000/, 'ASS subtitle timestamps are normalized for HTML5 playback');
+    assert.match(assBody, /مرحبا/, 'ASS subtitle text survives conversion');
 
     res = await request(base, '/api/admin/library/upload?' + new URLSearchParams({ sourceId: String(sourceRow.id), path: '', name: 'blocked.mp4' }), {
       method: 'POST',

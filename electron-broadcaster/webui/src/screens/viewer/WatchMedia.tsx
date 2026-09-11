@@ -83,7 +83,9 @@ export function WatchMedia() {
             >
               العودة إلى المجلد السابق
             </button>
-            {item.kind === "book" || item.kind === "document" ? (
+            {item.kind === "image" ? (
+              <ImageViewer item={item} />
+            ) : item.kind === "book" || item.kind === "document" ? (
               <DocumentReader item={item} allowDownload={viewer.data?.libraryPolicy?.downloadsEnabled !== false} />
             ) : (
               <WivaMediaPlayer
@@ -174,6 +176,14 @@ export function WatchMedia() {
         )}
       </QueryBoundary>
     </div>
+  );
+}
+
+function ImageViewer({ item }: { item: MediaItem }) {
+  return (
+    <section className="image-viewer media-player-shell" aria-label={`عرض ${item.title || item.name || "الصورة"}`}>
+      <img src={`/media/${item.id}`} alt={item.title || item.name || "صورة"} loading="eager" />
+    </section>
   );
 }
 

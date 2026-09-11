@@ -102,6 +102,7 @@ export function mediaKindLabel(kind?: string) {
     movie: "فيديو",
     episode: "حلقة",
     audio: "صوتيات",
+    image: "صورة",
     book: "كتاب",
     document: "مستند",
   } as Record<string, string>)[String(kind || "")] || "محتوى";
