@@ -172,6 +172,10 @@ function RegistrationGate({ children }: { children: React.ReactNode }) {
     queryFn: api.agentState,
     refetchInterval: (q) => (canEnterApp(q.state.data) ? false : 20_000),
   });
+  const refresh = useMutation({
+    mutationFn: api.refreshPlatform,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["agent-state"] }),
+  });
 
   if (query.isLoading) return <LoadingState label="جارٍ التحقق من تسجيل الجهاز…" />;
   if (query.isError) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
@@ -184,11 +188,9 @@ function RegistrationGate({ children }: { children: React.ReactNode }) {
       <ActivationPending
         agent={query.data}
         subscription={subscription}
-        onRefresh={async () => {
-          await api.refreshPlatform();
-          await qc.invalidateQueries({ queryKey: ["agent-state"] });
-        }}
-        refreshing={query.isFetching}
+        onRefresh={() => refresh.mutate()}
+        refreshing={query.isFetching || refresh.isPending}
+        refreshFailed={refresh.isError}
       />
     );
   }
@@ -285,11 +287,13 @@ function ActivationPending({
   subscription,
   onRefresh,
   refreshing,
+  refreshFailed,
 }: {
   agent?: AgentState;
   subscription?: PlatformStatus;
-  onRefresh: () => Promise<void>;
+  onRefresh: () => void;
   refreshing?: boolean;
+  refreshFailed?: boolean;
 }) {
   const features = useMemo(
     () => Object.entries(subscription?.features || {}).filter(([, enabled]) => enabled).map(([key]) => key),
@@ -323,6 +327,7 @@ function ActivationPending({
         <button className="btn btn-primary" onClick={onRefresh} disabled={refreshing}>
           {refreshing ? "جارٍ التحقق…" : "تحديث الحالة"}
         </button>
+        {refreshFailed ? <p role="alert" className="form-error">تعذّر تحديث حالة التفعيل. تحقق من الاتصال ثم أعد المحاولة.</p> : null}
       </section>
     </main>
   );

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type ViewerMessage } from "@/lib/api";
-import { QueryBoundary, EmptyState } from "@/components/States";
+import { QueryBoundary, EmptyState, MutationError } from "@/components/States";
 import { PageHeader } from "@/components/common";
 import { formatDateTime } from "@/lib/format";
 
@@ -20,6 +20,7 @@ export function AdminMessages() {
   return (
     <div>
       <PageHeader title="الرسائل" subtitle="رسائل المشاهدين الواردة إلى إدارة الشبكة" />
+      <MutationError mutation={updateStatus} action="تحديث حالة الرسالة" />
       <QueryBoundary
         query={messages}
         isEmpty={(d) => (d.messages?.length || 0) === 0}

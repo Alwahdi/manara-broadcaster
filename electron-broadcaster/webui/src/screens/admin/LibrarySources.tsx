@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppLink } from "@/components/AppLink";
 import { api, type LibrarySource } from "@/lib/api";
-import { QueryBoundary, EmptyState } from "@/components/States";
+import { QueryBoundary, EmptyState, MutationError } from "@/components/States";
 import { PageHeader } from "@/components/common";
 import { StorageBrowser } from "@/components/StorageBrowser";
 import { formatDateTime, formatNumber } from "@/lib/format";
@@ -92,10 +92,12 @@ export function AdminLibrarySources() {
         <PageHeader
           title={`إعادة ربط: ${relinkFor.label || relinkFor.path}`}
           subtitle="اختر الموقع الجديد للمصدر بعد إعادة توصيل القرص"
-          actions={<button className="btn btn-ghost" onClick={() => setRelinkFor(null)}>إلغاء</button>}
+          actions={<button className="btn btn-ghost" disabled={relink.isPending} onClick={() => setRelinkFor(null)}>إلغاء</button>}
         />
+        <MutationError mutation={relink} action="إعادة ربط المصدر" />
         <StorageBrowser
           selectLabel="إعادة الربط بهذا المجلد"
+          busy={relink.isPending}
           onSelect={(path) => relink.mutate({ id: relinkFor.id, path })}
         />
       </div>
@@ -108,10 +110,12 @@ export function AdminLibrarySources() {
         <PageHeader
           title={`استثناء مجلد من: ${excludePickerFor.label || excludePickerFor.path}`}
           subtitle="اختر مجلداً لا تريد ظهوره أو فحصه داخل الاستراحة."
-          actions={<button className="btn btn-ghost" onClick={() => setExcludePickerFor(null)}>إلغاء</button>}
+          actions={<button className="btn btn-ghost" disabled={addExclude.isPending} onClick={() => setExcludePickerFor(null)}>إلغاء</button>}
         />
+        <MutationError mutation={addExclude} action="استثناء المجلد" />
         <StorageBrowser
           selectLabel="استثناء هذا المجلد"
+          busy={addExclude.isPending}
           onSelect={(picked) => addExclude.mutate({ id: excludePickerFor.id, excludePath: picked })}
         />
       </div>
@@ -129,6 +133,13 @@ export function AdminLibrarySources() {
           </button>
         }
       />
+      <MutationError mutation={scanAll} action="بدء فحص المصادر" />
+      <MutationError mutation={cancelScan} action="إيقاف الفحص" />
+      <MutationError mutation={rescan} action="إعادة فحص المصدر" />
+      <MutationError mutation={removeSource} action="حذف المصدر" />
+      <MutationError mutation={addExclude} action="استثناء المجلد" />
+      <MutationError mutation={removeExclude} action="حذف الاستثناء" />
+      <MutationError mutation={updateSource} action="تحديث إعدادات المصدر" />
       {scanStatus.data?.status.active || ["complete", "error", "cancelled"].includes(scanStatus.data?.status.state || "") ? (
         <div className="card card-pad" style={{ marginBottom: 18 }} aria-live="polite">
           <div className="row-between">
@@ -189,7 +200,7 @@ export function AdminLibrarySources() {
             <option value={20 * 1024 * 1024}>20 ميجابايت/ثانية</option>
             <option value={50 * 1024 * 1024}>50 ميجابايت/ثانية</option>
           </select>
-          {updatePolicy.isError ? <span className="hint" style={{ color: "var(--danger)" }}>{(updatePolicy.error as Error).message}</span> : null}
+          <MutationError mutation={updatePolicy} action="حفظ سياسة التنزيل" />
         </div>
       </div>
       <div className="card card-pad" style={{ marginBottom: 18 }}>
@@ -221,7 +232,7 @@ export function AdminLibrarySources() {
             {adding ? "إخفاء المتصفح" : "اختيار من المتصفح"}
           </button>
           {add.isSuccess ? <span className="badge badge-on badge-dot">تمت الإضافة وبدأ الفحص في الخلفية</span> : null}
-          {add.isError ? <span className="badge badge-warn">{(add.error as Error).message}</span> : null}
+          <MutationError mutation={add} action="إضافة المصدر" />
         </div>
         {adding ? (
           <div style={{ marginTop: 18 }}>
@@ -287,7 +298,7 @@ export function AdminLibrarySources() {
                   <button className="btn btn-sm" onClick={() => rescan.mutate(s.id)} disabled={rescan.isPending || s.online === false}>
                     إعادة الفحص
                   </button>
-                  <button className="btn btn-sm btn-ghost" onClick={() => setRelinkFor(s)}>
+                  <button className="btn btn-sm btn-ghost" onClick={() => { relink.reset(); setRelinkFor(s); }}>
                     إعادة الربط
                   </button>
                   <button
@@ -307,7 +318,7 @@ export function AdminLibrarySources() {
                       <div style={{ fontWeight: 800 }}>المسارات المستثناة</div>
                       <div className="hint">أي مجلد تضيفه هنا لن يتم فحصه ولن يظهر للمشاهدين.</div>
                     </div>
-                    <button className="btn btn-sm btn-ghost" onClick={() => setExcludePickerFor(s)}>
+                    <button className="btn btn-sm btn-ghost" disabled={addExclude.isPending} onClick={() => { addExclude.reset(); setExcludePickerFor(s); }}>
                       اختيار مجلد
                     </button>
                   </div>

@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Share2 } from "lucide-react";
+import { useId, useState, type ReactNode } from "react";
+import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Clock3, Share2 } from "lucide-react";
 import { AppLink } from "@/components/AppLink";
 import { api, type MediaItem, type Channel, type ViewerState } from "@/lib/api";
 import { formatDuration } from "@/lib/format";
@@ -144,35 +144,51 @@ export function MediaTile({ item }: { item: MediaItem }) {
   );
 }
 
-export function FavoriteButton({ mediaId, compact = true }: { mediaId: string | number; compact?: boolean }) {
+export function FavoriteButton({ mediaId, compact = true, list = "favorites" }: { mediaId: string | number; compact?: boolean; list?: "favorites" | "watchLater" }) {
   const queryClient = useQueryClient();
+  const errorId = useId();
+  const saving = useIsMutating({ mutationKey: ["viewer-list"] }) > 0;
   const viewer = useQuery({ queryKey: ["viewer-state"], queryFn: api.viewerState, staleTime: 30_000 });
-  const active = (viewer.data?.favoriteIds || []).includes(String(mediaId));
+  const active = (list === "favorites" ? viewer.data?.favoriteIds || [] : viewer.data?.watchLaterIds || []).includes(String(mediaId));
+  const collection = list === "favorites" ? "المفضلة" : "المشاهدة لاحقًا";
+  const label = `${active ? "إزالة من" : "إضافة إلى"} ${collection}`;
   const mutation = useMutation({
-    mutationFn: () => api.updateViewerList({ list: "favorites", mediaId, active: !active }),
+    mutationKey: ["viewer-list"],
+    mutationFn: () => api.updateViewerList({ list, mediaId, active: !active }),
     onSuccess: (next) => queryClient.setQueryData<ViewerState>(["viewer-state"], next),
   });
   return (
+    <>
     <button
       type="button"
       className={`favorite-button ${compact ? "favorite-button-compact" : ""} ${active ? "active" : ""}`}
       aria-pressed={active}
-      aria-label={active ? "إزالة من المفضلة" : "إضافة إلى المفضلة"}
-      title={active ? "إزالة من المفضلة" : "إضافة إلى المفضلة"}
-      disabled={mutation.isPending}
+      aria-label={label}
+      title={label}
+      aria-describedby={mutation.isError ? errorId : undefined}
+      disabled={saving || viewer.isPending || viewer.isError}
       onClick={() => mutation.mutate()}
     >
-      <svg width="20" height="20" viewBox="0 0 24 24" fill={active ? "currentColor" : "none"} aria-hidden>
+      {list === "watchLater" ? <Clock3 size={20} aria-hidden /> : <svg width="20" height="20" viewBox="0 0 24 24" fill={active ? "currentColor" : "none"} aria-hidden>
         <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.7-7.5 1.1-1.1a5.5 5.5 0 0 0 0-7.8Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-      {!compact ? <span>{active ? "في المفضلة" : "أضف إلى المفضلة"}</span> : null}
+      </svg>}
+      {!compact ? <span>{label}</span> : null}
     </button>
+    {mutation.isError ? <span id={errorId} role="alert" className="collection-action-error">تعذّر تحديث {collection}. لم يُحفظ التغيير؛ أعد المحاولة.</span> : null}
+    </>
   );
 }
 
 export function ShareButton({ compact = false }: { compact?: boolean }) {
   const [copied, setCopied] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [fallback, setFallback] = useState("");
+  const inputId = useId();
   const share = async () => {
+    if (pending) return;
+    setPending(true);
+    setCopied(false);
+    setFallback("");
     const payload = { title: document.title, text: "شاهد هذا المحتوى", url: window.location.href };
     try {
       if (navigator.share) await navigator.share(payload);
@@ -181,13 +197,23 @@ export function ShareButton({ compact = false }: { compact?: boolean }) {
         setCopied(true);
         window.setTimeout(() => setCopied(false), 1800);
       }
-    } catch {}
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "AbortError")) setFallback(payload.url);
+    } finally { setPending(false); }
   };
   return (
-    <button type="button" className="btn btn-ghost btn-sm" onClick={share} aria-label="مشاركة">
+    <>
+    <button type="button" className="btn btn-ghost btn-sm" onClick={share} aria-label={copied ? "تم نسخ الرابط" : "مشاركة"} disabled={pending}>
       <Share2 size={18} />
       {!compact ? <span>{copied ? "تم نسخ الرابط" : "مشاركة"}</span> : null}
     </button>
+    {copied ? <span role="status" className="hint">تم نسخ الرابط</span> : null}
+    {fallback ? <div className="field share-fallback">
+      <label htmlFor={inputId}>تعذّرت المشاركة التلقائية. انسخ الرابط يدويًا:</label>
+      <input id={inputId} className="input mono" dir="ltr" value={fallback} readOnly autoFocus onFocus={(event) => event.target.select()} />
+      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setFallback("")}>إغلاق رابط المشاركة</button>
+    </div> : null}
+    </>
   );
 }
 

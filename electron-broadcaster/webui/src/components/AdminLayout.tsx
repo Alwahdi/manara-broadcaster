@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AppLink, useAppPath } from "@/components/AppLink";
 import { useBrand } from "@/hooks/useBrand";
 import { LiveIndicator } from "@/components/LiveIndicator";
@@ -77,17 +77,60 @@ function isActive(path: string, href: string) {
 export function AdminLayout({ children }: { children: ReactNode }) {
   const { brand, logo } = useBrand();
   const [open, setOpen] = useState(false);
+  const [mobile, setMobile] = useState(false);
+  const sidebar = useRef<HTMLElement>(null);
+  const toggle = useRef<HTMLButtonElement>(null);
   const path = useAppPath();
+  const active = GROUPS.flatMap((group) => group.items)
+    .filter((item) => isActive(path, item.to))
+    .sort((a, b) => b.to.length - a.to.length)[0];
+  const modalOpen = mobile && open;
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 980px)");
+    const sync = () => { setMobile(media.matches); setOpen(false); };
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
 
   useEffect(() => {
     setOpen(false);
   }, [path]);
 
+  useEffect(() => {
+    if (!modalOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const items = () => Array.from(sidebar.current?.querySelectorAll<HTMLElement>("a[href], button:not(:disabled)") || []);
+    items()[0]?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); setOpen(false); }
+      if (event.key !== "Tab") return;
+      const focusable = items();
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault(); last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); first?.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKey);
+      if (window.matchMedia("(max-width: 980px)").matches) toggle.current?.focus();
+      else document.getElementById("main")?.focus();
+    };
+  }, [modalOpen]);
+
   return (
     <div className="admin">
-      <a href="#main" className="skip-link">تخطَّ إلى المحتوى</a>
-      {open ? <div className="sidebar-backdrop" onClick={() => setOpen(false)} /> : null}
-      <aside className={`sidebar ${open ? "open" : ""}`} aria-label="تنقل لوحة الإدارة">
+      <a href="#main" className="skip-link" inert={modalOpen}>تخطَّ إلى المحتوى</a>
+      {modalOpen ? <div className="sidebar-backdrop" aria-hidden="true" onClick={() => setOpen(false)} /> : null}
+      <aside ref={sidebar} id="admin-navigation" className={`sidebar ${open ? "open" : ""}`} aria-label="تنقل لوحة الإدارة" role={modalOpen ? "dialog" : undefined} aria-modal={modalOpen || undefined} inert={mobile && !open}>
+        <button type="button" className="btn btn-ghost menu-toggle" onClick={() => setOpen(false)}>إغلاق القائمة</button>
         <AppLink href="/admin/dashboard" className="sidebar-brand" onClick={() => setOpen(false)}>
           <img src={logo} alt="" className="brand-logo" />
           <span>{brand}</span>
@@ -101,8 +144,8 @@ export function AdminLayout({ children }: { children: ReactNode }) {
               <AppLink
                 key={item.to}
                 href={item.to}
-                className={`sidelink ${isActive(path, item.to) ? "active" : ""}`}
-                aria-current={isActive(path, item.to) ? "page" : undefined}
+                className={`sidelink ${active?.to === item.to ? "active" : ""}`}
+                aria-current={active?.to === item.to ? "page" : undefined}
                 onClick={() => setOpen(false)}
               >
                 <span className="sidelink-icon" aria-hidden><Icon /></span>
@@ -119,26 +162,29 @@ export function AdminLayout({ children }: { children: ReactNode }) {
         </AppLink>
       </aside>
 
-      <div className="admin-main">
+      <div className="admin-main" inert={modalOpen}>
         <OfflineBanner />
         <header className="admin-topbar">
           <button
+            ref={toggle}
+            type="button"
             className="btn btn-ghost btn-sm menu-toggle"
             onClick={() => setOpen((v) => !v)}
             aria-label="القائمة"
             aria-expanded={open}
+            aria-controls="admin-navigation"
           >
             ☰
           </button>
           <div className="row grow admin-topbar-row">
-            <strong className="hide-sm">لوحة الإدارة</strong>
+            <strong>{active?.label || "لوحة الإدارة"}</strong>
             <div className="row">
               <Gauge className="admin-topbar-icon" aria-hidden />
               <LiveIndicator />
             </div>
           </div>
         </header>
-        <main id="main" className="admin-content">{children}</main>
+        <main id="main" className="admin-content" tabIndex={-1}>{children}</main>
       </div>
     </div>
   );

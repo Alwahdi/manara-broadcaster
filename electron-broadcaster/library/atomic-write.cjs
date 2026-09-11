@@ -11,9 +11,8 @@
 //   1. Write the payload to a unique temp file and fsync it to disk.
 //   2. Rename it over the destination, retrying with short backoff on the
 //      transient Windows lock errors above.
-//   3. On the last retry, remove the destination and try once more.
-//   4. If rename still fails, write the payload in place so the data is never
-//      lost, then clean up the temp file.
+//   3. If the lock persists, fail without touching the last durable destination
+//      and clean up the temp file. Never unlink or truncate saved state.
 const fs = require('fs');
 const path = require('path');
 
@@ -56,7 +55,10 @@ function writeFileAtomic(destPath, data, options = {}) {
     const fd = fs.openSync(tmp, 'w');
     try {
       fs.writeFileSync(fd, data, writeOptions);
-      try { fs.fsyncSync(fd); } catch { /* fsync not supported on some FS */ }
+      try { fs.fsyncSync(fd); } catch (err) {
+        // Some filesystems cannot sync; actual I/O failures must preserve old state.
+        if (!['EINVAL', 'ENOTSUP', 'ENOSYS'].includes(err.code)) throw err;
+      }
     } finally {
       fs.closeSync(fd);
     }
@@ -66,26 +68,11 @@ function writeFileAtomic(destPath, data, options = {}) {
         fs.renameSync(tmp, destPath);
         return;
       } catch (err) {
-        if (!isTransientLockError(err)) throw err;
+        if (!isTransientLockError(err) || attempt === MAX_RENAME_ATTEMPTS - 1) throw err;
         // Give the locking process time to release the handle, then retry.
         sleepSync(backoffMs(attempt));
-        // Second-to-last attempt: proactively remove the destination so the
-        // final rename has a clear target.
-        if (attempt === MAX_RENAME_ATTEMPTS - 2) {
-          try { fs.rmSync(destPath, { force: true }); } catch { /* ignore */ }
-        }
       }
     }
-
-    // Rename kept failing (destination stayed locked). Persist in place so the
-    // save is not lost, then discard the temp file.
-    try {
-      fs.writeFileSync(destPath, data, writeOptions);
-    } catch (fallbackErr) {
-      fallbackErr.message = `atomic write failed: rename and in-place write to ${destPath} both failed (${fallbackErr.message})`;
-      throw fallbackErr;
-    }
-    try { fs.rmSync(tmp, { force: true }); } catch { /* ignore */ }
   } catch (err) {
     try { fs.rmSync(tmp, { force: true }); } catch { /* ignore */ }
     throw err;

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download } from "lucide-react";
 import { useAppPath } from "@/components/AppLink";
 import { api, type MediaItem } from "@/lib/api";
@@ -15,6 +15,7 @@ function subtitleLabel(track: { label?: string; lang?: string; path?: string }, 
 }
 
 export function WatchMedia() {
+  const queryClient = useQueryClient();
   const id = useAppPath().split("/").filter(Boolean).at(-1) || "";
   const media = useQuery({ queryKey: ["media", id], queryFn: () => api.media(id) });
   const viewer = useQuery({ queryKey: ["viewer-state"], queryFn: api.viewerState, staleTime: 30_000 });
@@ -69,6 +70,11 @@ export function WatchMedia() {
       video.play().catch(() => {});
     } catch {}
   };
+  const saveProgress = (mediaId: string | number, position: number, duration: number, completed = false) => {
+    api.mediaProgress(mediaId, { position, duration, completed })
+      .then(() => queryClient.invalidateQueries({ queryKey: ["viewer-state"], refetchType: "none" }))
+      .catch(() => {});
+  };
 
   return (
     <div className="watch-media-page">
@@ -117,10 +123,10 @@ export function WatchMedia() {
                     const now = Date.now();
                     if (now - lastSavedAt.current < 10_000) return;
                     lastSavedAt.current = now;
-                    api.mediaProgress(item.id, { position: event.currentTarget.currentTime, duration: event.currentTarget.duration || 0 }).catch(() => {});
+                    saveProgress(item.id, event.currentTarget.currentTime, event.currentTarget.duration || 0);
                   },
                   onEnded: (event) => {
-                    api.mediaProgress(item.id, { position: event.currentTarget.duration || 0, duration: event.currentTarget.duration || 0, completed: true }).catch(() => {});
+                    saveProgress(item.id, event.currentTarget.duration || 0, event.currentTarget.duration || 0, true);
                   },
                   onPlaying: () => {
                     clearBuffering();
@@ -160,6 +166,7 @@ export function WatchMedia() {
               </div>
               <div className="row">
                 <FavoriteButton mediaId={item.id} compact={false} />
+                <FavoriteButton mediaId={item.id} list="watchLater" compact={false} />
                 <ShareButton />
                 {viewer.data?.libraryPolicy?.downloadsEnabled !== false ? (
                   <a className="btn btn-ghost" href={`/media/${item.id}?download=1`}>

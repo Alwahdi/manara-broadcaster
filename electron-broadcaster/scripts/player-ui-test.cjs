@@ -22,6 +22,73 @@ const account = read('webui/src/screens/viewer/Account.tsx');
 const layout = read('webui/src/app/layout.tsx');
 const manifest = read('webui/src/app/manifest.ts');
 const pwaInstall = read('webui/src/components/PwaInstallCard.tsx');
+const states = read('webui/src/components/States.tsx');
+const recovery = read('webui/src/screens/setup/AdminAccount.tsx');
+const finish = read('webui/src/screens/setup/Finish.tsx');
+const channelsAdmin = read('webui/src/screens/admin/Channels.tsx');
+const iptvAdmin = read('webui/src/screens/admin/Iptv.tsx');
+const iptvImport = read('webui/src/screens/admin/IptvImport.tsx');
+const messagesAdmin = read('webui/src/screens/admin/Messages.tsx');
+const storageBrowser = read('webui/src/components/StorageBrowser.tsx');
+
+const redirectSource = require('node:module').stripTypeScriptTypes(read('webui/src/lib/setupRedirect.ts'));
+const setupAdminUrl = require('node:vm').runInNewContext(
+  `${redirectSource.replace('export function', 'function')}\nsetupAdminUrl`,
+  { URL },
+);
+for (const [returnedUrl, browserUrl, expected] of [
+  ['http://127.0.0.1:9000/admin', 'http://192.168.1.25:8788/setup/finish', 'http://192.168.1.25:9000/admin'],
+  ['http://127.0.0.1:8787/ops/admin', 'http://wiva.local:8788/setup/finish', 'http://wiva.local:8787/ops/admin'],
+  ['http://127.0.0.1:8788/admin', 'http://localhost:8788/setup/admin?recovery=1', 'http://localhost:8788/admin'],
+  ['http://127.0.0.1:9000/admin', 'http://[fd00::25]:8788/setup/finish', 'http://[fd00::25]:9000/admin'],
+  ['http://127.0.0.1:9000/admin', 'https://wiva.local:8788/setup/finish', 'https://wiva.local:9000/admin'],
+  [undefined, 'http://wiva.local:8788/setup/finish', 'http://wiva.local:8788/admin/dashboard'],
+  ['http://[invalid', 'http://wiva.local:8788/setup/finish', 'http://wiva.local:8788/admin/dashboard'],
+  ['javascript:alert(1)', 'http://wiva.local:8788/setup/finish', 'http://wiva.local:8788/admin/dashboard'],
+]) {
+  assert.equal(setupAdminUrl(returnedUrl, browserUrl), expected, 'setup keeps the browser host and adopts the saved server port/path');
+}
+for (const screen of [finish, recovery]) {
+  assert.match(screen, /setupAdminUrl\(res\.state\?\.urls\?\.adminLocal, window\.location\.href\)/);
+}
+
+// Execute the actual recovery initialization effect across loading, typing and refetches.
+const recoveryEffect = recovery.match(/useEffect\(\(\) => \{([\s\S]*?)\n  \}, \[/)?.[1];
+assert.ok(recoveryEffect);
+const runRecoveryEffect = new Function('recoveryMode', 'recoveryState', 'recoveryInitialized', 'data', 'setSetup', recoveryEffect);
+const initialized = { current: false };
+let draft = { adminUsername: 'old', adminPassword: 'old-draft' };
+const setDraft = (patch) => { draft = { ...draft, ...patch }; };
+runRecoveryEffect(true, { isSuccess: false }, initialized, draft, setDraft);
+assert.equal(initialized.current, false, 'recovery waits for the saved username');
+const loadedRecovery = { isSuccess: true, data: { settings: { adminUsername: 'operator' } } };
+runRecoveryEffect(true, loadedRecovery, initialized, draft, setDraft);
+assert.deepEqual(draft, { adminUsername: 'operator', adminPassword: '' });
+draft.adminPassword = 'New-password-123!';
+runRecoveryEffect(true, loadedRecovery, initialized, draft, setDraft);
+assert.equal(draft.adminPassword, 'New-password-123!', 'typing and query refetches do not erase the new recovery password');
+
+assert.match(states, /function MutationError[\s\S]*?role="alert"/);
+assert.match(states, /mutation\.error\.status === 401/);
+for (const [screen, mutations] of [
+  [channelsAdmin, ['update', 'remove', 'toggle']],
+  [iptvAdmin, ['update', 'remove', 'toggle', 'savePolicy']],
+  [iptvImport, ['preview', 'commit']],
+  [messagesAdmin, ['updateStatus']],
+  [adminLibrary, ['rescan', 'scanAll', 'cancelScan', 'relink', 'add', 'removeSource', 'addExclude', 'removeExclude', 'updateSource', 'updatePolicy']],
+]) {
+  for (const mutation of mutations) assert.ok(screen.includes(`<MutationError mutation={${mutation}}`), `${mutation} failure remains visible and actionable`);
+}
+for (const screen of [channelsAdmin, iptvAdmin]) {
+  assert.match(screen, /key=\{String\(editing\.id\)\}/, 'switching channel editors resets the form to the selected channel');
+  assert.match(screen, /disabled=\{busy\} onClick=\{onCancel\}/, 'pending saves cannot close the editor');
+}
+assert.match(iptvImport, /disabled=\{commit\.isPending \|\| preview\.isPending/, 'a new preview cannot discard a pending import');
+assert.match(storageBrowser, /disabled=\{busy\} onClick=\{\(\) => onSelect\(path\)\}/, 'storage selections cannot repeat while saving');
+assert.match(adminLibrary, /busy=\{relink\.isPending\}/);
+assert.match(adminLibrary, /busy=\{addExclude\.isPending\}/);
+assert.match(media, /mediaProgress[\s\S]*?\.then\(\(\) => queryClient\.invalidateQueries\(\{ queryKey: \["viewer-state"\], refetchType: "none" \}\)\)/, 'successful progress invalidates history without polling viewer state during playback');
+assert.match(media, /onEnded:[\s\S]*?saveProgress\([^;]*true\)/, 'completion also invalidates viewer history');
 
 assert.doesNotMatch(live, /PlayerFitToolbar|live-player-video-(?:fit|fill|zoom)/);
 assert.doesNotMatch(media, /MediaFitToolbar|media-player-video-(?:fit|fill|zoom)/);

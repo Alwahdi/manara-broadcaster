@@ -13,8 +13,6 @@ export interface SetupData {
   adminPort?: string;
   experienceLayout?: string;
   adminPath?: string;
-  libraryPath?: string;
-  iptvUrl?: string;
 }
 
 const KEY = "wiva.setup.draft";
@@ -23,7 +21,11 @@ const listeners = new Set<() => void>();
 
 function load(): SetupData {
   try {
-    return JSON.parse(sessionStorage.getItem(KEY) || "{}");
+    const saved = JSON.parse(sessionStorage.getItem(KEY) || "{}");
+    // Old setup drafts collected content without importing it; retain only core setup.
+    const clean = { ...saved, adminPassword: undefined, libraryPath: undefined, iptvUrl: undefined };
+    sessionStorage.setItem(KEY, JSON.stringify(clean));
+    return clean;
   } catch {
     return {};
   }
@@ -31,7 +33,7 @@ function load(): SetupData {
 
 function persist() {
   try {
-    sessionStorage.setItem(KEY, JSON.stringify(state));
+    sessionStorage.setItem(KEY, JSON.stringify({ ...state, adminPassword: undefined }));
   } catch {
     /* ignore storage errors on locked-down devices */
   }

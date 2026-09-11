@@ -1,5 +1,22 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import type { UseQueryResult } from "@tanstack/react-query";
+import { ApiError } from "@/lib/api";
+
+export function MutationError({ mutation, action }: {
+  mutation: { isError: boolean; error: unknown };
+  action: string;
+}) {
+  if (!mutation.isError) return null;
+  const needsLogin = mutation.error instanceof ApiError && mutation.error.status === 401;
+  return (
+    <p role="alert" style={{ color: "var(--danger)" }}>
+      تعذّر {action}. {needsLogin
+        ? "انتهت جلسة الإدارة. سجّل الدخول مجدداً ثم أعد المحاولة."
+        : "تحقق من الاتصال والصلاحيات والبيانات المدخلة ثم أعد المحاولة."}
+      {needsLogin ? <> <a href="/admin/login">تسجيل الدخول</a></> : null}
+    </p>
+  );
+}
 
 export function LoadingState({ label = "جارٍ التحميل…" }: { label?: string }) {
   return (
@@ -119,9 +136,25 @@ export function QueryBoundary<T>({
   loadingLabel?: string;
 }) {
   if (query.isLoading) return <LoadingState label={loadingLabel} />;
-  if (query.isError) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
+  const transientError = query.error instanceof ApiError
+    && (query.error.status === 0 || query.error.status >= 500);
+  if (query.isError && (query.data === undefined || !transientError)) {
+    return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
+  }
   const data = query.data as T;
   if (data === undefined) return <LoadingState label={loadingLabel} />;
-  if (isEmpty && isEmpty(data)) return <>{empty ?? <EmptyState />}</>;
-  return <>{children(data)}</>;
+  return (
+    <>
+      {query.isError ? (
+        <div className="notice" role="status">
+          تعذّر تحديث البيانات. نعرض آخر بيانات متاحة؛ قد لا تعكس الحالة الحالية.
+          {" "}
+          <button type="button" className="btn btn-sm" disabled={query.isFetching} onClick={() => void query.refetch()}>
+            {query.isFetching ? "جارٍ التحديث…" : "إعادة المحاولة"}
+          </button>
+        </div>
+      ) : null}
+      <Fragment key="data">{isEmpty && isEmpty(data) ? empty ?? <EmptyState /> : children(data)}</Fragment>
+    </>
+  );
 }

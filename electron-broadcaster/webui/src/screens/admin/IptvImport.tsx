@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAppNavigate } from "@/components/AppLink";
 import { api, type Channel } from "@/lib/api";
 import { PageHeader } from "@/components/common";
+import { MutationError } from "@/components/States";
 
 /** Two-phase IPTV import: preview then commit selected channels. */
 export function AdminIptvImport() {
@@ -62,11 +63,12 @@ export function AdminIptvImport() {
             <textarea className="textarea mono" dir="ltr" value={text} onChange={(e) => setText(e.target.value)} placeholder="#EXTM3U…" />
           </div>
         )}
-        <button className="btn btn-primary" onClick={() => preview.mutate()} disabled={preview.isPending || (mode === "url" ? !url : !text)}>
+        <button className="btn btn-primary" onClick={() => { commit.reset(); preview.mutate(); }} disabled={commit.isPending || preview.isPending || (mode === "url" ? !url : !text)}>
           {preview.isPending ? "جارٍ التحليل…" : "معاينة القنوات"}
         </button>
-        {preview.isError ? <p style={{ color: "var(--danger)" }}>{(preview.error as Error).message}</p> : null}
+        <MutationError mutation={preview} action="معاينة القنوات" />
       </div>
+      <MutationError mutation={commit} action="إضافة القنوات المحددة" />
 
       {preview.isSuccess ? (
         channels.length === 0 ? (
@@ -88,7 +90,7 @@ export function AdminIptvImport() {
                 const key = String(ch.id ?? ch.name);
                 return (
                   <label key={key} className="explorer-item" style={{ cursor: "pointer" }}>
-                    <input type="checkbox" checked={selected.has(key)} onChange={() => toggle(key)} />
+                    <input type="checkbox" disabled={commit.isPending} checked={selected.has(key)} onChange={() => toggle(key)} />
                     <span className="grow truncate">{ch.name}</span>
                     {ch.group ? <span className="badge">{ch.group}</span> : null}
                   </label>

@@ -1,11 +1,13 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { SetupStep } from "@/components/SetupStep";
 import { clearSetup, setSetup, useSetup } from "@/hooks/useSetup";
 import { api } from "@/lib/api";
+import { setupAdminUrl } from "@/lib/setupRedirect";
 
 export function SetupAdminAccount() {
   const data = useSetup();
+  const recoveryInitialized = useRef(false);
   const recoveryMode = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("recovery") === "1";
   const recoveryState = useQuery({
     queryKey: ["agent-state", "admin-recovery"],
@@ -21,7 +23,7 @@ export function SetupAdminAccount() {
       }),
     onSuccess: (res) => {
       clearSetup();
-      const target = res.state?.urls?.adminLocal || "/admin/dashboard";
+      const target = setupAdminUrl(res.state?.urls?.adminLocal, window.location.href);
       setTimeout(() => {
         window.location.href = target;
       }, 900);
@@ -29,12 +31,13 @@ export function SetupAdminAccount() {
   });
 
   useEffect(() => {
-    if (!recoveryMode) return;
+    if (!recoveryMode || !recoveryState.isSuccess || recoveryInitialized.current) return;
+    recoveryInitialized.current = true;
     const username = String(recoveryState.data?.settings?.adminUsername || data.adminUsername || "admin").trim() || "admin";
     if (data.adminUsername !== username || data.adminPassword) {
       setSetup({ adminUsername: username, adminPassword: "" });
     }
-  }, [data.adminPassword, data.adminUsername, recoveryMode, recoveryState.data?.settings?.adminUsername]);
+  }, [data.adminPassword, data.adminUsername, recoveryMode, recoveryState.isSuccess, recoveryState.data?.settings?.adminUsername]);
 
   const password = data.adminPassword || "";
   const valid = !!data.adminUsername && password.length >= 10 && /[a-z]/i.test(password) && /\d/.test(password) && /[^a-z0-9]/i.test(password);
@@ -50,7 +53,7 @@ export function SetupAdminAccount() {
           ? (saveRecovery.isPending ? "جارٍ الحفظ…" : saveRecovery.isSuccess ? "تم ✓" : "حفظ كلمة المرور الجديدة")
           : "التالي"
       }
-      nextDisabled={recoveryMode ? (!valid || saveRecovery.isPending || saveRecovery.isSuccess) : !valid}
+      nextDisabled={recoveryMode ? (!recoveryState.isSuccess || !valid || saveRecovery.isPending || saveRecovery.isSuccess) : !valid}
     >
       <div className="card card-pad">
         {recoveryMode ? (
@@ -60,16 +63,17 @@ export function SetupAdminAccount() {
           </div>
         ) : null}
         <div className="field">
-          <label>اسم المستخدم *</label>
-          <input className="input" autoComplete="username" value={data.adminUsername || ""} onChange={(e) => setSetup({ adminUsername: e.target.value })} />
+          <label htmlFor="setup-admin-username">اسم المستخدم *</label>
+          <input id="setup-admin-username" className="input" autoComplete="username" disabled={recoveryMode && (!recoveryState.isSuccess || saveRecovery.isPending || saveRecovery.isSuccess)} value={data.adminUsername || ""} onChange={(e) => setSetup({ adminUsername: e.target.value })} />
         </div>
         <div className="field">
-          <label>كلمة المرور *</label>
-          <input className="input" type="password" autoComplete="new-password" value={data.adminPassword || ""} onChange={(e) => setSetup({ adminPassword: e.target.value })} />
-          <span className="hint">10 أحرف على الأقل، مع حرف ورقم ورمز. تُخزّن بشكل مُجزّأ على الخادم.</span>
+          <label htmlFor="setup-admin-password">كلمة المرور *</label>
+          <input id="setup-admin-password" className="input" type="password" autoComplete="new-password" disabled={recoveryMode && (!recoveryState.isSuccess || saveRecovery.isPending || saveRecovery.isSuccess)} value={data.adminPassword || ""} onChange={(e) => setSetup({ adminPassword: e.target.value })} />
+          <span className="hint">10 أحرف على الأقل، مع حرف ورقم ورمز. تُخزّن بشكل مُجزّأ على الخادم. قبل الحفظ، يلزم إدخالها مجددًا إذا أعدت تحميل الصفحة.</span>
         </div>
       </div>
-      {saveRecovery.isError ? <p style={{ color: "var(--danger)" }}>{(saveRecovery.error as Error).message}</p> : null}
+      {recoveryMode && recoveryState.isError ? <p role="alert">تعذّر تحميل بيانات الاسترجاع. <button className="btn btn-ghost" onClick={() => recoveryState.refetch()}>إعادة المحاولة</button></p> : null}
+      {saveRecovery.isError ? <p role="alert" style={{ color: "var(--danger)" }}>{(saveRecovery.error as Error).message}</p> : null}
       {recoveryMode && saveRecovery.isSuccess ? <p className="gold">تم حفظ كلمة المرور الجديدة — جارٍ فتح لوحة الإدارة…</p> : null}
     </SetupStep>
   );

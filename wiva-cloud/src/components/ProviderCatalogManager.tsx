@@ -32,7 +32,9 @@ export function ProviderCatalogManager({ provider }: { provider: ProviderSummary
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
-  const [publish, setPublish] = useState(false);
+  const [publishRequested, setPublish] = useState(false);
+  const canPublish = provider.status === "active";
+  const publish = canPublish && publishRequested;
   const [message, setMessage] = useState("");
   const [fresh, setFresh] = useState(0);
   const [openSeries, setOpenSeries] = useState<ProviderCatalogItem | null>(null);
@@ -166,7 +168,7 @@ export function ProviderCatalogManager({ provider }: { provider: ProviderSummary
         {sectionOptions.map((option) => <button key={option.id} role="tab" className={section === option.id ? "active" : ""} aria-selected={section === option.id} onClick={() => changeSection(option.id)}><option.icon size={17} />{option.label}</button>)}
       </div>
       <form className="catalog-admin-search" onSubmit={submitSearch}>
-        <Search size={18} /><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="ابحث باسم قناة، فيلم أو مسلسل…" /><button className="button primary" type="submit">بحث</button>
+        <Search size={18} /><input aria-label="البحث في فهرس المزوّد" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="ابحث باسم قناة، فيلم أو مسلسل…" /><button className="button primary" type="submit">بحث</button>
       </form>
       <div className="catalog-filter-row">
         <label><span>التصنيف</span><select value={categoryId} onChange={(event) => { setCategoryId(event.target.value); setPage(1); }}><option value="">كل التصنيفات</option>{data?.categories.map((category) => <option key={category.id} value={category.id}>{category.name} ({category.count})</option>)}</select></label>
@@ -176,10 +178,11 @@ export function ProviderCatalogManager({ provider }: { provider: ProviderSummary
     </section>
 
     <section className="catalog-selection-bar">
+      {!canPublish ? <p role="status">المزوّد غير مفعّل للنشر. يمكنك الاستيراد للمراجعة، ثم <Link href="/admin/providers">تفعيل المزوّد</Link> قبل نشر المحتوى.</p> : null}
       {section === "series" ? <span><strong>المسلسلات:</strong> افتح أي مسلسل ثم اختر المواسم والحلقات.</span> : <>
       <button className="button secondary" onClick={togglePage} disabled={!data?.items.length}><FolderCheck size={17} />{allPageSelected ? "إلغاء تحديد الصفحة" : "تحديد الصفحة"}</button>
       <span><strong>{selected.size}</strong> عنصر محدد</span>
-      <label className="publish-switch"><input type="checkbox" checked={publish} onChange={(event) => setPublish(event.target.checked)} /><span>نشر مباشرة للمشاهدين</span></label>
+      <label className="publish-switch"><input type="checkbox" checked={publish} disabled={!canPublish || importing} onChange={(event) => setPublish(event.target.checked)} /><span>نشر مباشرة للمشاهدين</span></label>
       <div className="selection-actions">
         <button className="button secondary" disabled={importing || !data?.total} onClick={() => void importItems(true)}>{importing ? <LoaderCircle className="spin" /> : <CloudDownload size={17} />}استيراد كل النتائج</button>
         <button className="button primary" disabled={importing || !selected.size} onClick={() => void importItems(false)}>{importing ? <LoaderCircle className="spin" /> : <CloudDownload size={17} />}استيراد المحدد</button>
@@ -192,7 +195,7 @@ export function ProviderCatalogManager({ provider }: { provider: ProviderSummary
     {section === "series" && openSeries ? <section ref={seriesInspectorRef} className="series-inspector ops-card">
       <div className="series-inspector-heading"><div><Tv2 /><span><h2>{openSeries.title}</h2><p>{episodeLoading ? "جارٍ جلب المواسم والحلقات…" : `${episodes.length.toLocaleString("ar")} حلقة متاحة من المزوّد`}</p></span></div><button className="icon-button" onClick={() => setOpenSeries(null)} aria-label="إغلاق"><X /></button></div>
       {episodeLoading ? <div className="series-episode-loading"><LoaderCircle className="spin" /></div> : episodes.length ? <>
-        <div className="series-automation-panel"><div><BellRing /><span><strong>متابعة الحلقات الجديدة</strong><small>يفحص WIVA هذا المسلسل كل 24 ساعة ويستورد الإضافات فقط.</small></span></div><div className="series-automation-actions"><label className="publish-switch"><input type="checkbox" checked={autoTrack} onChange={(event) => setAutoTrack(event.target.checked)} /><span>متابعة تلقائية</span></label><label className="publish-switch"><input type="checkbox" checked={publish} onChange={(event) => setPublish(event.target.checked)} /><span>نشر الحلقات الجديدة</span></label><button className="button secondary" disabled={trackingSaving} onClick={() => void saveTracking()}>{trackingSaving ? <LoaderCircle className="spin" /> : <Check />}حفظ</button></div>{tracking?.lastSuccessAt ? <small>آخر فحص ناجح: {new Date(tracking.lastSuccessAt).toLocaleString("ar")}</small> : null}</div>
+        <div className="series-automation-panel"><div><BellRing /><span><strong>متابعة الحلقات الجديدة</strong><small>يفحص WIVA هذا المسلسل كل 24 ساعة ويستورد الإضافات فقط.</small></span></div><div className="series-automation-actions"><label className="publish-switch"><input type="checkbox" checked={autoTrack} onChange={(event) => setAutoTrack(event.target.checked)} /><span>متابعة تلقائية</span></label><label className="publish-switch">        <input type="checkbox" checked={publish} disabled={!canPublish || importing || trackingSaving} onChange={(event) => setPublish(event.target.checked)} /><span>نشر الحلقات الجديدة</span></label><button className="button secondary" disabled={trackingSaving} onClick={() => void saveTracking()}>{trackingSaving ? <LoaderCircle className="spin" /> : <Check />}حفظ</button></div>{tracking?.lastSuccessAt ? <small>آخر فحص ناجح: {new Date(tracking.lastSuccessAt).toLocaleString("ar")}</small> : null}</div>
         <div className="season-tabs">{[...new Set(episodes.map((episode) => episode.seasonNumber))].map((value) => <button key={value} className={season === value ? "active" : ""} aria-pressed={season === value} onClick={() => setSeason(value)}>الموسم {value.toLocaleString("ar")}</button>)}</div>
         <div className="episode-select-actions"><button className="button secondary" onClick={() => setEpisodeSelection((current) => { const next = new Set(current); for (const episode of episodes.filter((item) => item.seasonNumber === season)) next.add(episode.ref); return next; })}>تحديد الموسم</button><span>{episodeSelection.size.toLocaleString("ar")} حلقة محددة</span><button className="button primary" disabled={!episodeSelection.size || importing} onClick={() => void importEpisodes()}>{importing ? <LoaderCircle className="spin" /> : <CloudDownload />}استيراد الحلقات المحددة</button></div>
         <div className="episode-picker">{episodes.filter((episode) => episode.seasonNumber === season).map((episode) => <button key={episode.ref} className={episodeSelection.has(episode.ref) ? "selected" : ""} onClick={() => setEpisodeSelection((current) => { const next = new Set(current); next.has(episode.ref) ? next.delete(episode.ref) : next.add(episode.ref); return next; })}><i>{episodeSelection.has(episode.ref) ? <Check /> : episode.episodeNumber.toLocaleString("ar")}</i><span><strong>{episode.title}</strong><small>الحلقة {episode.episodeNumber.toLocaleString("ar")} · {episode.containerExtension.toUpperCase()}</small></span></button>)}</div>

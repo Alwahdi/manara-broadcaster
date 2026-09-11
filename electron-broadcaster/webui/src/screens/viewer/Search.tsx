@@ -48,6 +48,8 @@ export function Search() {
         <p>ابحث عن القنوات والمجلدات والمحتوى المتاح داخل الشبكة.</p>
         <input
           className="search-input-xl"
+          type="search"
+          aria-label="البحث في القنوات والمكتبة"
           placeholder="ابحث عن قناة، قسم، أو محتوى"
           value={term}
           onChange={(e) => setTerm(e.target.value)}

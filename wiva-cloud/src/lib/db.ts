@@ -371,6 +371,14 @@ export async function listProviders(): Promise<ProviderSummary[]> {
   }));
 }
 
+function storedJsonArray(value: unknown): unknown[] | null {
+  // Older local postgres.js writes encoded JSON arrays as JSON strings.
+  if (typeof value === "string") {
+    try { value = JSON.parse(value); } catch { return null; }
+  }
+  return Array.isArray(value) ? value : null;
+}
+
 function syncRuleFromRow(row: Record<string, unknown>): ProviderSyncRule {
   return {
     id: String(row.id), providerId: String(row.provider_id), seriesRef: String(row.series_ref),
@@ -379,7 +387,7 @@ function syncRuleFromRow(row: Record<string, unknown>): ProviderSyncRule {
     lastSuccessAt: row.last_success_at ? new Date(String(row.last_success_at)).toISOString() : null,
     nextRunAt: new Date(String(row.next_run_at)).toISOString(), lastError: String(row.last_error || ""),
     importedCount: Number(row.imported_count || 0),
-    knownEpisodeRefs: Array.isArray(row.known_episode_refs) ? (row.known_episode_refs as unknown[]).map(String).slice(0, 20_000) : [],
+    knownEpisodeRefs: (storedJsonArray(row.known_episode_refs) || []).map(String).slice(0, 20_000),
   };
 }
 
@@ -408,7 +416,7 @@ export async function upsertProviderSyncRule(input: { providerId: string; series
   const rows = await query`
     insert into wiva_cloud_provider_sync_rules
       (tenant_id,provider_id,series_ref,series_title,enabled,publish_new,next_run_at,last_error,known_episode_refs,updated_at)
-    values (${tenantId()},${input.providerId},${input.seriesRef},${input.seriesTitle},${input.enabled},${input.publishNew},now(),'',${JSON.stringify(knownEpisodeRefs)}::jsonb,now())
+    values (${tenantId()},${input.providerId},${input.seriesRef},${input.seriesTitle},${input.enabled},${input.publishNew},now(),'',${JSON.stringify(knownEpisodeRefs)}::text::jsonb,now())
     on conflict (tenant_id,provider_id,series_ref) do update set
       series_title=excluded.series_title,enabled=excluded.enabled,publish_new=excluded.publish_new,
       next_run_at=case when excluded.enabled then least(wiva_cloud_provider_sync_rules.next_run_at,now()) else wiva_cloud_provider_sync_rules.next_run_at end,
@@ -442,7 +450,19 @@ export async function listImportedSeriesEpisodeRefs(providerId: string, parentRe
   return new Set(rows.map((row) => String(row.provider_asset_ref)));
 }
 
-export async function finishProviderSyncRule(id: string, input: { added: number; error?: string; knownEpisodeRefs?: string[] }) {
+export async function claimProviderSyncRule(id: string) {
+  const query = sql();
+  const rows = await query`
+    update wiva_cloud_provider_sync_rules set
+      sync_token=gen_random_uuid(), sync_locked_until=now() + interval '10 minutes'
+    where tenant_id=${tenantId()} and id=${id} and enabled=true
+      and (sync_locked_until is null or sync_locked_until <= now())
+    returning sync_token
+  `;
+  return rows[0] ? String(rows[0].sync_token) : null;
+}
+
+export async function finishProviderSyncRule(id: string, input: { token: string; added: number; error?: string; knownEpisodeRefs?: string[] }) {
   const query = sql(); const error = String(input.error || "").slice(0, 500);
   const knownEpisodeRefs = [...new Set(input.knownEpisodeRefs || [])].slice(0, 20_000);
   await query`
@@ -450,8 +470,9 @@ export async function finishProviderSyncRule(id: string, input: { added: number;
       last_checked_at=now(),last_success_at=case when ${error}='' then now() else last_success_at end,
       next_run_at=now() + interval '24 hours',last_error=${error},
       imported_count=imported_count + ${Math.max(0, Math.floor(input.added))},
-      known_episode_refs=case when ${error}='' then ${JSON.stringify(knownEpisodeRefs)}::jsonb else known_episode_refs end,updated_at=now()
-    where tenant_id=${tenantId()} and id=${id}
+      known_episode_refs=case when ${error}='' then ${JSON.stringify(knownEpisodeRefs)}::text::jsonb else known_episode_refs end,
+      sync_token=null,sync_locked_until=null,updated_at=now()
+    where tenant_id=${tenantId()} and id=${id} and sync_token=${input.token}::uuid
   `;
 }
 
@@ -471,7 +492,7 @@ export async function getProviderCatalogCache(providerId: string, section: Asset
     where tenant_id=${tenantId()} and provider_id=${providerId} and section=${section} and expires_at > now()
     limit 1
   `;
-  return Array.isArray(rows[0]?.payload) ? rows[0].payload as unknown as ProviderCatalogItem[] : null;
+  return storedJsonArray(rows[0]?.payload) as ProviderCatalogItem[] | null;
 }
 
 export async function saveProviderCatalogCache(providerId: string, section: AssetKind, items: ProviderCatalogItem[]) {
@@ -480,7 +501,7 @@ export async function saveProviderCatalogCache(providerId: string, section: Asse
     insert into wiva_cloud_provider_catalog_cache
       (tenant_id, provider_id, section, payload, item_count, expires_at, updated_at)
     values
-      (${tenantId()}, ${providerId}, ${section}, ${JSON.stringify(items)}::jsonb, ${items.length}, now() + interval '15 minutes', now())
+      (${tenantId()}, ${providerId}, ${section}, ${JSON.stringify(items)}::text::jsonb, ${items.length}, now() + interval '15 minutes', now())
     on conflict (tenant_id, provider_id, section) do update set
       payload=excluded.payload, item_count=excluded.item_count, expires_at=excluded.expires_at, updated_at=now()
   `;
@@ -583,25 +604,29 @@ export async function importProviderSeries(providerId: string, series: ProviderC
   const query = sql();
   const prepared = prepareCatalogItem(series);
   const publishParent = active && !prepared.restricted && prepared.playable;
-  const parents = await query`
-    insert into wiva_cloud_assets (tenant_id,provider_id,provider_asset_ref,kind,title,description,category,artwork_url,year,rating,quality,language,is_active,is_restricted,is_playable,metadata_review)
-    values (${tenantId()},${providerId},${prepared.ref},'series',${prepared.title},${prepared.description},${prepared.category},${prepared.artworkUrl || null},${prepared.year},${prepared.rating},${prepared.quality},${prepared.language},${publishParent},${prepared.restricted},${prepared.playable},${prepared.restricted || !prepared.playable ? "needs_review" : "approved"})
-    on conflict (tenant_id,provider_id,provider_asset_ref) do update set title=excluded.title,description=excluded.description,category=excluded.category,artwork_url=excluded.artwork_url,year=excluded.year,rating=excluded.rating,is_active=(wiva_cloud_assets.is_active or excluded.is_active),is_restricted=excluded.is_restricted,is_playable=excluded.is_playable,metadata_review=excluded.metadata_review,consecutive_failures=0,last_failure_at=null,last_imported_at=now(),updated_at=now()
-    returning id
-  `;
-  const parentId = String(parents[0].id);
-  const payload = episodes.map((episode) => {
+  const uniqueEpisodes = [...new Map(episodes.map((episode) => [episode.ref, episode])).values()];
+  const payload = uniqueEpisodes.map((episode) => {
     const restricted = prepared.restricted || isRestrictedMetadata(episode.title, episode.description, prepared.category);
     return { ref: episode.ref, title: normalizeProviderTitle(episode.title), description: episode.description, artwork_url: episode.artworkUrl || prepared.artworkUrl || null, season: episode.seasonNumber, episode: episode.episodeNumber, restricted, active: active && !restricted && prepared.playable };
   });
   const rows = await query`
+    with parent as (
+    insert into wiva_cloud_assets (tenant_id,provider_id,provider_asset_ref,kind,title,description,category,artwork_url,year,rating,quality,language,is_active,is_restricted,is_playable,metadata_review)
+    values (${tenantId()},${providerId},${prepared.ref},'series',${prepared.title},${prepared.description},${prepared.category},${prepared.artworkUrl || null},${prepared.year},${prepared.rating},${prepared.quality},${prepared.language},${publishParent},${prepared.restricted},${prepared.playable},${prepared.restricted || !prepared.playable ? "needs_review" : "approved"})
+    on conflict (tenant_id,provider_id,provider_asset_ref) do update set title=excluded.title,description=excluded.description,category=excluded.category,artwork_url=excluded.artwork_url,year=excluded.year,rating=excluded.rating,is_active=(wiva_cloud_assets.is_active or excluded.is_active),is_restricted=excluded.is_restricted,is_playable=excluded.is_playable,metadata_review=excluded.metadata_review,consecutive_failures=0,last_failure_at=null,last_imported_at=now(),updated_at=now()
+    returning id
+    ), imported as (
     insert into wiva_cloud_assets (tenant_id,provider_id,provider_asset_ref,parent_asset_id,season_number,episode_number,kind,title,description,category,artwork_url,quality,is_active,is_restricted,is_playable,metadata_review)
-    select ${tenantId()},${providerId},x.ref,${parentId}::uuid,x.season,x.episode,'series',x.title,x.description,${prepared.title},x.artwork_url,'HD',x.active,x.restricted,true,case when x.restricted then 'needs_review' else 'approved' end
+    select ${tenantId()},${providerId},x.ref,parent.id,x.season,x.episode,'series',x.title,x.description,${prepared.title},x.artwork_url,'HD',x.active,x.restricted,true,case when x.restricted then 'needs_review' else 'approved' end
     from jsonb_to_recordset(((${JSON.stringify(payload)}::jsonb) #>> '{}')::jsonb) as x(ref text,title text,description text,artwork_url text,season integer,episode integer,restricted boolean,active boolean)
+    cross join parent
+    where true
     on conflict (tenant_id,provider_id,provider_asset_ref) do update set parent_asset_id=excluded.parent_asset_id,season_number=excluded.season_number,episode_number=excluded.episode_number,title=excluded.title,description=excluded.description,artwork_url=excluded.artwork_url,is_active=(wiva_cloud_assets.is_active or excluded.is_active),is_restricted=excluded.is_restricted,is_playable=excluded.is_playable,metadata_review=excluded.metadata_review,consecutive_failures=0,last_failure_at=null,last_imported_at=now(),updated_at=now()
     returning id
+    )
+    select parent.id as parent_id, (select count(*)::int from imported) as imported from parent
   `;
-  return { parentId, imported: rows.length };
+  return { parentId: String(rows[0].parent_id), imported: Number(rows[0].imported) };
 }
 
 export async function setAssetActive(id: string, active: boolean) {
@@ -948,7 +973,7 @@ export async function auditEvent(actorType: string, actorId: string, action: str
   const query = sql();
   await query`
     insert into wiva_cloud_audit_log (tenant_id, actor_type, actor_id, action, target_type, target_id, metadata)
-    values (${tenantId()}, ${actorType}, ${actorId}, ${action}, ${targetType}, ${targetId}, ${JSON.stringify(metadata)}::jsonb)
+    values (${tenantId()}, ${actorType}, ${actorId}, ${action}, ${targetType}, ${targetId}, ${JSON.stringify(metadata)}::text::jsonb)
   `;
 }
 

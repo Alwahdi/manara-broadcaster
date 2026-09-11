@@ -12,9 +12,11 @@ import { formatBytes } from "@/lib/format";
 export function StorageBrowser({
   onSelect,
   selectLabel = "اختيار هذا المجلد",
+  busy = false,
 }: {
   onSelect: (path: string) => void;
   selectLabel?: string;
+  busy?: boolean;
 }) {
   const [path, setPath] = useState<string>("");
 
@@ -50,23 +52,25 @@ export function StorageBrowser({
         ) : (
           <div className="explorer-list">
             {(roots.data?.roots || []).map((root) => (
-              <div
+              <button
+                type="button"
+                disabled={busy}
                 key={root.path}
                 className={`explorer-item ${path.startsWith(root.path) ? "active" : ""}`}
                 onClick={() => setPath(root.path)}
               >
                 <span aria-hidden>{root.online === false ? "⚠️" : "💽"}</span>
-                <div className="grow">
-                  <div style={{ fontWeight: 700 }}>{root.label || root.path}</div>
-                  <div className="tile-sub">
+                <span className="grow">
+                  <span style={{ fontWeight: 700, display: "block" }}>{root.label || root.path}</span>
+                  <span className="tile-sub" style={{ display: "block" }}>
                     {root.online === false
                       ? "غير متصل"
                       : root.total
                         ? `${formatBytes(root.free)} متاحة`
                         : root.path}
-                  </div>
-                </div>
-              </div>
+                  </span>
+                </span>
+              </button>
             ))}
             {(roots.data?.roots || []).length === 0 ? (
               <EmptyState icon="💽" title="لا توجد أقراص" text="لم يتم العثور على أقراص أو مصادر تخزين." />
@@ -77,11 +81,11 @@ export function StorageBrowser({
 
       <div className="card card-pad">
         <div className="crumbs" style={{ marginBottom: 14 }}>
-          <button onClick={() => setPath("")}>الأقراص</button>
+          <button type="button" disabled={busy} onClick={() => setPath("")}>الأقراص</button>
           {crumbs.map((part, i) => (
             <span key={i}>
               <span className="dim"> / </span>
-              <button onClick={() => goToCrumb(i)}>{part}</button>
+              <button type="button" disabled={busy} onClick={() => goToCrumb(i)}>{part}</button>
             </span>
           ))}
         </div>
@@ -98,14 +102,16 @@ export function StorageBrowser({
               {(listing.data?.entries || [])
                 .filter((e) => e.type === "dir")
                 .map((entry) => (
-                  <div
+                  <button
+                    type="button"
+                    disabled={busy}
                     key={entry.path}
                     className="explorer-item"
                     onClick={() => setPath(entry.path)}
                   >
                     <span aria-hidden>📁</span>
                     <span className="grow truncate">{entry.name}</span>
-                  </div>
+                  </button>
                 ))}
               {(listing.data?.entries || []).filter((e) => e.type === "dir").length === 0 ? (
                 <EmptyState icon="📂" title="لا مجلدات فرعية" text="هذا المجلد لا يحتوي على مجلدات فرعية." />
@@ -113,8 +119,8 @@ export function StorageBrowser({
             </div>
             <div className="row-between" style={{ marginTop: 16 }}>
               <code className="mono truncate" style={{ maxWidth: "60%" }}>{path}</code>
-              <button className="btn btn-primary" onClick={() => onSelect(path)}>
-                {selectLabel}
+              <button type="button" className="btn btn-primary" disabled={busy} onClick={() => onSelect(path)}>
+                {busy ? "جارٍ الحفظ…" : selectLabel}
               </button>
             </div>
           </>

@@ -1,5 +1,6 @@
 import type { AnchorHTMLAttributes, MouseEvent, ReactNode } from "react";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { hasUnsavedFormDrafts } from "@/hooks/useFormDraft";
 
 type NavigationContextValue = {
   path: string;
@@ -18,11 +19,18 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const sync = () => setPath(currentPath());
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      if (!hasUnsavedFormDrafts()) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
     window.addEventListener("popstate", sync);
     window.addEventListener("wiva:navigate", sync);
+    window.addEventListener("beforeunload", warnBeforeLeaving);
     return () => {
       window.removeEventListener("popstate", sync);
       window.removeEventListener("wiva:navigate", sync);
+      window.removeEventListener("beforeunload", warnBeforeLeaving);
     };
   }, []);
 

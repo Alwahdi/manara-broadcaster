@@ -116,6 +116,8 @@ create table if not exists wiva_cloud_provider_sync_rules (
 create index if not exists wiva_cloud_provider_sync_due_idx
   on wiva_cloud_provider_sync_rules(tenant_id, enabled, next_run_at);
 alter table wiva_cloud_provider_sync_rules add column if not exists known_episode_refs jsonb not null default '[]'::jsonb;
+alter table wiva_cloud_provider_sync_rules add column if not exists sync_token uuid;
+alter table wiva_cloud_provider_sync_rules add column if not exists sync_locked_until timestamptz;
 
 create table if not exists wiva_cloud_match_schedule (
   id uuid primary key default gen_random_uuid(),

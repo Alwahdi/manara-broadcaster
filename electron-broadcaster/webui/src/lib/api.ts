@@ -12,31 +12,40 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, timeoutMs = 30_000): Promise<T> {
   let res: Response;
+  let text: string;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     res = await fetch(path, {
+      ...init,
       credentials: "include",
+      signal: controller.signal,
       headers: {
         Accept: "application/json",
         ...(init?.body ? { "Content-Type": "application/json" } : {}),
         ...(init?.headers || {}),
       },
-      ...init,
     });
+    text = await res.text();
   } catch (e) {
     throw new ApiError(
-      "تعذّر الاتصال بالوكيل المحلي. تأكد من أن الخدمة تعمل على الشبكة.",
+      controller.signal.aborted
+        ? "انتهت مهلة الطلب. تحقق من حالة العملية قبل المحاولة مرة أخرى."
+        : "تعذّر الاتصال بالوكيل المحلي. تأكد من أن الخدمة تعمل على الشبكة.",
       0,
       e,
     );
+  } finally {
+    clearTimeout(timeout);
   }
-  const text = await res.text();
   let data: unknown = undefined;
   if (text) {
     try {
       data = JSON.parse(text);
     } catch {
+      if (res.ok) throw new ApiError("استجابة الخدمة غير صالحة. أعد تحميل الصفحة ثم حاول مرة أخرى.", 502);
       data = text;
     }
   }
@@ -55,8 +64,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const http = {
   get: <T>(path: string) => request<T>(path),
-  post: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: "POST", body: body ? JSON.stringify(body) : undefined }),
+  post: <T>(path: string, body?: unknown, timeoutMs?: number) =>
+    request<T>(path, { method: "POST", body: body ? JSON.stringify(body) : undefined }, timeoutMs),
   put: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "PUT", body: body ? JSON.stringify(body) : undefined }),
   del: <T>(path: string) => request<T>(path, { method: "DELETE" }),
@@ -503,7 +512,7 @@ export const api = {
   diagnostics: () => http.get<Diagnostics>("/api/admin/diagnostics"),
   updateStatus: () => http.get<{ ok: boolean; update: UpdateStatus }>("/api/admin/update"),
   checkUpdate: () => http.post<{ ok: boolean; error?: string; state?: string; version?: string }>("/api/admin/update/check"),
-  downloadUpdate: () => http.post<{ ok: boolean; error?: string; state?: string; version?: string }>("/api/admin/update/download"),
+  downloadUpdate: () => http.post<{ ok: boolean; error?: string; state?: string; version?: string }>("/api/admin/update/download", undefined, 30 * 60_000),
   installUpdate: () => http.post<{ ok: boolean; error?: string; state?: string; version?: string }>("/api/admin/update/install"),
 
   // Settings (persisted through the setup pipeline)
