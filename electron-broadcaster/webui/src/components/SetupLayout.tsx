@@ -8,8 +8,6 @@ export const SETUP_STEPS = [
   { to: "/setup/admin-account", label: "حساب المشرف" },
   { to: "/setup/branding", label: "الهوية" },
   { to: "/setup/ports", label: "المنافذ" },
-  { to: "/setup/library", label: "المكتبة" },
-  { to: "/setup/iptv", label: "IPTV" },
   { to: "/setup/finish", label: "إنهاء" },
 ];
 
@@ -18,7 +16,8 @@ export function SetupLayout({ children }: { children: ReactNode }) {
   const pathname = useAppPath();
   const recoveryMode = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("recovery") === "1";
   const steps = recoveryMode ? [{ to: "/setup/admin-account", label: "إعادة التعيين" }] : SETUP_STEPS;
-  const currentIndex = steps.findIndex((s) => s.to === pathname);
+  const currentPath = pathname.replace(/\/$/, "") === "/setup" ? "/setup/welcome" : pathname.replace(/\/$/, "");
+  const currentIndex = steps.findIndex((s) => s.to === currentPath);
   return (
     <div className="setup">
       <a href="#main" className="skip-link">تخطَّ إلى المحتوى</a>
@@ -29,7 +28,7 @@ export function SetupLayout({ children }: { children: ReactNode }) {
         </div>
         <nav className="setup-steps" aria-label="خطوات الإعداد">
           {steps.map((step, i) => {
-            const state = i === currentIndex ? "active" : i < currentIndex ? "done" : "";
+            const state = i === currentIndex ? "active" : "";
             return (
               <AppLink
                 key={step.to}
@@ -37,7 +36,7 @@ export function SetupLayout({ children }: { children: ReactNode }) {
                 className={`step ${state}`}
                 aria-current={i === currentIndex ? "step" : undefined}
               >
-                <span className="step-num">{i < currentIndex ? "✓" : i + 1}</span>
+                <span className="step-num">{i + 1}</span>
                 <span>{step.label}</span>
               </AppLink>
             );

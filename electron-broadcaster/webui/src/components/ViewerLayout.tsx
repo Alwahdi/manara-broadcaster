@@ -8,7 +8,7 @@ const NAV: Array<{ to: string; label: string; short: string; icon: LucideIcon; e
   { to: "/", label: "الرئيسية", short: "الرئيسية", icon: Home, exact: true, desktop: true },
   { to: "/library", label: "المكتبة", short: "المكتبة", icon: Library, desktop: true },
   { to: "/live", label: "البث المباشر", short: "مباشر", icon: Radio, primary: true, desktop: true },
-  { to: "/favorites", label: "المفضلة", short: "المفضلة", icon: Heart },
+  { to: "/favorites", label: "قائمتي", short: "قائمتي", icon: Heart, desktop: true },
   { to: "/account", label: "الحساب والإعدادات", short: "حسابي", icon: UserRound, desktop: true },
 ];
 

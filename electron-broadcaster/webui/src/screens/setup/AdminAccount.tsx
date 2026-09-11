@@ -63,13 +63,13 @@ export function SetupAdminAccount() {
           </div>
         ) : null}
         <div className="field">
-          <label>اسم المستخدم *</label>
-          <input className="input" autoComplete="username" disabled={recoveryMode && (!recoveryState.isSuccess || saveRecovery.isPending || saveRecovery.isSuccess)} value={data.adminUsername || ""} onChange={(e) => setSetup({ adminUsername: e.target.value })} />
+          <label htmlFor="setup-admin-username">اسم المستخدم *</label>
+          <input id="setup-admin-username" className="input" autoComplete="username" disabled={recoveryMode && (!recoveryState.isSuccess || saveRecovery.isPending || saveRecovery.isSuccess)} value={data.adminUsername || ""} onChange={(e) => setSetup({ adminUsername: e.target.value })} />
         </div>
         <div className="field">
-          <label>كلمة المرور *</label>
-          <input className="input" type="password" autoComplete="new-password" disabled={recoveryMode && (!recoveryState.isSuccess || saveRecovery.isPending || saveRecovery.isSuccess)} value={data.adminPassword || ""} onChange={(e) => setSetup({ adminPassword: e.target.value })} />
-          <span className="hint">10 أحرف على الأقل، مع حرف ورقم ورمز. تُخزّن بشكل مُجزّأ على الخادم.</span>
+          <label htmlFor="setup-admin-password">كلمة المرور *</label>
+          <input id="setup-admin-password" className="input" type="password" autoComplete="new-password" disabled={recoveryMode && (!recoveryState.isSuccess || saveRecovery.isPending || saveRecovery.isSuccess)} value={data.adminPassword || ""} onChange={(e) => setSetup({ adminPassword: e.target.value })} />
+          <span className="hint">10 أحرف على الأقل، مع حرف ورقم ورمز. تُخزّن بشكل مُجزّأ على الخادم. قبل الحفظ، يلزم إدخالها مجددًا إذا أعدت تحميل الصفحة.</span>
         </div>
       </div>
       {recoveryMode && recoveryState.isError ? <p role="alert">تعذّر تحميل بيانات الاسترجاع. <button className="btn btn-ghost" onClick={() => recoveryState.refetch()}>إعادة المحاولة</button></p> : null}

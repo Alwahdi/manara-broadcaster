@@ -81,8 +81,8 @@ export function AdminDiagnostics() {
                     <tbody>
                       {systemEntries.map(([key, value]) => (
                         <tr key={key}>
-                          <td>{SYSTEM_LABELS[key] || key}</td>
-                          <td className="dim mono">{formatSystemValue(key, value)}</td>
+                          <td data-label="المعلومة">{SYSTEM_LABELS[key] || key}</td>
+                          <td data-label="القيمة" className="dim mono">{formatSystemValue(key, value)}</td>
                         </tr>
                       ))}
                     </tbody>

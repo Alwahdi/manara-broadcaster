@@ -495,6 +495,7 @@ export function PlayerClient({ assetId, title, active, resumeAt = 0, authenticat
           {state === "paywall" || state === "blocked" ? <LockKeyhole size={38} /> : state === "error" ? <AlertTriangle size={38} /> : <Play size={44} fill="currentColor" />}
           <h2>{state === "paywall" ? "تابع المشاهدة" : state === "blocked" ? "المحتوى غير متاح" : state === "error" ? "تعذر بدء التشغيل" : state === "ready" ? "الفيديو جاهز" : "جاهز للمشاهدة"}</h2>
           <p>{message || (state === "blocked" ? "هذا المحتوى غير متاح حاليًا." : "اضغط تشغيل وابدأ المشاهدة.")}</p>
+          {state === "blocked" ? <Link className="button secondary" href="/">تصفح محتوى آخر</Link> : null}
           {state === "paywall" ? <div className="player-paywall-actions"><Link className="button primary" href="/signup"><UserPlus size={18} /> ابدأ 3 أيام مجانًا</Link><Link className="button secondary" href="/login"><LogIn size={18} /> تسجيل الدخول</Link></div> : active ? <button className="button primary player-start" onClick={state === "ready" ? resume : play}>{state === "error" ? <RotateCcw size={19} /> : <Play size={19} />} {state === "error" ? "إعادة المحاولة" : "تشغيل الآن"}</button> : null}
         </>}
       </div> : null}

@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppLink } from "@/components/AppLink";
 import { PwaInstallCard } from "@/components/PwaInstallCard";
 import { api, type ViewerState } from "@/lib/api";
@@ -24,6 +24,7 @@ function formatDate(value?: string | number) {
 export function Account() {
   const { brand } = useBrand();
   const queryClient = useQueryClient();
+  const savingList = useIsMutating({ mutationKey: ["viewer-list"] }) > 0;
   const [mode, setMode] = useState<AuthMode>("signin");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -44,7 +45,9 @@ export function Account() {
     mutationFn: () => mode === "signup"
       ? api.viewerSignup({ name, phone, email: email || undefined })
       : api.viewerSignin({ name, phone, email: email || undefined }),
-    onSuccess: () => {
+    onSuccess: async (result) => {
+      await queryClient.cancelQueries({ queryKey: ["viewer-state"] });
+      queryClient.setQueryData<ViewerState>(["viewer-state"], result.viewer);
       setAuthError("");
       setName("");
       setPhone("");
@@ -57,9 +60,19 @@ export function Account() {
 
   const logout = useMutation({
     mutationFn: api.viewerLogout,
-    onSuccess: () => {
-      queryClient.setQueryData<ViewerState>(["viewer-state"], undefined);
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: ["viewer-state"] }),
+        queryClient.cancelQueries({ queryKey: ["viewer-messages"] }),
+      ]);
+      queryClient.setQueryData<ViewerState>(["viewer-state"], {
+        account: null, signedIn: false, permissions: { manageLibrary: false },
+        favorites: [], favoriteIds: [], watchLater: [], watchLaterIds: [], history: [],
+      });
       queryClient.removeQueries({ queryKey: ["viewer-messages"] });
+      setMessage("");
+      setMessageNotice("");
+      setAuthError("");
       queryClient.invalidateQueries({ queryKey: ["viewer-state"] });
     },
   });
@@ -107,9 +120,10 @@ export function Account() {
               <strong>{account?.name}</strong>
               <small>{account?.phone}{account?.email ? ` · ${account.email}` : ""}</small>
             </div>
-            <button className="btn btn-ghost btn-sm account-logout" type="button" onClick={() => logout.mutate()} disabled={logout.isPending}>
-              تسجيل الخروج
+            <button className="btn btn-ghost btn-sm account-logout" type="button" onClick={() => logout.mutate()} disabled={logout.isPending || savingList || sendMessage.isPending}>
+              {logout.isPending ? "جارٍ تسجيل الخروج…" : "تسجيل الخروج"}
             </button>
+            {logout.isError ? <p role="alert" className="form-error">تعذّر تسجيل الخروج. تحقق من الاتصال ثم أعد المحاولة.</p> : null}
           </div>
 
           {state.data?.permissions?.manageLibrary ? (
@@ -157,7 +171,7 @@ export function Account() {
 
           <ContentSection title="اختصارات الحساب" subtitle="ارجع إلى محتواك بسرعة">
             <div className="settings-list">
-              <AppLink href="/favorites" className="settings-row"><span>المفضلة</span><strong>عرض المحتوى المحفوظ</strong></AppLink>
+              <AppLink href="/favorites" className="settings-row"><span>قائمتي</span><strong>المفضلة والمشاهدة لاحقًا والسجل</strong></AppLink>
               <AppLink href="/search" className="settings-row"><span>البحث</span><strong>ابحث في القنوات والاستراحة</strong></AppLink>
             </div>
           </ContentSection>
@@ -177,9 +191,9 @@ export function Account() {
               </div>
             </div>
             <form className="viewer-auth-form" onSubmit={submitAuth}>
-              <div className="auth-mode-switch" role="tablist" aria-label="نوع العملية">
-                <button type="button" role="tab" aria-selected={mode === "signin"} className={mode === "signin" ? "active" : ""} onClick={() => { setMode("signin"); setAuthError(""); }}>دخول</button>
-                <button type="button" role="tab" aria-selected={mode === "signup"} className={mode === "signup" ? "active" : ""} onClick={() => { setMode("signup"); setAuthError(""); }}>حساب جديد</button>
+              <div className="auth-mode-switch" role="group" aria-label="نوع العملية">
+                <button type="button" aria-pressed={mode === "signin"} disabled={auth.isPending} className={mode === "signin" ? "active" : ""} onClick={() => { setMode("signin"); setAuthError(""); }}>دخول</button>
+                <button type="button" aria-pressed={mode === "signup"} disabled={auth.isPending} className={mode === "signup" ? "active" : ""} onClick={() => { setMode("signup"); setAuthError(""); }}>حساب جديد</button>
               </div>
               <label className="field"><span>الاسم</span><input className="input" value={name} onChange={(event) => setName(event.target.value)} maxLength={80} autoComplete="name" required /></label>
               <label className="field"><span>رقم الهاتف</span><input className="input" value={phone} onChange={(event) => setPhone(event.target.value)} maxLength={40} inputMode="tel" autoComplete="tel" required /></label>

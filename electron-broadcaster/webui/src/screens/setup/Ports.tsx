@@ -16,7 +16,7 @@ export function SetupPorts() {
       title="المنافذ والمسارات"
       subtitle="منافذ الخدمة ومسار لوحة الإدارة."
       prev="/setup/branding"
-      next="/setup/library"
+      next="/setup/finish"
       nextDisabled={!!error}
     >
       <div className="card card-pad">

@@ -18,7 +18,7 @@ export async function CatalogPage({ kind, title, description, searchParams = {},
     <div className="container">
       <header className="listing-hero">
         <span className="eyebrow"><i /> {total.toLocaleString("ar")} عنصر</span><h1>{title}</h1><p>{description}</p>
-        <form className="catalog-search" action={filters} role="search"><Search size={19} aria-hidden="true" /><input name="q" defaultValue={search} placeholder={`ابحث في ${title}…`} aria-label={`ابحث في ${title}`} autoComplete="off" enterKeyHint="search" /><button className="button primary">بحث</button></form>
+        <form className="catalog-search" action={filters} role="search">{category ? <input type="hidden" name="category" value={category} /> : null}<Search size={19} aria-hidden="true" /><input name="q" defaultValue={search} placeholder={`ابحث في ${title}…`} aria-label={`ابحث في ${title}`} autoComplete="off" enterKeyHint="search" /><button className="button primary">بحث</button></form>
         <nav className="filter-row" aria-label="التصنيفات"><Link href={href(1, "")} className={`filter-chip ${!category ? "active" : ""}`} aria-current={!category ? "page" : undefined}>الكل</Link>{categories.map((item) => <Link key={item} href={href(1, item)} className={`filter-chip ${category === item ? "active" : ""}`} aria-current={category === item ? "page" : undefined}>{item}</Link>)}</nav>
       </header>
       <section className="listing-grid">

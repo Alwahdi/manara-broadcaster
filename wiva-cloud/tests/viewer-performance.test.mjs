@@ -145,3 +145,24 @@ test("match schedule is structured information rather than a fake playable chann
   assert.match(adminRoute, /assertSameOrigin/);
   assert.match(validation, /endsAt\.getTime\(\) - startsAt\.getTime\(\)/);
 });
+
+test("catalog searches preserve category context and unavailable playback has an exit", () => {
+  const catalog = source("src/components/CatalogPage.tsx");
+  const player = source("src/components/PlayerClient.tsx");
+  assert.match(catalog, /type="hidden" name="category" value=\{category\}/);
+  assert.match(player, /state === "blocked" \? <Link[^>]+href="\/">تصفح محتوى آخر/);
+});
+
+test("payment confirmation survives the switch from form to pending review", () => {
+  const payment = source("src/components/PaymentRequestForm.tsx");
+  assert.ok(payment.indexOf('{message ? <p') < payment.indexOf('{hasPending ? <div'));
+  assert.match(payment, /if \(pending \|\| hasPending\) return/);
+});
+
+test("catalog publication respects provider status while allowing review imports", () => {
+  const catalog = source("src/components/ProviderCatalogManager.tsx");
+  assert.match(catalog, /canPublish = provider.status === "active"/);
+  assert.match(catalog, /publish = canPublish && publishRequested/);
+  assert.equal((catalog.match(/checked=\{publish\} disabled=\{!canPublish/g) || []).length, 2);
+  assert.match(catalog, /active: publish/);
+});

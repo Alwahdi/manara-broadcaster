@@ -361,6 +361,11 @@
 
 .menu-toggle { display: none; }
 .form-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+button.explorer-item { width: 100%; font: inherit; color: inherit; text-align: start; }
+button.explorer-item:disabled { cursor: wait; opacity: 0.6; }
+.collection-filters { flex-wrap: wrap; margin-block: 20px; }
+.collection-action-error { display: block; color: var(--danger); font-size: 0.85rem; padding: 8px; }
+.share-fallback { flex-basis: 100%; min-width: 0; }
 
 @media (max-width: 980px) {
   .admin { grid-template-columns: 1fr; }

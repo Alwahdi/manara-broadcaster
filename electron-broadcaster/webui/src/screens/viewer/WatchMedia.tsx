@@ -166,6 +166,7 @@ export function WatchMedia() {
               </div>
               <div className="row">
                 <FavoriteButton mediaId={item.id} compact={false} />
+                <FavoriteButton mediaId={item.id} list="watchLater" compact={false} />
                 <ShareButton />
                 {viewer.data?.libraryPolicy?.downloadsEnabled !== false ? (
                   <a className="btn btn-ghost" href={`/media/${item.id}?download=1`}>
