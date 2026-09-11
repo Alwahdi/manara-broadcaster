@@ -147,6 +147,10 @@ el('copyAllBtn').onclick = () => {
   ];
   copy(lines.join('\n') || urls.setupLocal || '');
 };
+el('resetAdminPasswordBtn').onclick = async () => {
+  const result = await api.startAdminPasswordRecovery();
+  if (result?.ok) toast('تم فتح صفحة إعادة تعيين دخول المشرف');
+};
 el('exportDiagnosticsBtn').onclick = () => {
   const payload = {
     exportedAt: new Date().toISOString(),

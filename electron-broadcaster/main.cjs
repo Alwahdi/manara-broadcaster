@@ -40,9 +40,11 @@ const DEFAULT_AGENT_PORT = 8787;
 const DEFAULT_LIBRARY_PORT = 8788;
 const ADMIN_HASH_PREFIX = 'scrypt';
 const ADMIN_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const ADMIN_RECOVERY_TTL_MS = 15 * 60 * 1000;
 const WINDOWS_STARTUP_TASK_NAME = 'WIVA Agent';
 const ENV_TMDB_KEY = process.env.WIVA_TMDB_API_KEY || process.env.TMDB_API_KEY || process.env.TMDB_KEY || runtimeConfig.tmdbKey || '';
 const adminSessions = new Map();
+let adminRecoverySession = { token: '', expiresAt: 0 };
 let shouldRevealWindowWhenReady = false;
 
 function getExplicitUserDataDir() {
@@ -210,6 +212,40 @@ function verifyAdminSession(token) {
 
 function clearAdminSession(token) {
   adminSessions.delete(String(token || ''));
+}
+
+function clearAllAdminSessions() {
+  adminSessions.clear();
+}
+
+function activeAdminRecoveryToken() {
+  if (!adminRecoverySession.token) return '';
+  if (Date.now() > Number(adminRecoverySession.expiresAt || 0)) {
+    adminRecoverySession = { token: '', expiresAt: 0 };
+    return '';
+  }
+  return adminRecoverySession.token;
+}
+
+function verifyAdminRecoverySession(token) {
+  const active = activeAdminRecoveryToken();
+  return !!(active && token && timingSafeEqualString(String(token || ''), active));
+}
+
+function clearAdminRecoverySession(token = '') {
+  if (token && !verifyAdminRecoverySession(token)) return false;
+  adminRecoverySession = { token: '', expiresAt: 0 };
+  return true;
+}
+
+function issueAdminRecoverySession() {
+  clearAllAdminSessions();
+  const token = crypto.randomBytes(24).toString('base64url');
+  adminRecoverySession = {
+    token,
+    expiresAt: Date.now() + ADMIN_RECOVERY_TTL_MS,
+  };
+  return token;
 }
 
 function defaultSettings() {
@@ -576,6 +612,11 @@ function agentUrls() {
     setupLan: ips.map((ip) => `http://${ip}:${libraryPort}/setup`),
     adminLan: ips.map((ip) => `http://${ip}:${libraryPort}/${adminPath}`),
   };
+}
+
+function adminRecoveryUrl(token) {
+  const adminBase = agentUrls().adminLocal.replace(/\/+$/g, '');
+  return `${adminBase}/recovery?token=${encodeURIComponent(String(token || ''))}`;
 }
 
 function agentState() {
@@ -1066,6 +1107,8 @@ function mediaServerOptions() {
     issueAdminSession: ({ username }) => issueAdminSession(username || settings.adminUsername || 'admin'),
     verifyAdminSession: (token) => verifyAdminSession(token),
     clearAdminSession: (token) => clearAdminSession(token),
+    verifyAdminRecoverySession: (token) => verifyAdminRecoverySession(token),
+    clearAdminRecoverySession: (token) => clearAdminRecoverySession(token),
     getAdminPath: () => settings.adminPath || 'admin',
     getSetupState: () => agentState(),
     getUpdateStatus: () => ({
@@ -1084,6 +1127,21 @@ function mediaServerOptions() {
       const currentLibraryPort = Number(settings.libraryPort) || DEFAULT_LIBRARY_PORT;
       const currentLayout = settings.experienceLayout === 'separate' ? 'separate' : 'unified';
       const clean = patch && typeof patch === 'object' ? patch : {};
+      if (coerceBoolean(clean.adminRecovery, false)) {
+        const nextPassword = String(clean.adminPassword || '').trim();
+        if (!isStrongAdminPassword(nextPassword)) {
+          throw new Error('Admin password must be at least 10 characters and include a letter, a number, and a symbol.');
+        }
+        settings = {
+          ...settings,
+          adminUsername: String(clean.adminUsername || settings.adminUsername || 'admin').trim() || 'admin',
+          adminPassword: '',
+          adminPasswordHash: hashAdminPassword(nextPassword),
+          setupCompleted: true,
+        };
+        saveSettingsAndBackup('admin-recovery');
+        return agentState();
+      }
       const requestedLivePort = clean.port ?? clean.livePort;
       const requestedLibraryPort = clean.libraryPort ?? clean.adminPort;
       const requestedLayout = clean.experienceLayout ? (clean.experienceLayout === 'separate' ? 'separate' : 'unified') : currentLayout;
@@ -1503,6 +1561,26 @@ function revealMainWindow() {
   }
 }
 
+async function startAdminPasswordRecoveryFlow() {
+  const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+  const choice = await dialog.showMessageBox(parent, {
+    type: 'warning',
+    buttons: ['إلغاء', 'متابعة'],
+    defaultId: 1,
+    cancelId: 0,
+    noLink: true,
+    title: 'إعادة تعيين دخول المشرف',
+    message: 'هل تريد إعادة تعيين كلمة مرور المشرف؟',
+    detail: 'سيتم إنهاء جميع جلسات الإدارة الحالية وفتح صفحة محلية على هذا الجهاز فقط لتعيين كلمة مرور جديدة خلال 15 دقيقة.',
+  });
+  if (choice.response !== 1) return { ok: false, cancelled: true };
+  const token = issueAdminRecoverySession();
+  const url = adminRecoveryUrl(token);
+  await shell.openExternal(url);
+  revealMainWindow();
+  return { ok: true, url };
+}
+
 function createWindow(options = {}) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     if (options.forceShow || shouldRevealWindowWhenReady) revealMainWindow();
@@ -1585,6 +1663,7 @@ function createTray() {
       { label: 'فتح WIVA Agent', click: () => revealMainWindow() },
       { label: 'فتح الإعداد / الإدارة', click: () => shell.openExternal(settings.setupCompleted ? agentUrls().adminLocal : agentUrls().setupLocal) },
       { label: 'فتح الإدارة', click: () => shell.openExternal(agentUrls().adminLocal) },
+      { label: 'إعادة تعيين دخول المشرف', click: () => { startAdminPasswordRecoveryFlow().catch((e) => console.error('[WIVA] admin recovery failed:', e?.message || e)); } },
       { type: 'separator' },
       { label: 'إيقاف وخروج', click: () => { app.isQuitting = true; app.quit(); } },
     ]);
@@ -1751,6 +1830,7 @@ ipcMain.handle('restart-server', async (_e, port) => {
 });
 ipcMain.handle('launched-at-boot', () => launchedAtBoot);
 ipcMain.handle('open-external', (_e, url) => shell.openExternal(url));
+ipcMain.handle('start-admin-password-recovery', async () => startAdminPasswordRecoveryFlow());
 ipcMain.handle('qr-data-url', async (_e, target) => {
   const text = String(target || '').trim();
   if (!text) return '';

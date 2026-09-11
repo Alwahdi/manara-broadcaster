@@ -47,6 +47,12 @@ function percentile(values, p) {
   return sorted[index] || 0;
 }
 
+function requestHeaders(pathname, cookie) {
+  if (pathname.startsWith('/api/admin')) return { Cookie: cookie };
+  if (pathname.startsWith('/media/')) return { Range: 'bytes=0-262143' };
+  return {};
+}
+
 async function main() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wiva-load-'));
   db.init(path.join(dir, 'library.db'), { broadcast: [], iptv: [] });
@@ -126,15 +132,14 @@ async function main() {
       '/api/admin/storage/roots',
     ];
 
+    for (const pathname of paths) {
+      await timedRequest(base, pathname, { headers: requestHeaders(pathname, cookie) });
+    }
+
     const tasks = Array.from({ length: REQUESTS }, (_, i) => async () => {
       if (RAMP_MS) await new Promise((resolve) => setTimeout(resolve, Math.floor((i % CONCURRENCY) * RAMP_MS / CONCURRENCY)));
       const pathname = paths[i % paths.length];
-      const headers = pathname.startsWith('/api/admin')
-        ? { Cookie: cookie }
-        : pathname.startsWith('/media/')
-          ? { Range: 'bytes=0-262143' }
-          : {};
-      return timedRequest(base, pathname, { headers });
+      return timedRequest(base, pathname, { headers: requestHeaders(pathname, cookie) });
     });
 
     const results = await runPool(tasks, CONCURRENCY);

@@ -16,7 +16,9 @@ export const SETUP_STEPS = [
 export function SetupLayout({ children }: { children: ReactNode }) {
   const { brand, logo } = useBrand();
   const pathname = useAppPath();
-  const currentIndex = SETUP_STEPS.findIndex((s) => s.to === pathname);
+  const recoveryMode = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("recovery") === "1";
+  const steps = recoveryMode ? [{ to: "/setup/admin-account", label: "إعادة التعيين" }] : SETUP_STEPS;
+  const currentIndex = steps.findIndex((s) => s.to === pathname);
   return (
     <div className="setup">
       <a href="#main" className="skip-link">تخطَّ إلى المحتوى</a>
@@ -26,7 +28,7 @@ export function SetupLayout({ children }: { children: ReactNode }) {
           <span>{brand}</span>
         </div>
         <nav className="setup-steps" aria-label="خطوات الإعداد">
-          {SETUP_STEPS.map((step, i) => {
+          {steps.map((step, i) => {
             const state = i === currentIndex ? "active" : i < currentIndex ? "done" : "";
             return (
               <AppLink
