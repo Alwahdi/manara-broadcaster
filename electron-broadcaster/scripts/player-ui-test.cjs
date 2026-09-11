@@ -86,9 +86,9 @@ assert.match(styles, /@media \(max-width:\s*430px\)[\s\S]*?\.library-page \.fold
 assert.match(styles, /\.library-page \.folder-card-art\s*\{[\s\S]*?aspect-ratio:\s*2\s*\/\s*3/, 'phone library uses Cloud-style portrait artwork');
 assert.doesNotMatch(styles, /wiva-player:not\(\.is-blocked\) \.wiva-player-controls\.is-hidden[\s\S]{0,180}opacity:\s*1/, 'mobile CSS allows playing controls to hide');
 assert.match(libraryFolders, /permissions\?\.manageLibrary/, 'folder upload controls require an authenticated admin session');
-assert.match(libraryFolders, /\.pdf,\.epub/, 'admin folder uploads include books and documents');
-assert.match(libraryFolders, /\.wmv/, 'folder uploads include legacy Windows video files');
-assert.match(libraryFolders, /\.ass/, 'folder uploads include ASS subtitle companions');
+assert.match(libraryFolders, /LIBRARY_UPLOAD_ACCEPT[\s\S]*?\.pdf", ".epub/, 'admin folder uploads include books and documents');
+assert.match(libraryFolders, /LIBRARY_UPLOAD_ACCEPT[\s\S]*?\.wmv/, 'folder uploads include legacy Windows video files');
+assert.match(libraryFolders, /LIBRARY_UPLOAD_ACCEPT[\s\S]*?\.ass/, 'folder uploads include ASS subtitle companions');
 assert.match(adminLibrary, /updateLibraryPolicy/, 'library download policy is managed from the admin dashboard');
 assert.match(adminLibrary, /فتح واجهة الرفع/, 'admin library settings expose a direct route to the uploader');
 assert.doesNotMatch(broadcaster, /track\.onmute\s*=\s*\(\)\s*=>\s*scheduleAudioRestart/, 'transient HDMI mute does not restart capture');
