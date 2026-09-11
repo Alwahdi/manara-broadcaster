@@ -164,11 +164,8 @@ async function walk(dir, out = [], report = { folderCount: 0, permissionErrors: 
 }
 
 function readUrlFile(file) {
-  try {
-    const raw = fs.readFileSync(file, 'utf8').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-    const url = raw.find((line) => /^https?:\/\//i.test(line));
-    return url || null;
-  } catch { return null; }
+  const raw = fs.readFileSync(file, 'utf8').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  return raw.find((line) => /^https?:\/\//i.test(line)) || null;
 }
 
 function thumbnailName(file) {
@@ -325,6 +322,7 @@ async function performScanAll({ tmdbKey, tmdbLang = 'ar', thumbnailDir = '', sou
       continue;
     }
     db.updatePathStatus(lp.id, { status: 'scanning', lastError: '', fileCount: Number(lp.file_count || 0), folderCount: Number(lp.folder_count || 0), label });
+    const initialErrorCount = report.permissionErrors.length;
     const walkReport = { folderCount: 0, permissionErrors: [] };
     const isExcluded = excludeMatcher(lp);
     const files = await walk(lp.path, [], walkReport, { isExcluded });
@@ -335,8 +333,12 @@ async function performScanAll({ tmdbKey, tmdbLang = 'ar', thumbnailDir = '', sou
       const relPath = path.relative(lp.path, f);
       const relDir = path.dirname(relPath);
       if (path.basename(f).toLowerCase() === URL_FILE) {
-        const remoteUrl = readUrlFile(f);
-        if (remoteUrl) allFiles.push({ file: f, remoteUrl, libKind: lp.kind, mediaKind: 'video', root: lp.path, source: lp, sourceLabel: label, relPath, relDir });
+        try {
+          const remoteUrl = readUrlFile(f);
+          if (remoteUrl) allFiles.push({ file: f, remoteUrl, libKind: lp.kind, mediaKind: 'video', root: lp.path, source: lp, sourceLabel: label, relPath, relDir });
+        } catch (e) {
+          report.permissionErrors.push({ path: f, error: e.message });
+        }
         continue;
       }
       if (VIDEO_EXT.has(ext) || AUDIO_EXT.has(ext) || IMAGE_EXT.has(ext) || BOOK_EXT.has(ext) || DOCUMENT_EXT.has(ext)) {
@@ -441,12 +443,13 @@ async function performScanAll({ tmdbKey, tmdbLang = 'ar', thumbnailDir = '', sou
         }
       });
     }
-    report.removedMissing += Number(db.deleteMissingForSource(lp.id, seenMedia) || 0);
+    const incomplete = report.permissionErrors.length > initialErrorCount;
+    if (!incomplete) report.removedMissing += Number(db.deleteMissingForSource(lp.id, seenMedia) || 0);
     db.updatePathStatus(lp.id, {
-      status: 'connected',
-      lastError: '',
-      fileCount: seenMedia.length,
-      folderCount: walkReport.folderCount,
+      status: incomplete ? 'permission_error' : 'connected',
+      lastError: incomplete ? 'تعذر قراءة بعض المحتوى. تم الاحتفاظ بالفهرس السابق؛ تحقق من اتصال المصدر وصلاحيات القراءة ثم أعد الفحص.' : '',
+      fileCount: incomplete ? Math.max(Number(lp.file_count || 0), seenMedia.length) : seenMedia.length,
+      folderCount: incomplete ? Math.max(Number(lp.folder_count || 0), walkReport.folderCount) : walkReport.folderCount,
       label,
     });
     report.sources.push({ id: lp.id, label, path: lp.path, fileCount: seenMedia.length, folderCount: walkReport.folderCount });

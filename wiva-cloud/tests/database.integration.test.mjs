@@ -36,6 +36,22 @@ test("real PostgreSQL cloud workflows", { skip: !url }, async (t) => {
     seasonNumber: 1, episodeNumber: 1, ...overrides,
   });
 
+  await t.test("JSON data persists as arrays and objects rather than encoded strings", async () => {
+    const items = [series("series:cache", { title: "مسلسل عربي" })];
+    await db.saveProviderCatalogCache(providerId, "series", items);
+    assert.deepEqual(await db.getProviderCatalogCache(providerId, "series"), items);
+    const input = { providerId, seriesRef: "series:json", seriesTitle: "JSON fixture", enabled: true, publishNew: false, knownEpisodeRefs: ["episode:one"] };
+    const first = await db.upsertProviderSyncRule(input);
+    const second = await db.upsertProviderSyncRule(input);
+    assert.equal(first.id, second.id);
+    assert.deepEqual(second.knownEpisodeRefs, input.knownEpisodeRefs);
+    await sql`delete from wiva_cloud_provider_sync_rules where id=${first.id}`;
+    const metadata = { count: 2, title: "فحص", enabled: true };
+    await db.audit("test.json", "provider", providerId, metadata);
+    const rows = await sql`select metadata from wiva_cloud_audit_log where tenant_id=${tenants[0]} and action='test.json'`;
+    assert.deepEqual(rows[0].metadata, metadata);
+  });
+
   await t.test("provider, asset and viewer CRUD stay in the selected tenant", async () => {
     const assetId = await db.createAsset({ providerId, providerAssetRef: "movie:crud", kind: "movie", title: "Owned movie", description: "", category: "", quality: "HD", language: "EN" });
     const viewerId = await db.createViewer({ name: "Fixture", email: "fixture@example.invalid", passwordHash: "not-a-real-password-hash", maxConcurrentStreams: 1, expiresAt: null });

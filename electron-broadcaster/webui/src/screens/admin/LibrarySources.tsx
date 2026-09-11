@@ -118,13 +118,6 @@ export function AdminLibrarySources() {
           busy={addExclude.isPending}
           onSelect={(picked) => addExclude.mutate({ id: excludePickerFor.id, excludePath: picked })}
         />
-        <MutationError mutation={scanAll} action="بدء فحص المصادر" />
-        <MutationError mutation={cancelScan} action="إيقاف الفحص" />
-        <MutationError mutation={rescan} action="إعادة فحص المصدر" />
-        <MutationError mutation={removeSource} action="حذف المصدر" />
-        <MutationError mutation={addExclude} action="استثناء المجلد" />
-        <MutationError mutation={removeExclude} action="حذف الاستثناء" />
-        <MutationError mutation={updateSource} action="تحديث إعدادات المصدر" />
       </div>
     );
   }
@@ -140,6 +133,13 @@ export function AdminLibrarySources() {
           </button>
         }
       />
+      <MutationError mutation={scanAll} action="بدء فحص المصادر" />
+      <MutationError mutation={cancelScan} action="إيقاف الفحص" />
+      <MutationError mutation={rescan} action="إعادة فحص المصدر" />
+      <MutationError mutation={removeSource} action="حذف المصدر" />
+      <MutationError mutation={addExclude} action="استثناء المجلد" />
+      <MutationError mutation={removeExclude} action="حذف الاستثناء" />
+      <MutationError mutation={updateSource} action="تحديث إعدادات المصدر" />
       {scanStatus.data?.status.active || ["complete", "error", "cancelled"].includes(scanStatus.data?.status.state || "") ? (
         <div className="card card-pad" style={{ marginBottom: 18 }} aria-live="polite">
           <div className="row-between">

@@ -408,7 +408,7 @@ export async function upsertProviderSyncRule(input: { providerId: string; series
   const rows = await query`
     insert into wiva_cloud_provider_sync_rules
       (tenant_id,provider_id,series_ref,series_title,enabled,publish_new,next_run_at,last_error,known_episode_refs,updated_at)
-    values (${tenantId()},${input.providerId},${input.seriesRef},${input.seriesTitle},${input.enabled},${input.publishNew},now(),'',${JSON.stringify(knownEpisodeRefs)}::jsonb,now())
+    values (${tenantId()},${input.providerId},${input.seriesRef},${input.seriesTitle},${input.enabled},${input.publishNew},now(),'',${JSON.stringify(knownEpisodeRefs)}::text::jsonb,now())
     on conflict (tenant_id,provider_id,series_ref) do update set
       series_title=excluded.series_title,enabled=excluded.enabled,publish_new=excluded.publish_new,
       next_run_at=case when excluded.enabled then least(wiva_cloud_provider_sync_rules.next_run_at,now()) else wiva_cloud_provider_sync_rules.next_run_at end,
@@ -462,7 +462,7 @@ export async function finishProviderSyncRule(id: string, input: { token: string;
       last_checked_at=now(),last_success_at=case when ${error}='' then now() else last_success_at end,
       next_run_at=now() + interval '24 hours',last_error=${error},
       imported_count=imported_count + ${Math.max(0, Math.floor(input.added))},
-      known_episode_refs=case when ${error}='' then ${JSON.stringify(knownEpisodeRefs)}::jsonb else known_episode_refs end,
+      known_episode_refs=case when ${error}='' then ${JSON.stringify(knownEpisodeRefs)}::text::jsonb else known_episode_refs end,
       sync_token=null,sync_locked_until=null,updated_at=now()
     where tenant_id=${tenantId()} and id=${id} and sync_token=${input.token}::uuid
   `;
@@ -493,7 +493,7 @@ export async function saveProviderCatalogCache(providerId: string, section: Asse
     insert into wiva_cloud_provider_catalog_cache
       (tenant_id, provider_id, section, payload, item_count, expires_at, updated_at)
     values
-      (${tenantId()}, ${providerId}, ${section}, ${JSON.stringify(items)}::jsonb, ${items.length}, now() + interval '15 minutes', now())
+      (${tenantId()}, ${providerId}, ${section}, ${JSON.stringify(items)}::text::jsonb, ${items.length}, now() + interval '15 minutes', now())
     on conflict (tenant_id, provider_id, section) do update set
       payload=excluded.payload, item_count=excluded.item_count, expires_at=excluded.expires_at, updated_at=now()
   `;
@@ -965,7 +965,7 @@ export async function auditEvent(actorType: string, actorId: string, action: str
   const query = sql();
   await query`
     insert into wiva_cloud_audit_log (tenant_id, actor_type, actor_id, action, target_type, target_id, metadata)
-    values (${tenantId()}, ${actorType}, ${actorId}, ${action}, ${targetType}, ${targetId}, ${JSON.stringify(metadata)}::jsonb)
+    values (${tenantId()}, ${actorType}, ${actorId}, ${action}, ${targetType}, ${targetId}, ${JSON.stringify(metadata)}::text::jsonb)
   `;
 }
 
