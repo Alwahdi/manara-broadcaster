@@ -62,15 +62,17 @@ async function testApiFailures() {
     fs.readFileSync(path.join(root, 'webui/src/lib/api.ts'), 'utf8'),
   ).replace(/export (class|const)/g, '$1');
   let deadline;
+  let deadlineMs;
   let cleared = 0;
   let respond = async () => new Response('{"ok":true}');
-  const http = require('node:vm').runInNewContext(`${source}\nhttp`, {
+  const { http, api } = require('node:vm').runInNewContext(`${source}\n({ http, api })`, {
     AbortController,
     fetch: (...args) => respond(...args),
-    setTimeout: (callback, ms) => { assert.equal(ms, 30_000); deadline = callback; return 1; },
+    setTimeout: (callback, ms) => { deadlineMs = ms; deadline = callback; return 1; },
     clearTimeout: () => { cleared += 1; },
   });
   assert.equal((await http.get('/api/test')).ok, true);
+  assert.equal(deadlineMs, 30_000);
   assert.equal(cleared, 1, 'successful requests release the deadline');
   respond = async () => new Response('<html>Login required</html>');
   await assert.rejects(http.get('/api/test'), (error) => error.status === 502);
@@ -92,6 +94,9 @@ async function testApiFailures() {
     await assert.rejects(pending, (error) => error.status === 0 && error.message.includes('مهلة'));
   }
   assert.equal(cleared, 6, 'failure paths release deadlines too');
+  respond = async () => new Response('{"ok":true}');
+  assert.equal((await api.downloadUpdate()).ok, true);
+  assert.equal(deadlineMs, 30 * 60_000, 'installer downloads retain a separate bounded long-running deadline');
 }
 
 const watchdog = setTimeout(() => {
