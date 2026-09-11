@@ -9,6 +9,7 @@ const tmdb = require('./tmdb.cjs');
 
 const VIDEO_EXT = new Set(['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v', '.ts', '.flv', '.wmv']);
 const AUDIO_EXT = new Set(['.mp3', '.m4a', '.wav', '.flac', '.ogg', '.aac', '.wma', '.opus']);
+const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.jpe', '.jfif', '.png', '.webp', '.avif', '.gif', '.bmp']);
 const BOOK_EXT = new Set(['.pdf', '.epub', '.mobi', '.azw', '.azw3', '.cbz', '.cbr', '.djvu']);
 const DOCUMENT_EXT = new Set(['.txt', '.md', '.rtf', '.doc', '.docx', '.odt', '.ppt', '.pptx', '.xls', '.xlsx', '.csv']);
 const SUB_EXT = new Set(['.srt', '.vtt', '.ass']);
@@ -55,6 +56,26 @@ function metadataCandidates(item, folder, parsedFile) {
 
 function sourceLabel(lp) {
   return lp.label || path.basename(String(lp.path || '').replace(/[\\/]+$/, '')) || lp.path || 'مصدر المكتبة';
+}
+
+const ARTWORK_BASENAMES = new Set([
+  'poster', 'cover', 'folder', 'thumbnail', 'thumb',
+  'fanart', 'backdrop', 'background', 'landscape', 'banner',
+  'art', 'artwork', 'preview', 'screenshot', 'screen',
+  'front', 'frontcover', 'front cover', 'default', 'movie', 'movies',
+  'series', 'show', 'tv', 'season', 'season01', 'season 01',
+  'folder poster', 'folder cover', 'cover front', 'poster large',
+  'بوستر', 'غلاف', 'صورة', 'خلفية', 'ملصق',
+]);
+
+function normalizeArtworkBasename(value) {
+  return String(value || '').toLowerCase().replace(/[_\-.]+/g, ' ').trim();
+}
+
+function shouldIndexStandaloneImage(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (!IMAGE_EXT.has(ext)) return false;
+  return !ARTWORK_BASENAMES.has(normalizeArtworkBasename(path.basename(filePath, ext)));
 }
 
 function sourceReadable(dir) {
@@ -318,8 +339,9 @@ async function performScanAll({ tmdbKey, tmdbLang = 'ar', thumbnailDir = '', sou
         if (remoteUrl) allFiles.push({ file: f, remoteUrl, libKind: lp.kind, mediaKind: 'video', root: lp.path, source: lp, sourceLabel: label, relPath, relDir });
         continue;
       }
-      if (VIDEO_EXT.has(ext) || AUDIO_EXT.has(ext) || BOOK_EXT.has(ext) || DOCUMENT_EXT.has(ext)) {
-        const mediaKind = AUDIO_EXT.has(ext) ? 'audio' : BOOK_EXT.has(ext) ? 'book' : DOCUMENT_EXT.has(ext) ? 'document' : 'video';
+      if (VIDEO_EXT.has(ext) || AUDIO_EXT.has(ext) || IMAGE_EXT.has(ext) || BOOK_EXT.has(ext) || DOCUMENT_EXT.has(ext)) {
+        if (IMAGE_EXT.has(ext) && !shouldIndexStandaloneImage(f)) continue;
+        const mediaKind = AUDIO_EXT.has(ext) ? 'audio' : IMAGE_EXT.has(ext) ? 'image' : BOOK_EXT.has(ext) ? 'book' : DOCUMENT_EXT.has(ext) ? 'document' : 'video';
         allFiles.push({ file: f, libKind: lp.kind, mediaKind, root: lp.path, source: lp, sourceLabel: label, relPath, relDir });
       }
       else if (!SUB_EXT.has(ext)) report.unsupported += 1;
@@ -351,6 +373,7 @@ async function performScanAll({ tmdbKey, tmdbLang = 'ar', thumbnailDir = '', sou
         const item = {
           path: playablePath,
           kind: mediaKind === 'audio' ? 'audio'
+            : mediaKind === 'image' ? 'image'
             : mediaKind === 'book' ? 'book'
               : mediaKind === 'document' ? 'document'
                 : (meta.kind === 'episode' ? 'episode' : (libKind === 'tv' ? 'episode' : 'movie')),
@@ -495,4 +518,4 @@ function scanAll(options = {}, onProgress) {
   return activeScanPromise;
 }
 
-module.exports = { scanAll, parseName, VIDEO_EXT, AUDIO_EXT, BOOK_EXT, DOCUMENT_EXT };
+module.exports = { scanAll, parseName, VIDEO_EXT, AUDIO_EXT, IMAGE_EXT, BOOK_EXT, DOCUMENT_EXT };

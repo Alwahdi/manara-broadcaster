@@ -1700,6 +1700,26 @@ button.folder-card {
   background: #fff;
 }
 
+.image-viewer {
+  width: 100%;
+  min-height: min(72vh, 860px);
+  display: grid;
+  place-items: center;
+  padding: clamp(16px, 2vw, 28px);
+  background:
+    radial-gradient(circle at top, rgba(56, 207, 255, 0.08), transparent 34%),
+    linear-gradient(180deg, rgba(11, 16, 24, 0.98), rgba(6, 10, 18, 0.98));
+}
+
+.image-viewer img {
+  display: block;
+  max-width: 100%;
+  max-height: min(68vh, 820px);
+  object-fit: contain;
+  border-radius: 22px;
+  box-shadow: 0 22px 58px rgba(0, 0, 0, 0.34);
+}
+
 .document-reader iframe {
   display: block;
   width: 100%;

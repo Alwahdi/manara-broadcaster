@@ -1,6 +1,7 @@
 import { FormEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppLink } from "@/components/AppLink";
+import { PwaInstallCard } from "@/components/PwaInstallCard";
 import { api, type ViewerState } from "@/lib/api";
 import { ContentSection } from "@/components/common";
 import { EmptyState, ErrorState, LoadingState } from "@/components/States";
@@ -119,6 +120,8 @@ export function Account() {
             </div>
           ) : null}
 
+          <PwaInstallCard />
+
           <ContentSection title="تواصل مع إدارة الشبكة" subtitle="أرسل ملاحظة أو طلبًا وسنحتفظ به في حسابك">
             <form className="viewer-message-form" onSubmit={submitMessage}>
               <label className="field">
@@ -162,29 +165,32 @@ export function Account() {
       ) : null}
 
       {!state.isLoading && !state.isError && !signedIn ? (
-        <section className="viewer-auth-panel" aria-label="تسجيل حساب المشاهد">
-          <div className="viewer-auth-intro">
-            <span className="badge">خطوة واحدة</span>
-            <h2>{mode === "signup" ? "إنشاء حساب جديد" : "تسجيل الدخول"}</h2>
-            <p>استخدم اسمك ورقم الهاتف. البريد الإلكتروني اختياري.</p>
-            <div className="viewer-auth-benefits">
-              <span>حفظ المفضلة</span><span>متابعة المشاهدة</span><span>مراسلة الشبكة</span>
+        <>
+          <PwaInstallCard />
+          <section className="viewer-auth-panel" aria-label="تسجيل حساب المشاهد">
+            <div className="viewer-auth-intro">
+              <span className="badge">خطوة واحدة</span>
+              <h2>{mode === "signup" ? "إنشاء حساب جديد" : "تسجيل الدخول"}</h2>
+              <p>استخدم اسمك ورقم الهاتف. البريد الإلكتروني اختياري.</p>
+              <div className="viewer-auth-benefits">
+                <span>حفظ المفضلة</span><span>متابعة المشاهدة</span><span>مراسلة الشبكة</span>
+              </div>
             </div>
-          </div>
-          <form className="viewer-auth-form" onSubmit={submitAuth}>
-            <div className="auth-mode-switch" role="tablist" aria-label="نوع العملية">
-              <button type="button" role="tab" aria-selected={mode === "signin"} className={mode === "signin" ? "active" : ""} onClick={() => { setMode("signin"); setAuthError(""); }}>دخول</button>
-              <button type="button" role="tab" aria-selected={mode === "signup"} className={mode === "signup" ? "active" : ""} onClick={() => { setMode("signup"); setAuthError(""); }}>حساب جديد</button>
-            </div>
-            <label className="field"><span>الاسم</span><input className="input" value={name} onChange={(event) => setName(event.target.value)} maxLength={80} autoComplete="name" required /></label>
-            <label className="field"><span>رقم الهاتف</span><input className="input" value={phone} onChange={(event) => setPhone(event.target.value)} maxLength={40} inputMode="tel" autoComplete="tel" required /></label>
-            {mode === "signup" ? <label className="field"><span>البريد الإلكتروني <small>اختياري</small></span><input className="input" value={email} onChange={(event) => setEmail(event.target.value)} type="email" maxLength={180} autoComplete="email" /></label> : null}
-            {authError ? <p className="form-error" role="alert">{authError}</p> : null}
-            <button className="btn btn-primary btn-block" type="submit" disabled={auth.isPending}>
-              {auth.isPending ? "لحظة…" : mode === "signup" ? "إنشاء الحساب" : "دخول"}
-            </button>
-          </form>
-        </section>
+            <form className="viewer-auth-form" onSubmit={submitAuth}>
+              <div className="auth-mode-switch" role="tablist" aria-label="نوع العملية">
+                <button type="button" role="tab" aria-selected={mode === "signin"} className={mode === "signin" ? "active" : ""} onClick={() => { setMode("signin"); setAuthError(""); }}>دخول</button>
+                <button type="button" role="tab" aria-selected={mode === "signup"} className={mode === "signup" ? "active" : ""} onClick={() => { setMode("signup"); setAuthError(""); }}>حساب جديد</button>
+              </div>
+              <label className="field"><span>الاسم</span><input className="input" value={name} onChange={(event) => setName(event.target.value)} maxLength={80} autoComplete="name" required /></label>
+              <label className="field"><span>رقم الهاتف</span><input className="input" value={phone} onChange={(event) => setPhone(event.target.value)} maxLength={40} inputMode="tel" autoComplete="tel" required /></label>
+              {mode === "signup" ? <label className="field"><span>البريد الإلكتروني <small>اختياري</small></span><input className="input" value={email} onChange={(event) => setEmail(event.target.value)} type="email" maxLength={180} autoComplete="email" /></label> : null}
+              {authError ? <p className="form-error" role="alert">{authError}</p> : null}
+              <button className="btn btn-primary btn-block" type="submit" disabled={auth.isPending}>
+                {auth.isPending ? "لحظة…" : mode === "signup" ? "إنشاء الحساب" : "دخول"}
+              </button>
+            </form>
+          </section>
+        </>
       ) : null}
     </div>
   );

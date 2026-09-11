@@ -567,6 +567,7 @@ async function listCaptureSourcesForAdmin() {
     .filter((source) => String(source.id || '').startsWith('screen:'))
     .map((source, index) => ({
       id: source.id,
+      deviceKey: stableDesktopSourceId(source.id),
       name: source.name || `شاشة ${index + 1}`,
       type: 'screen',
       thumbnail: source.thumbnail && !source.thumbnail.isEmpty() ? source.thumbnail.toDataURL() : '',
@@ -576,6 +577,7 @@ async function listCaptureSourcesForAdmin() {
     .slice(0, 80)
     .map((source) => ({
       id: source.id,
+      deviceKey: stableDesktopSourceId(source.id),
       name: source.name || source.id,
       type: 'window',
       thumbnail: source.thumbnail && !source.thumbnail.isEmpty() ? source.thumbnail.toDataURL() : '',
@@ -804,8 +806,17 @@ function liveWsUrl() {
 function channelSource(channel = {}) {
   const source = channel.source && typeof channel.source === 'object' ? channel.source : {};
   const type = String(source.type || channel.captureKind || channel.sourceType || '').trim();
-  const id = String(source.id || channel.sourceId || '').trim();
-  return { ...source, type, id, name: source.name || channel.sourceName || '' };
+  const rawId = String(source.id || channel.sourceId || '').trim();
+  const id = ['screen', 'window'].includes(type)
+    ? stableDesktopSourceId(source.deviceKey || rawId)
+    : rawId;
+  return { ...source, type, id, deviceKey: source.deviceKey || id, name: source.name || channel.sourceName || '' };
+}
+
+function stableDesktopSourceId(value = '') {
+  const id = String(value || '').trim();
+  const match = /^(screen:\d+|window:\d+)/.exec(id);
+  return match ? match[1] : id;
 }
 
 function canAutoBroadcastChannel(channel = {}) {

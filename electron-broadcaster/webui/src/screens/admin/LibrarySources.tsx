@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { AppLink } from "@/components/AppLink";
 import { api, type LibrarySource } from "@/lib/api";
 import { QueryBoundary, EmptyState } from "@/components/States";
 import { PageHeader } from "@/components/common";
@@ -189,6 +190,15 @@ export function AdminLibrarySources() {
             <option value={50 * 1024 * 1024}>50 ميجابايت/ثانية</option>
           </select>
           {updatePolicy.isError ? <span className="hint" style={{ color: "var(--danger)" }}>{(updatePolicy.error as Error).message}</span> : null}
+        </div>
+      </div>
+      <div className="card card-pad" style={{ marginBottom: 18 }}>
+        <div className="row-between" style={{ gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <strong>رفع مباشر إلى مكتبة المشاهدة</strong>
+            <div className="hint">افتح أي قسم من الاستراحة بصلاحية الإدارة لرفع الفيديوهات والصوتيات والكتب والملفات المرافقة مباشرة داخل المجلد المناسب.</div>
+          </div>
+          <AppLink href="/library/folders" className="btn btn-primary">فتح واجهة الرفع</AppLink>
         </div>
       </div>
       <div className="card card-pad" style={{ marginBottom: 18 }}>
