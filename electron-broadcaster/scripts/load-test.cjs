@@ -53,6 +53,10 @@ function requestHeaders(pathname, cookie) {
   return {};
 }
 
+function expectedStatus(pathname) {
+  return pathname.startsWith('/media/') ? 206 : 200;
+}
+
 async function main() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wiva-load-'));
   db.init(path.join(dir, 'library.db'), { broadcast: [], iptv: [] });
@@ -139,23 +143,24 @@ async function main() {
     const tasks = Array.from({ length: REQUESTS }, (_, i) => async () => {
       if (RAMP_MS) await new Promise((resolve) => setTimeout(resolve, Math.floor((i % CONCURRENCY) * RAMP_MS / CONCURRENCY)));
       const pathname = paths[i % paths.length];
-      return timedRequest(base, pathname, { headers: requestHeaders(pathname, cookie) });
+      const result = await timedRequest(base, pathname, { headers: requestHeaders(pathname, cookie) });
+      return { ...result, pathname, expectedStatus: expectedStatus(pathname) };
     });
 
     const results = await runPool(tasks, CONCURRENCY);
-    const failures = results.filter((r) => r.status >= 500 || r.status === 0);
+    const failures = results.filter((r) => r.status !== r.expectedStatus);
     const latencies = results.map((r) => r.ms);
     const p95 = percentile(latencies, 95);
     const max = Math.max(...latencies);
 
     const errorCounts = failures.reduce((out, failure) => {
-      const key = failure.error || String(failure.status);
+      const key = `${failure.pathname}: ${failure.error || failure.status} (expected ${failure.expectedStatus})`;
       out[key] = (out[key] || 0) + 1;
       return out;
     }, {});
     console.log(JSON.stringify({ requests: REQUESTS, concurrency: CONCURRENCY, rampMs: RAMP_MS, failures: failures.length, errorCounts, p95Ms: p95, maxMs: max }, null, 2));
 
-    assert.equal(failures.length, 0, 'load test must not return 5xx responses');
+    assert.equal(failures.length, 0, 'load test must return the expected success status for every route');
     assert.ok(p95 <= MAX_P95_MS, `p95 latency ${p95}ms exceeded ${MAX_P95_MS}ms`);
   } finally {
     await new Promise((resolve) => server.close(resolve));
