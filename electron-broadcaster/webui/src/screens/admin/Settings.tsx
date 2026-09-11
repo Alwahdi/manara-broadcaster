@@ -1,15 +1,27 @@
-import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { QueryBoundary } from "@/components/States";
 import { PageHeader } from "@/components/common";
 import { useBrand } from "@/hooks/useBrand";
 import { parsePortInput } from "@/lib/format";
+import { useFormDraft } from "@/hooks/useFormDraft";
 
 export function AdminSettings() {
   const { query } = useBrand();
   const qc = useQueryClient();
-  const [form, setForm] = useState<Record<string, string>>({});
+  const draft = useFormDraft("settings", query.data ? {
+    networkName: String(query.data.networkName || ""),
+    country: String(query.data.settings?.networkCountry || query.data.country || ""),
+    city: String(query.data.settings?.networkCity || query.data.city || ""),
+    timezone: String(query.data.settings?.networkTimezone || query.data.timezone || ""),
+    port: String(query.data.ports?.live || query.data.settings?.port || ""),
+    libraryPort: String(query.data.settings?.libraryPort || query.data.ports?.libraryConfigured || query.data.ports?.library || ""),
+    adminPath: String(query.data.settings?.adminPath || "admin"),
+    experienceLayout: String(query.data.settings?.experienceLayout || query.data.ports?.mode || "unified"),
+    autoStartOnBoot: String(query.data.settings?.autoStartOnBoot !== false),
+    autoStartBeforeLogin: String(!!query.data.settings?.autoStartBeforeLogin),
+  } : undefined);
+  const { values: form, setValues: setForm } = draft;
   const port = parsePortInput(form.port || "");
   const libraryPort = parsePortInput(form.libraryPort || "");
   const portError = !Number.isFinite(port) || !Number.isFinite(libraryPort)
@@ -22,23 +34,6 @@ export function AdminSettings() {
     queryFn: api.updateStatus,
     refetchInterval: (query) => ["checking", "downloading"].includes(String(query.state.data?.update?.state || "")) ? 1500 : false,
   });
-
-  useEffect(() => {
-    if (query.data) {
-      setForm({
-        networkName: String(query.data.networkName || ""),
-        country: String(query.data.settings?.networkCountry || query.data.country || ""),
-        city: String(query.data.settings?.networkCity || query.data.city || ""),
-        timezone: String(query.data.settings?.networkTimezone || query.data.timezone || ""),
-        port: String(query.data.ports?.live || query.data.settings?.port || ""),
-        libraryPort: String(query.data.settings?.libraryPort || query.data.ports?.libraryConfigured || query.data.ports?.library || ""),
-        adminPath: String(query.data.settings?.adminPath || "admin"),
-        experienceLayout: String(query.data.settings?.experienceLayout || query.data.ports?.mode || "unified"),
-        autoStartOnBoot: String(query.data.settings?.autoStartOnBoot !== false),
-        autoStartBeforeLogin: String(!!query.data.settings?.autoStartBeforeLogin),
-      });
-    }
-  }, [query.data]);
 
   const save = useMutation({
     mutationFn: () => {
@@ -55,7 +50,10 @@ export function AdminSettings() {
         autoStartBeforeLogin: form.autoStartBeforeLogin === "true",
       });
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["agent-state"] }),
+    onSuccess: () => {
+      draft.accept();
+      return qc.invalidateQueries({ queryKey: ["agent-state"] });
+    },
   });
   const updateAction = useMutation({
     mutationFn: (action: "check" | "download" | "install") => {
@@ -80,6 +78,7 @@ export function AdminSettings() {
       <QueryBoundary query={query}>
         {() => (
           <form className="card card-pad" onSubmit={(event) => { event.preventDefault(); if (!save.isPending && !portError) save.mutate(); }}>
+            <fieldset className="form-fields" disabled={save.isPending}>
             <div className="field">
               <label htmlFor="settings-network">اسم الشبكة</label>
               <input id="settings-network" className="input" value={form.networkName || ""} onChange={set("networkName")} />
@@ -153,10 +152,16 @@ export function AdminSettings() {
               <button type="submit" className="btn btn-primary" disabled={save.isPending || !!portError}>
                 {save.isPending ? "جارٍ الحفظ…" : "حفظ الإعدادات"}
               </button>
-              {save.isSuccess ? <span className="badge badge-on badge-dot">تم الحفظ</span> : null}
+              <button type="button" className="btn btn-ghost" disabled={!draft.dirty || save.isPending} onClick={() => {
+                if (window.confirm("تجاهل التغييرات غير المحفوظة؟")) { draft.discard(); save.reset(); }
+              }}>تجاهل التغييرات</button>
+              {draft.dirty ? <span role="status" className="badge badge-warn">تغييرات غير محفوظة</span>
+                : save.isSuccess ? <span role="status" className="badge badge-on badge-dot">تم الحفظ</span> : null}
               {save.isError ? <span role="alert" className="badge badge-warn">{(save.error as Error).message}</span> : null}
             </div>
             {portError ? <p id="settings-port-error" role="alert" className="form-error">{portError}</p> : null}
+            {draft.changedElsewhere ? <p role="status" className="notice">تغيّرت الإعدادات على الخادم. احتفظنا بمسودتك؛ راجعها قبل الحفظ أو تجاهلها لتحميل القيم الحالية.</p> : null}
+            </fieldset>
           </form>
         )}
       </QueryBoundary>
