@@ -26,6 +26,7 @@ const cloudIptv = require('./library/cloud-iptv.cjs');
 const deviceState = require('./library/device-state.cjs');
 const platform = require('./library/platform.cjs');
 const { normalizePortSetting } = require('./library/settings-utils.cjs');
+const { writeJsonAtomic } = require('./library/atomic-write.cjs');
 let runtimeConfig = {};
 try { runtimeConfig = require('./library/cloud-runtime.cjs'); } catch {}
 if (!process.env.MANARA_NEON_DATABASE_URL && !runtimeConfig.neonDatabaseUrl && !app.isPackaged) {
@@ -356,9 +357,7 @@ function saveSettings(s) {
     if (fs.existsSync(SETTINGS_FILE)) {
       try { fs.copyFileSync(SETTINGS_FILE, SETTINGS_FILE + '.bak'); } catch {}
     }
-    const tmp = SETTINGS_FILE + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(s, null, 2));
-    fs.renameSync(tmp, SETTINGS_FILE);
+    writeJsonAtomic(SETTINGS_FILE, s);
     lastSettingsSaveError = '';
     return true;
   } catch (e) {
@@ -703,6 +702,12 @@ function saveSettingsAndBackup(reason = 'manual') {
   const ok = saveSettings(settings);
   if (ok) scheduleDeviceStatePush(reason);
   return ok;
+}
+
+function commitSettings(next, reason) {
+  if (!saveSettings(next)) throw new Error('تعذر حفظ الإعدادات. تحقق من مساحة القرص وصلاحية الكتابة ثم أعد المحاولة.');
+  settings = next;
+  scheduleDeviceStatePush(reason);
 }
 
 function refreshSettingsChannelMirror(reason = 'mirror') {
@@ -1143,21 +1148,21 @@ function mediaServerOptions() {
         if (!isStrongAdminPassword(nextPassword)) {
           throw new Error('Admin password must be at least 10 characters and include a letter, a number, and a symbol.');
         }
-        settings = {
+        const recovered = {
           ...settings,
           adminUsername: String(clean.adminUsername || settings.adminUsername || 'admin').trim() || 'admin',
           adminPassword: '',
           adminPasswordHash: hashAdminPassword(nextPassword),
           setupCompleted: true,
         };
-        saveSettingsAndBackup('admin-recovery');
+        commitSettings(recovered, 'admin-recovery');
         return agentState();
       }
       const requestedLivePort = clean.port ?? clean.livePort;
       const requestedLibraryPort = clean.libraryPort ?? clean.adminPort;
       const requestedLayout = clean.experienceLayout ? (clean.experienceLayout === 'separate' ? 'separate' : 'unified') : currentLayout;
-      const nextLivePort = Math.max(1, Math.min(65535, Number(requestedLivePort || settings.port || DEFAULT_AGENT_PORT)));
-      const nextLibraryPort = Math.max(1, Math.min(65535, Number(requestedLibraryPort || settings.libraryPort || DEFAULT_LIBRARY_PORT)));
+      const nextLivePort = normalizePortSetting(requestedLivePort ?? settings.port ?? DEFAULT_AGENT_PORT, NaN);
+      const nextLibraryPort = normalizePortSetting(requestedLibraryPort ?? settings.libraryPort ?? DEFAULT_LIBRARY_PORT, NaN);
       if (!Number.isInteger(Number(nextLivePort)) || nextLivePort < 1 || nextLivePort > 65535) {
         throw new Error('Live port must be a number between 1 and 65535.');
       }
@@ -1211,8 +1216,7 @@ function mediaServerOptions() {
       }
       if (nextPassword) next.adminPasswordHash = hashAdminPassword(nextPassword);
       next.adminPassword = '';
-      settings = { ...settings, ...next };
-      saveSettingsAndBackup('web-setup');
+      commitSettings({ ...settings, ...next }, 'web-setup');
       applyLoginItem();
       if (libraryReady) {
         try {
@@ -1261,12 +1265,12 @@ function mediaServerOptions() {
       cloudIptvRefreshMinutes: Math.max(1, Number(settings.cloudIptvRefreshMinutes) || 3),
     }),
     updateIptvPolicy: (patch = {}) => {
-      settings = {
+      const next = {
         ...settings,
         iptvGlobalLimitBytes: Math.max(0, Number(patch.iptvGlobalLimitBytes ?? settings.iptvGlobalLimitBytes) || 0),
         cloudIptvRefreshMinutes: Math.max(1, Math.min(1440, Number(patch.cloudIptvRefreshMinutes ?? settings.cloudIptvRefreshMinutes) || 3)),
       };
-      saveSettingsAndBackup('web-admin-iptv-policy');
+      commitSettings(next, 'web-admin-iptv-policy');
       cloudIptv.startAutoRefresh(() => settings.licenseKey || '', settings.cloudIptvRefreshMinutes * 60 * 1000);
       return {
         iptvGlobalLimitBytes: settings.iptvGlobalLimitBytes,

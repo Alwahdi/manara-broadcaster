@@ -1,3 +1,10 @@
+export function parsePortInput(value: string): number {
+  const digits = value.trim().replace(/[٠-٩۰-۹]/g, (digit) =>
+    String(digit.charCodeAt(0) - (digit <= "٩" ? 0x660 : 0x6f0)));
+  const port = /^\d+$/.test(digits) ? Number(digits) : NaN;
+  return Number.isInteger(port) && port >= 1 && port <= 65535 ? port : NaN;
+}
+
 export function formatBytes(bytes?: number): string {
   if (!bytes || bytes < 0) return "—";
   const units = ["بايت", "ك.ب", "م.ب", "ج.ب", "ت.ب"];

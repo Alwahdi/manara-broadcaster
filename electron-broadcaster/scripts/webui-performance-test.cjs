@@ -57,4 +57,48 @@ assert.match(setupLayout, /className="setup-steps"/);
 assert.match(adminLayout, /type LucideIcon/);
 assert.doesNotMatch(adminLayout, /📊|🩺|📺|🎥|🛰️|🎬|💾|🗂️/);
 
-console.log('WIVA web UI performance safeguards passed');
+async function testApiFailures() {
+  const source = require('node:module').stripTypeScriptTypes(
+    fs.readFileSync(path.join(root, 'webui/src/lib/api.ts'), 'utf8'),
+  ).replace(/export (class|const)/g, '$1');
+  let deadline;
+  let cleared = 0;
+  let respond = async () => new Response('{"ok":true}');
+  const http = require('node:vm').runInNewContext(`${source}\nhttp`, {
+    AbortController,
+    fetch: (...args) => respond(...args),
+    setTimeout: (callback, ms) => { assert.equal(ms, 30_000); deadline = callback; return 1; },
+    clearTimeout: () => { cleared += 1; },
+  });
+  assert.equal((await http.get('/api/test')).ok, true);
+  assert.equal(cleared, 1, 'successful requests release the deadline');
+  respond = async () => new Response('<html>Login required</html>');
+  await assert.rejects(http.get('/api/test'), (error) => error.status === 502);
+  respond = async () => new Response('{"message":"Denied"}', { status: 403 });
+  await assert.rejects(http.get('/api/test'), (error) => error.status === 403 && error.message === 'Denied');
+  respond = async () => ({ text: async () => { throw new Error('Body disconnected'); } });
+  await assert.rejects(http.get('/api/test'), (error) => error.status === 0 && error.name === 'ApiError');
+  for (const stalledBody of [false, true]) {
+    respond = (_path, { signal }) => {
+      const stalled = () => new Promise((_resolve, reject) => {
+        if (signal.aborted) reject(new Error('Aborted'));
+        else signal.addEventListener('abort', () => reject(new Error('Aborted')), { once: true });
+      });
+      return stalledBody ? Promise.resolve({ text: stalled }) : stalled();
+    };
+    const pending = http.get('/api/test');
+    await Promise.resolve();
+    deadline();
+    await assert.rejects(pending, (error) => error.status === 0 && error.message.includes('مهلة'));
+  }
+  assert.equal(cleared, 6, 'failure paths release deadlines too');
+}
+
+const watchdog = setTimeout(() => {
+  console.error('API failure tests did not settle');
+  process.exit(1);
+}, 5000);
+testApiFailures().then(() => console.log('WIVA web UI performance safeguards passed')).catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+}).finally(() => clearTimeout(watchdog));

@@ -10,6 +10,8 @@ export function SetupFinish() {
     mutationFn: () =>
       api.saveSettings({
         ...data,
+        livePort: data.livePort?.trim() || undefined,
+        adminPort: data.adminPort?.trim() || undefined,
         setupCompleted: true,
       }),
     onSuccess: (res) => {

@@ -14,29 +14,38 @@ export class ApiError extends Error {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
+  let text: string;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
   try {
     res = await fetch(path, {
+      ...init,
       credentials: "include",
+      signal: controller.signal,
       headers: {
         Accept: "application/json",
         ...(init?.body ? { "Content-Type": "application/json" } : {}),
         ...(init?.headers || {}),
       },
-      ...init,
     });
+    text = await res.text();
   } catch (e) {
     throw new ApiError(
-      "تعذّر الاتصال بالوكيل المحلي. تأكد من أن الخدمة تعمل على الشبكة.",
+      controller.signal.aborted
+        ? "انتهت مهلة الطلب. تحقق من حالة العملية قبل المحاولة مرة أخرى."
+        : "تعذّر الاتصال بالوكيل المحلي. تأكد من أن الخدمة تعمل على الشبكة.",
       0,
       e,
     );
+  } finally {
+    clearTimeout(timeout);
   }
-  const text = await res.text();
   let data: unknown = undefined;
   if (text) {
     try {
       data = JSON.parse(text);
     } catch {
+      if (res.ok) throw new ApiError("استجابة الخدمة غير صالحة. أعد تحميل الصفحة ثم حاول مرة أخرى.", 502);
       data = text;
     }
   }

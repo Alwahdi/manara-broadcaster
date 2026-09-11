@@ -31,7 +31,7 @@ const server = http.createServer((req, res) => {
       if (pathname.endsWith('/import/preview')) return json({ channels });
       return setTimeout(() => json({ error: 'fixture_failure' }, 403), 400);
     }
-    if (pathname === '/api/agent/state') return json({ subscription: { state: 'active' }, settings: { adminUsername: 'operator' } });
+    if (pathname === '/api/agent/state') return json({ subscription: { state: 'active' }, ports: { live: 8787, library: 8788 }, settings: { adminUsername: 'operator', port: 8787, libraryPort: 8788 } });
     if (pathname === '/api/admin/state') return json({ broadcast: channels, iptv: channels, cloudIptv: [] });
     if (pathname === '/api/admin/messages') return json({ messages: [{ id: 1, name: 'Test viewer', message: 'Test message', status: 'new' }] });
     if (pathname === '/api/admin/library/sources') return json({ sources: [{ id: 1, label: 'Test source', path: '/test-media', online: true }] });
@@ -83,6 +83,11 @@ async function main() {
       const element = await call('POST', '/element', { using: 'css selector', value: selector });
       await call('POST', `/element/${element['element-6066-11e4-a52e-4f735466cecf']}/value`, { text: value });
     };
+    const replaceInput = async (selector, value) => {
+      const element = await call('POST', '/element', { using: 'css selector', value: selector });
+      await call('POST', `/element/${element['element-6066-11e4-a52e-4f735466cecf']}/clear`, {});
+      await input(selector, value);
+    };
     const alert = () => wait('document.querySelector("[role=alert]")?.textContent.includes("تعذّر")');
 
     for (const width of [390, 1366]) {
@@ -127,6 +132,27 @@ async function main() {
       await click('إعادة الربط بهذا المجلد');
       assert.equal(await script('return [...document.querySelectorAll("button")].find(b => b.textContent.trim() === "جارٍ الحفظ…").disabled'), true);
       await alert();
+
+      await visit('/admin/settings', 'حفظ الإعدادات');
+      await wait('document.querySelector("#settings-port")?.value === "8787"');
+      await replaceInput('#settings-port', '65536');
+      await wait('document.querySelector("#settings-port-error")');
+      assert.equal(await script('return document.querySelector("button[type=submit]").disabled'), true);
+      await replaceInput('#settings-port', '٨٠٨٠');
+      await replaceInput('#settings-library-port', '۸۴۲۰');
+      assert.equal(await script('return document.querySelector("#settings-port").labels.length'), 1);
+      await call('POST', '/actions', { actions: [{ type: 'key', id: 'keyboard', actions: [{ type: 'keyDown', value: '\uE007' }, { type: 'keyUp', value: '\uE007' }] }] });
+      await wait('document.body.innerText.includes("تم الحفظ")');
+      assert.equal(savedSetup.port, 8080, 'Arabic port survives Enter submission');
+      assert.equal(savedSetup.libraryPort, 8420, 'Persian port survives Enter submission');
+
+      await visit('/setup/ports', 'المنافذ والمسارات');
+      await replaceInput('#setup-live-port', '-1');
+      await wait('document.querySelector("#setup-port-error")');
+      assert.equal(await script('return [...document.querySelectorAll("button")].find(b => b.textContent.trim() === "التالي").disabled'), true);
+      await replaceInput('#setup-live-port', '٨٧٨٧');
+      await wait('!document.querySelector("#setup-port-error")');
+      assert.equal(await script('return document.querySelector("#setup-live-port").labels.length'), 1);
     }
     await visit('/setup/admin-account?recovery=1', 'إعادة تعيين دخول المشرف');
     await wait('document.querySelector("input[type=password]") && !document.querySelector("input[type=password]").disabled');
@@ -137,7 +163,7 @@ async function main() {
     assert.equal(await script('return location.hostname'), 'localhost', 'loopback server URL does not replace the browser hostname');
     assert.equal(savedSetup.adminRecovery, true);
     assert.equal(savedSetup.adminPassword, 'New-password-123!');
-    console.log('WIVA workflow browser checks passed (390px/1366px, mutation failures, editor switching, recovery and redirect)');
+    console.log('WIVA workflow browser checks passed (390px/1366px, mutation failures, editor switching, Arabic ports, keyboard submit, recovery and redirect)');
   } finally {
     if (session) await command('DELETE', `/session/${session}`).catch(() => {});
     await new Promise((resolve) => server.close(resolve));

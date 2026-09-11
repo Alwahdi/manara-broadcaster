@@ -4,11 +4,19 @@ import { api } from "@/lib/api";
 import { QueryBoundary } from "@/components/States";
 import { PageHeader } from "@/components/common";
 import { useBrand } from "@/hooks/useBrand";
+import { parsePortInput } from "@/lib/format";
 
 export function AdminSettings() {
   const { query } = useBrand();
   const qc = useQueryClient();
   const [form, setForm] = useState<Record<string, string>>({});
+  const port = parsePortInput(form.port || "");
+  const libraryPort = parsePortInput(form.libraryPort || "");
+  const portError = !Number.isFinite(port) || !Number.isFinite(libraryPort)
+    ? "أدخل رقم منفذ صحيحًا بين 1 و65535."
+    : form.experienceLayout === "separate" && port === libraryPort
+      ? "يجب أن يختلف منفذ البث عن منفذ الإدارة في الوضع المنفصل."
+      : "";
   const update = useQuery({
     queryKey: ["app-update"],
     queryFn: api.updateStatus,
@@ -33,17 +41,20 @@ export function AdminSettings() {
   }, [query.data]);
 
   const save = useMutation({
-    mutationFn: () => api.saveSettings({
-      ...form,
-      networkCountry: form.country,
-      networkCity: form.city,
-      networkTimezone: form.timezone,
-      port: Number(form.port) || undefined,
-      libraryPort: Number(form.libraryPort) || undefined,
-      experienceLayout: form.experienceLayout === "separate" ? "separate" : "unified",
-      autoStartOnBoot: form.autoStartOnBoot === "true",
-      autoStartBeforeLogin: form.autoStartBeforeLogin === "true",
-    }),
+    mutationFn: () => {
+      if (portError) throw new Error(portError);
+      return api.saveSettings({
+        ...form,
+        networkCountry: form.country,
+        networkCity: form.city,
+        networkTimezone: form.timezone,
+        port,
+        libraryPort,
+        experienceLayout: form.experienceLayout === "separate" ? "separate" : "unified",
+        autoStartOnBoot: form.autoStartOnBoot === "true",
+        autoStartBeforeLogin: form.autoStartBeforeLogin === "true",
+      });
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["agent-state"] }),
   });
   const updateAction = useMutation({
@@ -68,38 +79,38 @@ export function AdminSettings() {
       <PageHeader title="الإعدادات" subtitle="إعدادات الشبكة والمنافذ العامة" />
       <QueryBoundary query={query}>
         {() => (
-          <div className="card card-pad">
+          <form className="card card-pad" onSubmit={(event) => { event.preventDefault(); if (!save.isPending && !portError) save.mutate(); }}>
             <div className="field">
-              <label>اسم الشبكة</label>
-              <input className="input" value={form.networkName || ""} onChange={set("networkName")} />
+              <label htmlFor="settings-network">اسم الشبكة</label>
+              <input id="settings-network" className="input" value={form.networkName || ""} onChange={set("networkName")} />
             </div>
             <div className="grid grid-2">
               <div className="field">
-                <label>الدولة</label>
-                <input className="input" value={form.country || ""} onChange={set("country")} />
+                <label htmlFor="settings-country">الدولة</label>
+                <input id="settings-country" className="input" value={form.country || ""} onChange={set("country")} />
               </div>
               <div className="field">
-                <label>المدينة</label>
-                <input className="input" value={form.city || ""} onChange={set("city")} />
+                <label htmlFor="settings-city">المدينة</label>
+                <input id="settings-city" className="input" value={form.city || ""} onChange={set("city")} />
               </div>
             </div>
             <div className="field">
-              <label>المنطقة الزمنية</label>
-              <input className="input mono" dir="ltr" value={form.timezone || ""} onChange={set("timezone")} placeholder="Asia/Riyadh" />
+              <label htmlFor="settings-timezone">المنطقة الزمنية</label>
+              <input id="settings-timezone" className="input mono" dir="ltr" value={form.timezone || ""} onChange={set("timezone")} placeholder="Asia/Riyadh" />
             </div>
             <div className="grid grid-2">
               <div className="field">
-                <label>منفذ البث المباشر</label>
-                <input className="input mono" dir="ltr" inputMode="numeric" value={form.port || ""} onChange={set("port")} placeholder="8787" />
+                <label htmlFor="settings-port">منفذ البث المباشر</label>
+                <input id="settings-port" className="input mono" dir="ltr" inputMode="numeric" aria-invalid={!!portError} aria-describedby={portError ? "settings-port-error" : undefined} value={form.port || ""} onChange={set("port")} placeholder="8787" />
               </div>
               <div className="field">
-                <label>منفذ الإدارة والمكتبة</label>
-                <input className="input mono" dir="ltr" inputMode="numeric" value={form.libraryPort || ""} onChange={set("libraryPort")} placeholder="8788" />
+                <label htmlFor="settings-library-port">منفذ الإدارة والمكتبة</label>
+                <input id="settings-library-port" className="input mono" dir="ltr" inputMode="numeric" aria-invalid={!!portError} aria-describedby={portError ? "settings-port-error" : undefined} value={form.libraryPort || ""} onChange={set("libraryPort")} placeholder="8788" />
               </div>
             </div>
             <div className="field">
-              <label>طريقة عرض الخدمة</label>
-              <select className="input" value={form.experienceLayout || "unified"} onChange={set("experienceLayout")}>
+              <label htmlFor="settings-layout">طريقة عرض الخدمة</label>
+              <select id="settings-layout" className="input" value={form.experienceLayout || "unified"} onChange={set("experienceLayout")}>
                 <option value="unified">موحدة: البث والمكتبة والإدارة على منفذ البث</option>
                 <option value="separate">منفصلة: البث على منفذ والمكتبة والإدارة على منفذ آخر</option>
               </select>
@@ -108,8 +119,8 @@ export function AdminSettings() {
               </span>
             </div>
             <div className="field">
-              <label>مسار لوحة الإدارة</label>
-              <input className="input mono" dir="ltr" value={form.adminPath || ""} onChange={set("adminPath")} placeholder="admin" />
+              <label htmlFor="settings-admin-path">مسار لوحة الإدارة</label>
+              <input id="settings-admin-path" className="input mono" dir="ltr" value={form.adminPath || ""} onChange={set("adminPath")} placeholder="admin" />
               <span className="hint">عند تغيير منفذ الإدارة أو المسار، افتح الرابط الجديد من أي جهاز على نفس الشبكة.</span>
             </div>
             <div className="grid grid-2">
@@ -139,13 +150,14 @@ export function AdminSettings() {
               </div>
             ) : null}
             <div className="row">
-              <button className="btn btn-primary" onClick={() => save.mutate()} disabled={save.isPending}>
+              <button type="submit" className="btn btn-primary" disabled={save.isPending || !!portError}>
                 {save.isPending ? "جارٍ الحفظ…" : "حفظ الإعدادات"}
               </button>
               {save.isSuccess ? <span className="badge badge-on badge-dot">تم الحفظ</span> : null}
-              {save.isError ? <span className="badge badge-warn">{(save.error as Error).message}</span> : null}
+              {save.isError ? <span role="alert" className="badge badge-warn">{(save.error as Error).message}</span> : null}
             </div>
-          </div>
+            {portError ? <p id="settings-port-error" role="alert" className="form-error">{portError}</p> : null}
+          </form>
         )}
       </QueryBoundary>
       <div className="card card-pad" style={{ marginTop: 16 }}>
