@@ -138,6 +138,7 @@ export interface MediaItem {
   durationSec?: number;
   sourceId?: number;
   online?: boolean;
+  subtitles?: Array<{ id: number; lang?: string; path?: string; label?: string }>;
   [k: string]: unknown;
 }
 

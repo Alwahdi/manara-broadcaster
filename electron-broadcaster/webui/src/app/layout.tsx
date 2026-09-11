@@ -5,6 +5,12 @@ import "@/styles/layouts.css";
 export const metadata: Metadata = {
   title: "WIVA",
   description: "WIVA local network streaming, IPTV, and media library.",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "WIVA",
+  },
 };
 
 export const viewport: Viewport = {

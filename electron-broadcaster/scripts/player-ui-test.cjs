@@ -16,6 +16,10 @@ const adminLibrary = read('webui/src/screens/admin/LibrarySources.tsx');
 const broadcaster = read('server/broadcaster.html');
 const appShell = read('main.cjs');
 const wivaApp = read('webui/src/components/WivaApp.tsx');
+const account = read('webui/src/screens/viewer/Account.tsx');
+const layout = read('webui/src/app/layout.tsx');
+const manifest = read('webui/src/app/manifest.ts');
+const pwaInstall = read('webui/src/components/PwaInstallCard.tsx');
 
 assert.doesNotMatch(live, /PlayerFitToolbar|live-player-video-(?:fit|fill|zoom)/);
 assert.doesNotMatch(media, /MediaFitToolbar|media-player-video-(?:fit|fill|zoom)/);
@@ -71,6 +75,8 @@ assert.match(live, /hlsScriptPromise\s*=\s*null[\s\S]*?throw error/, 'HLS player
 assert.match(live, /manifestLoadingTimeOut:\s*12000/, 'IPTV manifest loading fails clearly instead of waiting indefinitely');
 assert.match(live, /fragLoadingMaxRetry:\s*6/, 'IPTV segment retries remain bounded but tolerate brief provider loss');
 assert.match(media, /position\s*-\s*10/, 'resume starts ten seconds before the saved position');
+assert.match(media, /kind="subtitles"/, 'media player renders external subtitle tracks');
+assert.match(media, /RISKY_BROWSER_MEDIA_FORMATS/, 'media player warns about browser-hostile legacy formats');
 assert.match(media, /\?download=1/, 'viewer download actions use the controlled download endpoint');
 assert.doesNotMatch(viewerLayout, /to:\s*["']\/search["']/, 'search is not duplicated in desktop or mobile navigation');
 assert.match(viewerLayout, /primary-destination/, 'mobile navigation highlights live as the primary destination');
@@ -81,7 +87,10 @@ assert.match(styles, /\.library-page \.folder-card-art\s*\{[\s\S]*?aspect-ratio:
 assert.doesNotMatch(styles, /wiva-player:not\(\.is-blocked\) \.wiva-player-controls\.is-hidden[\s\S]{0,180}opacity:\s*1/, 'mobile CSS allows playing controls to hide');
 assert.match(libraryFolders, /permissions\?\.manageLibrary/, 'folder upload controls require an authenticated admin session');
 assert.match(libraryFolders, /\.pdf,\.epub/, 'admin folder uploads include books and documents');
+assert.match(libraryFolders, /\.wmv/, 'folder uploads include legacy Windows video files');
+assert.match(libraryFolders, /\.ass/, 'folder uploads include ASS subtitle companions');
 assert.match(adminLibrary, /updateLibraryPolicy/, 'library download policy is managed from the admin dashboard');
+assert.match(adminLibrary, /فتح واجهة الرفع/, 'admin library settings expose a direct route to the uploader');
 assert.doesNotMatch(broadcaster, /track\.onmute\s*=\s*\(\)\s*=>\s*scheduleAudioRestart/, 'transient HDMI mute does not restart capture');
 assert.doesNotMatch(broadcaster, /track\.enabled\s*!==\s*false\s*&&\s*!track\.muted/, 'live HDMI audio remains healthy during transient mute');
 assert.match(broadcaster, /AUDIO_MISSING_RESTART_MS\s*=\s*20000/, 'missing capture audio uses a sustained grace period');
@@ -106,6 +115,13 @@ assert.match(live, /playoutDelayHint/, 'capture playback asks the browser for st
 assert.match(live, /45_000/, 'automatic capture quality has a recovery cooldown');
 assert.match(appShell, /show:\s*false[\s\S]*?ready-to-show/, 'agent window stays hidden until its renderer is ready');
 assert.match(appShell, /recoverBroadcaster[\s\S]*?render-process-gone/, 'capture renderer crashes recover without restarting WIVA');
+assert.match(appShell, /deviceKey:\s*stableDesktopSourceId\(source\.id\)/, 'capture device listings preserve a stable screen or window key');
+assert.match(appShell, /stableDesktopSourceId\(source\.deviceKey \|\| rawId\)/, 'saved capture channels normalize screen and window ids before launch');
 assert.match(wivaApp, /import \{ Live \} from "@\/screens\/viewer\/Live"/, 'primary live route is included in the initial viewer bundle');
+assert.match(account, /PwaInstallCard/, 'viewer account surface exposes app installation affordances');
+assert.match(layout, /manifest:\s*"\/manifest\.webmanifest"/, 'web UI advertises a manifest for installability');
+assert.match(manifest, /display:\s*"standalone"/, 'web UI manifest enables standalone launch');
+assert.match(pwaInstall, /serviceWorker\.register\("\/sw\.js"\)/, 'viewer registers a service worker for PWA installability');
+assert.match(pwaInstall, /beforeinstallprompt/, 'viewer reacts to browser install prompts');
 
 console.log('WIVA unified player UI tests passed');

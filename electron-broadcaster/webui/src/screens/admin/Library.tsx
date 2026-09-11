@@ -15,6 +15,7 @@ export function AdminLibrary() {
           <>
             <AppLink href="/admin/library/sources" className="btn btn-ghost">المصادر</AppLink>
             <AppLink href="/admin/library/browser" className="btn btn-primary">متصفح الملفات</AppLink>
+            <AppLink href="/library/folders" className="btn btn-ghost">رفع محتوى</AppLink>
           </>
         }
       />

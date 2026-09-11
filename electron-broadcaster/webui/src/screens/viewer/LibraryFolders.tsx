@@ -7,6 +7,16 @@ import { QueryBoundary, EmptyState, ViewerSkeleton } from "@/components/States";
 import { ContentSection, FavoriteButton, mediaKindLabel } from "@/components/common";
 import { useLiveStatus } from "@/hooks/useLiveStatus";
 
+const LIBRARY_UPLOAD_ACCEPT = [
+  "video/*", "audio/*",
+  ".mp4", ".m4v", ".mkv", ".webm", ".mov", ".avi", ".ts", ".flv", ".wmv",
+  ".mp3", ".m4a", ".wav", ".flac", ".ogg", ".aac", ".wma", ".opus",
+  ".srt", ".vtt", ".ass",
+  ".pdf", ".epub", ".mobi", ".azw", ".azw3", ".cbz", ".cbr", ".djvu",
+  ".txt", ".md", ".rtf", ".doc", ".docx", ".odt", ".ppt", ".pptx", ".xls", ".xlsx", ".csv",
+  ".jpg", ".jpeg", ".jpe", ".jfif", ".png", ".webp", ".avif", ".gif", ".bmp",
+].join(",");
+
 /** Folder-first subscriber library view. */
 export function LibraryFolders() {
   const queryClient = useQueryClient();
@@ -200,7 +210,7 @@ export function LibraryFolders() {
                       type="file"
                       hidden
                       multiple
-                      accept="video/*,audio/*,.mkv,.ts,.srt,.vtt,.pdf,.epub,.mobi,.azw,.azw3,.cbz,.cbr,.djvu,.txt,.md,.rtf,.doc,.docx,.odt,.ppt,.pptx,.xls,.xlsx,.csv,image/jpeg,image/png,image/webp,image/avif,image/gif,image/bmp"
+                      accept={LIBRARY_UPLOAD_ACCEPT}
                       onChange={uploadFiles}
                     />
                     <button type="button" className="btn btn-primary" disabled={uploading} onClick={() => fileInput.current?.click()}>

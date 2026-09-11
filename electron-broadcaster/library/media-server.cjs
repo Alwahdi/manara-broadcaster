@@ -19,11 +19,12 @@ const ADMIN_LOGIN_MAX_ATTEMPTS = 8;
 const MIME = {
   '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mkv': 'video/x-matroska',
   '.webm': 'video/webm', '.mov': 'video/quicktime', '.avi': 'video/x-msvideo',
-  '.ts': 'video/mp2t', '.srt': 'text/plain; charset=utf-8',
+  '.ts': 'video/mp2t', '.flv': 'video/x-flv', '.wmv': 'video/x-ms-wmv',
+  '.srt': 'text/plain; charset=utf-8', '.ass': 'text/plain; charset=utf-8',
   '.vtt': 'text/vtt; charset=utf-8',
   '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.wav': 'audio/wav',
   '.flac': 'audio/flac', '.ogg': 'audio/ogg', '.aac': 'audio/aac',
-  '.opus': 'audio/ogg',
+  '.opus': 'audio/ogg', '.wma': 'audio/x-ms-wma',
   '.pdf': 'application/pdf', '.epub': 'application/epub+zip',
   '.mobi': 'application/x-mobipocket-ebook', '.azw': 'application/vnd.amazon.ebook',
   '.azw3': 'application/vnd.amazon.ebook', '.cbz': 'application/vnd.comicbook+zip',
@@ -239,7 +240,7 @@ function mediaTitle(item) {
 function mediaType(item) {
   const ext = path.extname(item?.path || '').toLowerCase();
   if (['.mp3', '.m4a', '.wav', '.flac', '.ogg', '.aac', '.wma', '.opus'].includes(ext) || item?.kind === 'audio') return 'audio';
-  if (['.mp4', '.m4v', '.webm', '.mov', '.ts'].includes(ext)) return 'video';
+  if (['.mp4', '.m4v', '.mkv', '.webm', '.mov', '.avi', '.ts', '.flv', '.wmv'].includes(ext)) return 'video';
   if (['.pdf', '.epub', '.mobi', '.azw', '.azw3', '.cbz', '.cbr', '.djvu'].includes(ext) || item?.kind === 'book') return 'book';
   if (['.txt', '.md', '.rtf', '.doc', '.docx', '.odt', '.ppt', '.pptx', '.xls', '.xlsx', '.csv'].includes(ext) || item?.kind === 'document') return 'document';
   return 'unsupported';
@@ -725,16 +726,16 @@ function isWithinPath(rootPath, targetPath) {
 
 const UPLOAD_KIND_BY_EXT = new Map([
   ['.mp4', 'movie'], ['.m4v', 'movie'], ['.mkv', 'movie'], ['.webm', 'movie'],
-  ['.mov', 'movie'], ['.avi', 'movie'], ['.ts', 'movie'],
+  ['.mov', 'movie'], ['.avi', 'movie'], ['.ts', 'movie'], ['.flv', 'movie'], ['.wmv', 'movie'],
   ['.mp3', 'audio'], ['.m4a', 'audio'], ['.wav', 'audio'], ['.flac', 'audio'],
-  ['.ogg', 'audio'], ['.aac', 'audio'], ['.opus', 'audio'],
+  ['.ogg', 'audio'], ['.aac', 'audio'], ['.opus', 'audio'], ['.wma', 'audio'],
   ['.pdf', 'book'], ['.epub', 'book'], ['.mobi', 'book'], ['.azw', 'book'], ['.azw3', 'book'],
   ['.cbz', 'book'], ['.cbr', 'book'], ['.djvu', 'book'],
   ['.txt', 'document'], ['.md', 'document'], ['.rtf', 'document'], ['.doc', 'document'],
   ['.docx', 'document'], ['.odt', 'document'], ['.ppt', 'document'], ['.pptx', 'document'],
   ['.xls', 'document'], ['.xlsx', 'document'], ['.csv', 'document'],
 ]);
-const UPLOAD_COMPANION_EXT = new Set([...ARTWORK_EXT, '.srt', '.vtt']);
+const UPLOAD_COMPANION_EXT = new Set([...ARTWORK_EXT, '.srt', '.vtt', '.ass']);
 const MAX_LIBRARY_UPLOAD_BYTES = 20 * 1024 * 1024 * 1024;
 
 function safeUploadName(value = '') {

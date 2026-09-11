@@ -8,6 +8,12 @@ import { FavoriteButton, ShareButton } from "@/components/common";
 import { formatDuration } from "@/lib/format";
 import { WivaMediaPlayer } from "@/components/WivaMediaPlayer";
 
+const RISKY_BROWSER_MEDIA_FORMATS = new Set([".mkv", ".avi", ".flv", ".wmv", ".ts", ".wma"]);
+
+function subtitleLabel(track: { label?: string; lang?: string; path?: string }, index: number) {
+  return track.label || track.lang || track.path?.split(/[\\/]/).pop() || `Subtitle ${index + 1}`;
+}
+
 export function WatchMedia() {
   const id = useAppPath().split("/").filter(Boolean).at(-1) || "";
   const media = useQuery({ queryKey: ["media", id], queryFn: () => api.media(id) });
@@ -79,58 +85,76 @@ export function WatchMedia() {
             </button>
             {item.kind === "book" || item.kind === "document" ? (
               <DocumentReader item={item} allowDownload={viewer.data?.libraryPolicy?.downloadsEnabled !== false} />
-            ) : <WivaMediaPlayer
-              videoRef={videoRef}
-              mode="vod"
-              status={status}
-              error={error}
-              started={started}
-              meta={item.durationSec ? <span>{formatDuration(item.durationSec)}</span> : undefined}
-              settings={<MediaPlaybackSettings videoRef={videoRef} />}
-              onRetry={retryPlayback}
-              videoProps={{
-                autoPlay: true,
-                preload: "auto",
-                poster: item.poster,
-                src: `/media/${item.id}`,
-                onLoadStart: () => {
-                  setError("");
-                  setStarted(false);
-                  setStatus("جاري تجهيز المحتوى...");
-                },
-                onCanPlay: () => {
-                  clearBuffering();
-                  setError("");
-                  setStatus("");
-                },
-                onLoadedMetadata: (event) => restoreSavedProgress(event.currentTarget, item.id),
-                onTimeUpdate: (event) => {
-                  const now = Date.now();
-                  if (now - lastSavedAt.current < 10_000) return;
-                  lastSavedAt.current = now;
-                  api.mediaProgress(item.id, { position: event.currentTarget.currentTime, duration: event.currentTarget.duration || 0 }).catch(() => {});
-                },
-                onEnded: (event) => {
-                  api.mediaProgress(item.id, { position: event.currentTarget.duration || 0, duration: event.currentTarget.duration || 0, completed: true }).catch(() => {});
-                },
-                onPlaying: () => {
-                  clearBuffering();
-                  setStarted(true);
-                  setError("");
-                  setStatus("");
-                },
-                onWaiting: scheduleBuffering,
-                onStalled: scheduleBuffering,
-                onError: () => {
-                  setStatus("");
-                  setError("تعذر تشغيل هذا المحتوى الآن. تحقق من اتصال الشبكة ثم حاول مرة أخرى.");
-                },
-              }}
-            />}
+            ) : (
+              <WivaMediaPlayer
+                videoRef={videoRef}
+                mode="vod"
+                status={status}
+                error={error}
+                started={started}
+                meta={item.durationSec ? <span>{formatDuration(item.durationSec)}</span> : undefined}
+                settings={<MediaPlaybackSettings videoRef={videoRef} />}
+                onRetry={retryPlayback}
+                videoProps={{
+                  autoPlay: true,
+                  preload: "auto",
+                  poster: item.poster,
+                  src: `/media/${item.id}`,
+                  onLoadStart: () => {
+                    setError("");
+                    setStarted(false);
+                    setStatus("جاري تجهيز المحتوى...");
+                  },
+                  onCanPlay: () => {
+                    clearBuffering();
+                    setError("");
+                    setStatus("");
+                  },
+                  onLoadedMetadata: (event) => restoreSavedProgress(event.currentTarget, item.id),
+                  onTimeUpdate: (event) => {
+                    const now = Date.now();
+                    if (now - lastSavedAt.current < 10_000) return;
+                    lastSavedAt.current = now;
+                    api.mediaProgress(item.id, { position: event.currentTarget.currentTime, duration: event.currentTarget.duration || 0 }).catch(() => {});
+                  },
+                  onEnded: (event) => {
+                    api.mediaProgress(item.id, { position: event.currentTarget.duration || 0, duration: event.currentTarget.duration || 0, completed: true }).catch(() => {});
+                  },
+                  onPlaying: () => {
+                    clearBuffering();
+                    setStarted(true);
+                    setError("");
+                    setStatus("");
+                  },
+                  onWaiting: scheduleBuffering,
+                  onStalled: scheduleBuffering,
+                  onError: () => {
+                    setStatus("");
+                    setError("تعذر تشغيل هذا المحتوى الآن. تحقق من اتصال الشبكة ثم حاول مرة أخرى.");
+                  },
+                }}
+              >
+                {Array.isArray(item.subtitles) ? item.subtitles.map((track, index) => (
+                  <track
+                    key={track.id || `${track.path || track.label || "sub"}-${index}`}
+                    kind="subtitles"
+                    src={`/media-sub/${track.id}`}
+                    label={subtitleLabel(track, index)}
+                    srcLang={String(track.lang || "ar")}
+                    default={index === 0}
+                  />
+                )) : null}
+              </WivaMediaPlayer>
+            )}
             <div className="detail-panel">
               <div>
                 <h2>{item.title || item.name}</h2>
                 <p>{String(item.description || "محتوى متاح للمشاهدة داخل الشبكة.")}</p>
+                {RISKY_BROWSER_MEDIA_FORMATS.has(String(item.format || "").toLowerCase()) ? (
+                  <p className="hint" style={{ marginTop: 10 }}>
+                    قد يحتاج هذا الامتداد إلى متصفح حديث أو برنامج فيديو خارجي إذا لم يبدأ التشغيل فورًا.
+                  </p>
+                ) : null}
               </div>
               <div className="row">
                 <FavoriteButton mediaId={item.id} compact={false} />

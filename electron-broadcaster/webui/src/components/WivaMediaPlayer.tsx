@@ -12,6 +12,7 @@ type Props = {
   onRetry?: () => void;
   retryLabel?: string;
   videoProps?: Omit<VideoHTMLAttributes<HTMLVideoElement>, "ref">;
+  children?: ReactNode;
 };
 
 export function WivaMediaPlayer({
@@ -25,6 +26,7 @@ export function WivaMediaPlayer({
   onRetry,
   retryLabel = "إعادة المحاولة",
   videoProps,
+  children,
 }: Props) {
   const live = mode === "live";
   const blocked = !!(error || (status && !started));
@@ -46,7 +48,9 @@ export function WivaMediaPlayer({
         playsInline
         controlsList={live ? "nodownload noplaybackrate" : "nodownload"}
         className={live ? "live-player-video" : "media-player-video"}
-      />
+      >
+        {children}
+      </video>
       <WivaPlayerControls videoRef={videoRef} live={live} settings={settings} />
       {status || error ? (
         <div className={started && !error ? "live-player-recovery media-player-recovery" : `live-player-overlay${live ? "" : " media-player-overlay"}`} aria-live="polite">

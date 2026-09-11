@@ -806,6 +806,28 @@ async function main() {
     const browseAfterUpload = await res.json();
     assert.ok(browseAfterUpload.entries.some((entry) => entry.type === 'media' && entry.media?.title === 'uploaded-smoke'), 'uploaded media appears immediately in folder browsing');
 
+    res = await request(base, '/api/admin/library/upload?' + new URLSearchParams({
+      sourceId: String(sourceRow.id),
+      path: 'قسم رئيسي/أفلام عربية',
+      name: 'uploaded-legacy.wmv',
+    }), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream', ...auth },
+      body: Buffer.from('uploaded legacy video'),
+    });
+    assert.equal(res.status, 200, 'admin can upload legacy Windows video formats too');
+
+    res = await request(base, '/api/admin/library/upload?' + new URLSearchParams({
+      sourceId: String(sourceRow.id),
+      path: 'قسم رئيسي/أفلام عربية',
+      name: 'uploaded-legacy.ass',
+    }), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream', ...auth },
+      body: Buffer.from('Dialogue: 0,0:00:00.00,0:00:02.00,Default,,0,0,0,,مرحبا'),
+    });
+    assert.equal(res.status, 200, 'admin can upload ASS subtitle companion files');
+
     res = await request(base, '/api/admin/library/upload?' + new URLSearchParams({ sourceId: String(sourceRow.id), path: '', name: 'blocked.mp4' }), {
       method: 'POST',
       headers: { 'Content-Type': 'application/octet-stream' },
