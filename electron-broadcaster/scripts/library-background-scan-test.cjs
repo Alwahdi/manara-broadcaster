@@ -4,6 +4,7 @@ const os = require('os');
 const path = require('path');
 const http = require('http');
 const db = require('../library/db.cjs');
+const scanner = require('../library/scanner.cjs');
 const { LibraryScanManager } = require('../library/scan-manager.cjs');
 
 function waitForScan(manager, timeoutMs = 45000) {
@@ -91,6 +92,43 @@ async function main() {
     const third = await waitForScan(manager);
     assert.strictEqual(third.result.removedMissing, 25, 'removed files should be deleted from the index');
     assert.strictEqual(db.listMedia({ limit: 1200 }).length, 1075, 'large indexes should clean stale rows without SQLite variable limits');
+    const sourceId = db.listPaths()[0].id;
+    const readdir = fs.promises.readdir;
+    try {
+      fs.promises.readdir = async (directory, ...args) => {
+        if (directory === source) throw Object.assign(new Error('Source disconnected during traversal'), { code: 'EIO' });
+        return readdir(directory, ...args);
+      };
+      const interrupted = await scanner.scanAll({ sourceId });
+      assert.strictEqual(interrupted.removedMissing, 0, 'an interrupted traversal must not prune existing media');
+      assert.strictEqual(db.listMedia({ limit: 1200 }).length, 1075, 'unreadable files remain indexed');
+      assert.notStrictEqual(db.listPaths()[0].status, 'connected', 'incomplete scans must not report a healthy source');
+    } finally {
+      fs.promises.readdir = readdir;
+    }
+    const stat = fs.promises.stat;
+    const inaccessible = path.join(source, 'document-25.txt');
+    try {
+      fs.promises.stat = async (file, ...args) => {
+        if (file === inaccessible) throw Object.assign(new Error('File access denied'), { code: 'EACCES' });
+        return stat(file, ...args);
+      };
+      const interrupted = await scanner.scanAll({ sourceId });
+      assert.strictEqual(interrupted.removedMissing, 0, 'file stat failures must not be treated as confirmed deletions');
+      assert.strictEqual(db.listMedia({ limit: 1200 }).length, 1075);
+    } finally {
+      fs.promises.stat = stat;
+    }
+    fs.renameSync(source, source + '-offline');
+    try {
+      const offline = await scanner.scanAll({ sourceId });
+      assert.strictEqual(offline.removedMissing, 0, 'offline source retains its index');
+      assert.strictEqual(db.listMedia({ limit: 1200 }).length, 1075);
+    } finally {
+      fs.renameSync(source + '-offline', source);
+    }
+    await scanner.scanAll({ sourceId });
+    assert.strictEqual(db.listPaths()[0].status, 'connected', 'successful rescan restores source health');
     console.log(`[library-background-scan] ok; max event-loop delay ${maxDelay}ms; unchanged ${second.result.unchanged}; removed ${third.result.removedMissing}`);
   } finally {
     clearInterval(eventLoopProbe);

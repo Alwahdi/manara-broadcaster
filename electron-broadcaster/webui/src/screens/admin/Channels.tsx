@@ -2,7 +2,7 @@ import { useState, type ChangeEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppLink } from "@/components/AppLink";
 import { api, type Channel } from "@/lib/api";
-import { QueryBoundary, EmptyState } from "@/components/States";
+import { QueryBoundary, EmptyState, MutationError } from "@/components/States";
 import { PageHeader } from "@/components/common";
 
 export function AdminChannels() {
@@ -27,6 +27,7 @@ export function AdminChannels() {
       api.updateChannel(channel.id, { enabled: !(channel.enabled !== false && channel.enabled !== 0) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-state"] }),
   });
+  const busy = update.isPending || remove.isPending || toggle.isPending;
 
   return (
     <div className="admin-wide">
@@ -35,8 +36,12 @@ export function AdminChannels() {
         subtitle="إضافة وتعديل وحذف قنوات البث المباشر وأجهزة الالتقاط"
         actions={<AppLink href="/admin/channels/new" className="btn btn-primary">+ إضافة قناة</AppLink>}
       />
+      <MutationError mutation={update} action="حفظ تعديل القناة" />
+      <MutationError mutation={remove} action="حذف القناة" />
+      <MutationError mutation={toggle} action="تغيير حالة القناة" />
       {editing ? (
         <ChannelEditor
+          key={String(editing.id)}
           channel={editing}
           busy={update.isPending}
           onCancel={() => setEditing(null)}
@@ -86,16 +91,16 @@ export function AdminChannels() {
                       </td>
                       <td data-label="الإجراءات">
                         <div className="row">
-                          <button className="btn btn-sm btn-ghost" onClick={() => toggle.mutate(ch)} disabled={toggle.isPending}>
+                          <button className="btn btn-sm btn-ghost" onClick={() => toggle.mutate(ch)} disabled={busy}>
                             {enabled ? "إيقاف" : "تفعيل"}
                           </button>
-                          <button className="btn btn-sm" onClick={() => setEditing(ch)}>تعديل</button>
+                          <button className="btn btn-sm" disabled={busy} onClick={() => { update.reset(); setEditing(ch); }}>تعديل</button>
                           <button
                             className="btn btn-sm btn-ghost"
                             onClick={() => {
                               if (window.confirm("حذف هذه القناة؟")) remove.mutate(ch.id);
                             }}
-                            disabled={remove.isPending}
+                            disabled={busy}
                           >
                             حذف
                           </button>
@@ -225,7 +230,7 @@ function ChannelEditor({
         >
           حفظ التعديل
         </button>
-        <button className="btn btn-ghost" onClick={onCancel}>إلغاء</button>
+        <button className="btn btn-ghost" disabled={busy} onClick={onCancel}>إلغاء</button>
       </div>
     </div>
   );

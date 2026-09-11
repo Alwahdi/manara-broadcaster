@@ -1,5 +1,22 @@
 import type { ReactNode } from "react";
 import type { UseQueryResult } from "@tanstack/react-query";
+import { ApiError } from "@/lib/api";
+
+export function MutationError({ mutation, action }: {
+  mutation: { isError: boolean; error: unknown };
+  action: string;
+}) {
+  if (!mutation.isError) return null;
+  const needsLogin = mutation.error instanceof ApiError && mutation.error.status === 401;
+  return (
+    <p role="alert" style={{ color: "var(--danger)" }}>
+      تعذّر {action}. {needsLogin
+        ? "انتهت جلسة الإدارة. سجّل الدخول مجدداً ثم أعد المحاولة."
+        : "تحقق من الاتصال والصلاحيات والبيانات المدخلة ثم أعد المحاولة."}
+      {needsLogin ? <> <a href="/admin/login">تسجيل الدخول</a></> : null}
+    </p>
+  );
+}
 
 export function LoadingState({ label = "جارٍ التحميل…" }: { label?: string }) {
   return (

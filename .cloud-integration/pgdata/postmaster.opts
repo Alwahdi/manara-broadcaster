@@ -1,0 +1,1 @@
+/usr/lib/postgresql/16/bin/postgres "-D" "/home/runner/work/manara-broadcaster/manara-broadcaster/.cloud-integration/pgdata" "-p" "55439" "-h" "127.0.0.1" "-k" "/home/runner/work/manara-broadcaster/manara-broadcaster/.cloud-integration/socket"

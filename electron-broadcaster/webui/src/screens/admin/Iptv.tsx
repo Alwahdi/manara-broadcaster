@@ -2,7 +2,7 @@ import { useEffect, useState, type ChangeEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppLink } from "@/components/AppLink";
 import { api, type Channel } from "@/lib/api";
-import { QueryBoundary, EmptyState } from "@/components/States";
+import { QueryBoundary, EmptyState, MutationError } from "@/components/States";
 import { PageHeader } from "@/components/common";
 
 export function AdminIptv() {
@@ -50,8 +50,12 @@ export function AdminIptv() {
         subtitle="تحكم كامل بالقنوات المحلية، وتفعيل/إيقاف للقنوات السحابية"
         actions={<AppLink href="/admin/iptv/import" className="btn btn-primary">استيراد قائمة</AppLink>}
       />
+      <MutationError mutation={toggle} action="تغيير حالة القناة" />
+      <MutationError mutation={remove} action="حذف القناة" />
+      <MutationError mutation={update} action="حفظ تعديل القناة" />
       {editing ? (
         <IptvEditor
+          key={String(editing.id)}
           channel={editing}
           busy={update.isPending}
           onCancel={() => setEditing(null)}
@@ -88,7 +92,7 @@ export function AdminIptv() {
             {savePolicy.isPending ? "جارٍ الحفظ…" : "حفظ سياسة IPTV"}
           </button>
           {savePolicy.isSuccess ? <span className="badge badge-on badge-dot">تم الحفظ</span> : null}
-          {savePolicy.isError ? <span className="badge badge-warn">{(savePolicy.error as Error).message}</span> : null}
+          <MutationError mutation={savePolicy} action="حفظ سياسة IPTV" />
         </div>
       </div>
       <QueryBoundary
@@ -123,11 +127,11 @@ export function AdminIptv() {
                       key={String(ch.id)}
                       channel={ch}
                       onToggle={(id) => toggle.mutate(id)}
-                      onEdit={setEditing}
+                      onEdit={(channel) => { update.reset(); setEditing(channel); }}
                       onDelete={(id) => {
                         if (window.confirm("حذف هذه القناة؟")) remove.mutate(id);
                       }}
-                      busy={toggle.isPending || remove.isPending}
+                      busy={toggle.isPending || remove.isPending || update.isPending}
                     />
                   ))}
                 </tbody>
@@ -170,7 +174,7 @@ function IptvRow({
           <button className="btn btn-sm btn-ghost" onClick={() => onToggle(channel.id)} disabled={busy}>
             {enabled ? "إيقاف" : "تفعيل"}
           </button>
-          {!isCloud ? <button className="btn btn-sm" onClick={() => onEdit(channel)}>تعديل</button> : null}
+          {!isCloud ? <button className="btn btn-sm" disabled={busy} onClick={() => onEdit(channel)}>تعديل</button> : null}
           {!isCloud ? (
             <button className="btn btn-sm btn-ghost" onClick={() => onDelete(channel.id)} disabled={busy}>
               حذف
@@ -227,7 +231,7 @@ function IptvEditor({
         >
           حفظ التعديل
         </button>
-        <button className="btn btn-ghost" onClick={onCancel}>إلغاء</button>
+        <button className="btn btn-ghost" disabled={busy} onClick={onCancel}>إلغاء</button>
       </div>
     </div>
   );

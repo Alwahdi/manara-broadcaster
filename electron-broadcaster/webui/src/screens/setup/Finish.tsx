@@ -2,6 +2,7 @@ import { useMutation } from "@tanstack/react-query";
 import { SetupStep } from "@/components/SetupStep";
 import { api } from "@/lib/api";
 import { useSetup, clearSetup } from "@/hooks/useSetup";
+import { setupAdminUrl } from "@/lib/setupRedirect";
 
 export function SetupFinish() {
   const data = useSetup();
@@ -13,7 +14,7 @@ export function SetupFinish() {
       }),
     onSuccess: (res) => {
       clearSetup();
-      const target = res.state?.urls?.adminLocal || "/admin/dashboard";
+      const target = setupAdminUrl(res.state?.urls?.adminLocal, window.location.href);
       setTimeout(() => {
         window.location.href = target;
       }, 900);

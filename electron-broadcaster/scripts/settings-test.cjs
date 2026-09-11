@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { writeJsonAtomic } = require('../library/atomic-write.cjs');
 
 const { normalizePortSetting } = require('../library/settings-utils.cjs');
 const cloudIptv = require('../library/cloud-iptv.cjs');
@@ -16,6 +17,37 @@ assert.equal(normalizePortSetting('', 8787), 8787);
 assert.equal(normalizePortSetting(0, 8787), 8787);
 assert.equal(normalizePortSetting(65536, 8787), 8787);
 assert.equal(normalizePortSetting('not-a-port', 8787), 8787);
+
+const atomicDir = fs.mkdtempSync(path.join(process.cwd(), '.wiva-atomic-'));
+try {
+  const destination = path.join(atomicDir, 'state.json');
+  const original = '{"preserved":true}';
+  fs.writeFileSync(destination, original);
+  const rename = fs.renameSync;
+  const write = fs.writeFileSync;
+  let attempts = 0;
+  try {
+    fs.renameSync = () => {
+      attempts += 1;
+      throw Object.assign(new Error('Destination locked'), { code: 'EPERM' });
+    };
+    fs.writeFileSync = (target, ...args) => {
+      if (target === destination) throw Object.assign(new Error('Disk full'), { code: 'ENOSPC' });
+      return write(target, ...args);
+    };
+    assert.throws(() => writeJsonAtomic(destination, { replacement: true }));
+    assert.equal(fs.readFileSync(destination, 'utf8'), original, 'failed replacement must preserve the last durable state');
+    assert.equal(attempts, 6, 'transient locks are retried a bounded number of times');
+    assert.deepEqual(fs.readdirSync(atomicDir), ['state.json'], 'failed writes clean their staging file');
+  } finally {
+    fs.renameSync = rename;
+    fs.writeFileSync = write;
+  }
+  writeJsonAtomic(destination, { replacement: true });
+  assert.deepEqual(JSON.parse(fs.readFileSync(destination, 'utf8')), { replacement: true });
+} finally {
+  fs.rmSync(atomicDir, { recursive: true, force: true });
+}
 
 const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wiva-cloud-cache-'));
 const cachePath = path.join(cacheDir, 'cloud-iptv-cache.json');

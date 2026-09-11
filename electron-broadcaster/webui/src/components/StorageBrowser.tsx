@@ -12,9 +12,11 @@ import { formatBytes } from "@/lib/format";
 export function StorageBrowser({
   onSelect,
   selectLabel = "اختيار هذا المجلد",
+  busy = false,
 }: {
   onSelect: (path: string) => void;
   selectLabel?: string;
+  busy?: boolean;
 }) {
   const [path, setPath] = useState<string>("");
 
@@ -113,8 +115,8 @@ export function StorageBrowser({
             </div>
             <div className="row-between" style={{ marginTop: 16 }}>
               <code className="mono truncate" style={{ maxWidth: "60%" }}>{path}</code>
-              <button className="btn btn-primary" onClick={() => onSelect(path)}>
-                {selectLabel}
+              <button className="btn btn-primary" disabled={busy} onClick={() => onSelect(path)}>
+                {busy ? "جارٍ الحفظ…" : selectLabel}
               </button>
             </div>
           </>

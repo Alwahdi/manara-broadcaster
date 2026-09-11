@@ -1,6 +1,6 @@
 import { revalidateTag } from "next/cache";
 import {
-  audit, finishProviderSyncRule, importProviderSeries, listDueProviderSyncRules,
+  audit, claimProviderSyncRule, finishProviderSyncRule, importProviderSeries, listDueProviderSyncRules,
   listImportedSeriesEpisodeRefs, listProviderSyncRules,
 } from "@/lib/db";
 import { discoverProviderCatalog, discoverSeriesEpisodes, loadProviderConnection } from "@/lib/provider-catalog";
@@ -18,6 +18,8 @@ async function syncRules(rules: ProviderSyncRule[]): Promise<SyncResult> {
   const connections = new Map<string, Awaited<ReturnType<typeof loadProviderConnection>>>();
   const catalogs = new Map<string, Awaited<ReturnType<typeof discoverProviderCatalog>>>();
   for (const rule of rules) {
+    const token = await claimProviderSyncRule(rule.id);
+    if (!token) continue;
     result.checked += 1;
     try {
       let connection = connections.get(rule.providerId);
@@ -34,12 +36,12 @@ async function syncRules(rules: ProviderSyncRule[]): Promise<SyncResult> {
       const known = new Set(rule.knownEpisodeRefs);
       const fresh = available.filter((episode) => !known.has(episode.ref) && !existing.has(episode.ref)).slice(0, 500);
       if (fresh.length) await importProviderSeries(rule.providerId, series, fresh, rule.publishNew);
-      await finishProviderSyncRule(rule.id, { added: fresh.length, knownEpisodeRefs: available.map((episode) => episode.ref) });
+      await finishProviderSyncRule(rule.id, { token, added: fresh.length, knownEpisodeRefs: [...known, ...existing, ...fresh.map((episode) => episode.ref)] });
       await audit("provider.series.auto_sync", "provider", rule.providerId, { seriesRef: rule.seriesRef, added: fresh.length, publishNew: rule.publishNew });
       result.added += fresh.length; result.details.push({ title: rule.seriesTitle, added: fresh.length, ok: true });
     } catch (error) {
       const message = publicError(error);
-      await finishProviderSyncRule(rule.id, { added: 0, error: message });
+      await finishProviderSyncRule(rule.id, { token, added: 0, error: message });
       result.failed += 1; result.details.push({ title: rule.seriesTitle, added: 0, ok: false });
     }
   }
