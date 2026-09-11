@@ -18,7 +18,7 @@ assert.equal(normalizePortSetting(0, 8787), 8787);
 assert.equal(normalizePortSetting(65536, 8787), 8787);
 assert.equal(normalizePortSetting('not-a-port', 8787), 8787);
 
-const atomicDir = fs.mkdtempSync(path.join(process.cwd(), '.wiva-atomic-'));
+const atomicDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wiva-atomic-'));
 try {
   const destination = path.join(atomicDir, 'state.json');
   const original = '{"preserved":true}';
@@ -45,6 +45,26 @@ try {
   }
   writeJsonAtomic(destination, { replacement: true });
   assert.deepEqual(JSON.parse(fs.readFileSync(destination, 'utf8')), { replacement: true });
+  try {
+    attempts = 0;
+    fs.renameSync = (...args) => {
+      attempts += 1;
+      if (attempts < 3) throw Object.assign(new Error('Temporary lock'), { code: 'EBUSY' });
+      assert.deepEqual(JSON.parse(fs.readFileSync(destination, 'utf8')), { replacement: true });
+      return rename(...args);
+    };
+    writeJsonAtomic(destination, { recovered: true });
+    assert.equal(attempts, 3);
+    assert.deepEqual(JSON.parse(fs.readFileSync(destination, 'utf8')), { recovered: true });
+    fs.renameSync = () => {
+      throw Object.assign(new Error('Disk full'), { code: 'ENOSPC' });
+    };
+    assert.throws(() => writeJsonAtomic(destination, { lost: true }), { code: 'ENOSPC' });
+    assert.deepEqual(JSON.parse(fs.readFileSync(destination, 'utf8')), { recovered: true });
+    assert.deepEqual(fs.readdirSync(atomicDir), ['state.json']);
+  } finally {
+    fs.renameSync = rename;
+  }
 } finally {
   fs.rmSync(atomicDir, { recursive: true, force: true });
 }
