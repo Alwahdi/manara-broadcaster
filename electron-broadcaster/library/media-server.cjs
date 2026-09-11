@@ -1197,6 +1197,11 @@ function clientIp(req) {
   return raw.replace(/^::ffff:/, '') || 'unknown';
 }
 
+function isLoopbackRequest(req) {
+  const ip = clientIp(req);
+  return ip === '127.0.0.1' || ip === '::1';
+}
+
 function attachRequestAccounting(req, res, meta = {}) {
   const ip = clientIp(req);
   const userAgent = req.headers['user-agent'] || '';
@@ -1519,6 +1524,7 @@ function createHandler(options = {}) {
     const isAdminApi = u.pathname === '/api/admin' || u.pathname.startsWith('/api/admin/');
     const isAdminLogin = u.pathname === '/admin/login' || u.pathname === `${adminBase}/login`;
     const isAdminLogout = u.pathname === '/admin/logout' || u.pathname === `${adminBase}/logout`;
+    const isAdminRecovery = u.pathname === '/admin/recovery' || u.pathname === `${adminBase}/recovery`;
     setSecurityHeaders(res);
     if (!isAdminBase && !isAdminApi) res.setHeader('Access-Control-Allow-Origin', '*');
     if (isAdminApi && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(String(req.method || '').toUpperCase()) && !sameOriginMutation(req)) {
@@ -1630,8 +1636,34 @@ function createHandler(options = {}) {
     if (u.pathname === '/api/setup/save' && req.method === 'POST') {
       try {
         const state = typeof options.getSetupState === 'function' ? options.getSetupState() : {};
-        if (state.setupCompleted && !requireAdmin(req, res, options, adminBase)) return;
+        const recoveryToken = parseCookies(req).manara_admin_recovery || '';
+        const recoveryOk = isLoopbackRequest(req)
+          && recoveryToken
+          && typeof options.verifyAdminRecoverySession === 'function'
+          && options.verifyAdminRecoverySession(recoveryToken);
+        if (state.setupCompleted && recoveryToken && !recoveryOk) {
+          return sendJson(res, 403, { ok: false, error: 'invalid_recovery', message: 'رابط إعادة التعيين غير صالح أو انتهت صلاحيته.' });
+        }
+        if (state.setupCompleted && !recoveryOk && !requireAdmin(req, res, options, adminBase)) return;
         const body = await parseJsonBody(req);
+        if (recoveryOk) {
+          if (!body.adminPassword) {
+            return sendJson(res, 400, { ok: false, error: 'adminPassword is required', message: 'أدخل كلمة مرور جديدة للمشرف.' });
+          }
+          const next = typeof options.applySetup === 'function'
+            ? await options.applySetup({
+              adminRecovery: true,
+              adminUsername: body.adminUsername,
+              adminPassword: body.adminPassword,
+            })
+            : state;
+          if (typeof options.clearAdminRecoverySession === 'function') options.clearAdminRecoverySession(recoveryToken);
+          return send(res, 200, JSON.stringify({ ok: true, state: next }), {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Set-Cookie': 'manara_admin_recovery=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0',
+            'Cache-Control': 'no-store',
+          });
+        }
         if (!body.networkName && !body.brandName) return sendJson(res, 400, { ok: false, error: 'networkName is required' });
         const next = typeof options.applySetup === 'function' ? await options.applySetup(body) : state;
         return sendJson(res, 200, { ok: true, state: next });
@@ -1659,6 +1691,21 @@ function createHandler(options = {}) {
       return send(res, 302, '', {
         'Location': `${adminBase}/login`,
         'Set-Cookie': 'manara_admin=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0',
+      });
+    }
+    if (isAdminRecovery && req.method === 'GET') {
+      if (!isLoopbackRequest(req)) {
+        return send(res, 404, 'Not found', { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+      }
+      const token = String(parsedUrl.searchParams.get('token') || '');
+      const ok = token && typeof options.verifyAdminRecoverySession === 'function' && options.verifyAdminRecoverySession(token);
+      if (!ok) {
+        return send(res, 403, 'Recovery link is invalid or expired.', { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+      }
+      return send(res, 302, '', {
+        'Location': '/setup/admin-account?recovery=1',
+        'Set-Cookie': `manara_admin_recovery=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=900`,
+        'Cache-Control': 'no-store',
       });
     }
     if (isAdminLogin && req.method === 'POST') {

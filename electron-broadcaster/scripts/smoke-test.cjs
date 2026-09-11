@@ -93,6 +93,9 @@ async function main() {
       autoStartBeforeLogin: false,
     },
   };
+  let adminUsername = 'admin';
+  let adminPassword = 'correct-password';
+  let recoveryToken = '';
   let platformState = { state: 'unregistered', features: {}, activationId: '' };
   let iptvPolicy = { iptvGlobalLimitBytes: 0, cloudIptvRefreshMinutes: 3 };
   let updateState = { state: 'none', currentVersion: 'test', supported: true };
@@ -113,9 +116,25 @@ async function main() {
     installUpdate: async () => ({ ok: true, state: 'installing', version: updateState.version }),
     checkPort: (port) => ({ ok: true, available: true, port: Number(port), message: 'available' }),
     applySetup: async (patch) => {
+      if (patch.adminRecovery) {
+        adminUsername = String(patch.adminUsername || adminUsername || 'admin');
+        adminPassword = String(patch.adminPassword || adminPassword || '');
+        setupState = {
+          ...setupState,
+          setupCompleted: true,
+          settings: {
+            ...setupState.settings,
+            adminUsername,
+          },
+        };
+        recoveryToken = '';
+        return setupState;
+      }
       const livePort = Number(patch.port || patch.livePort || setupState.settings.port || 8787);
       const libraryPort = Number(patch.libraryPort || patch.adminPort || setupState.settings.libraryPort || 8788);
       const experienceLayout = patch.experienceLayout === 'separate' ? 'separate' : 'unified';
+      adminUsername = String(patch.adminUsername || adminUsername || 'admin');
+      adminPassword = String(patch.adminPassword || adminPassword || '');
       setupState = {
         ...setupState,
         setupCompleted: true,
@@ -136,6 +155,7 @@ async function main() {
         settings: {
           ...setupState.settings,
           ...patch,
+          adminUsername,
           port: livePort,
           libraryPort,
           experienceLayout,
@@ -145,7 +165,7 @@ async function main() {
       };
       return setupState;
     },
-    verifyAdminCredentials: ({ username, password }) => username === 'admin' && password === 'correct-password',
+    verifyAdminCredentials: ({ username, password }) => username === adminUsername && password === adminPassword,
     issueAdminSession: () => {
       const token = crypto.randomBytes(18).toString('base64url');
       sessions.add(token);
@@ -153,6 +173,10 @@ async function main() {
     },
     verifyAdminSession: (token) => sessions.has(token),
     clearAdminSession: (token) => sessions.delete(token),
+    verifyAdminRecoverySession: (token) => token === recoveryToken,
+    clearAdminRecoverySession: (token) => {
+      if (!token || token === recoveryToken) recoveryToken = '';
+    },
     listCaptureSources: async () => ({
       screens: [{ id: 'screen:0:0', name: 'الشاشة الرئيسية', type: 'screen', thumbnail: 'data:image/png;base64,AA==' }],
       windows: [{ id: 'window:1:0', name: 'نافذة الاختبار', type: 'window' }],
@@ -292,9 +316,55 @@ async function main() {
       body: new URLSearchParams({ username: 'admin', password: 'correct-password' }),
     });
     assert.equal(res.status, 302);
+    const oldCookie = res.headers.get('set-cookie');
+    assert.match(oldCookie, /manara_admin=/);
+    assert.doesNotMatch(oldCookie, /admin:correct-password/);
+
+    recoveryToken = 'recovery-smoke-token';
+    sessions.clear();
+    res = await request(base, '/admin/recovery?token=' + encodeURIComponent(recoveryToken));
+    assert.equal(res.status, 302);
+    assert.equal(res.headers.get('location'), '/setup/admin-account?recovery=1');
+    const recoveryCookie = responseCookies(res, ['manara_admin_recovery']);
+    assert.match(recoveryCookie, /manara_admin_recovery=/);
+
+    res = await request(base, '/api/setup/save', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: recoveryCookie,
+      },
+      body: JSON.stringify({
+        adminRecovery: true,
+        adminUsername: 'admin',
+        adminPassword: 'Recovered-pass-123',
+      }),
+    });
+    assert.equal(res.status, 200);
+    const recoveredSetup = await res.json();
+    assert.equal(recoveredSetup.ok, true);
+    assert.equal(recoveredSetup.state.settings.adminUsername, 'admin');
+    assert.equal(recoveryToken, '', 'recovery token is cleared after a successful password reset');
+
+    res = await request(base, '/admin', { headers: { Cookie: oldCookie.split(';')[0] } });
+    assert.equal(res.status, 302, 'old admin sessions are invalidated when recovery starts');
+    assert.equal(res.headers.get('location'), '/admin/login');
+
+    res = await request(base, '/admin/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ username: 'admin', password: 'correct-password' }),
+    });
+    assert.equal(res.status, 401, 'old admin password must stop working after recovery');
+
+    res = await request(base, '/admin/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ username: 'admin', password: 'Recovered-pass-123' }),
+    });
+    assert.equal(res.status, 302, 'new admin password works after recovery');
     const cookie = res.headers.get('set-cookie');
     assert.match(cookie, /manara_admin=/);
-    assert.doesNotMatch(cookie, /admin:correct-password/);
 
     // The modern web UI (webui/dist) is the one and only user-facing surface.
     // When it is built, admin/setup navigation returns the SPA shell (id="root").
