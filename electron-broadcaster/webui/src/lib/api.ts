@@ -165,6 +165,18 @@ export interface LibraryScanStatus {
   } | null;
 }
 
+export interface LibraryUploadResult {
+  ok: boolean;
+  name: string;
+  bytes: number;
+  media?: MediaItem | null;
+  scan?: {
+    ok?: boolean;
+    status?: LibraryScanStatus;
+    [k: string]: unknown;
+  };
+}
+
 export interface Channel {
   id: number | string;
   name: string;
@@ -438,7 +450,7 @@ export const api = {
     folderPath: string,
     file: File,
     onProgress?: (percent: number) => void,
-  ) => new Promise<{ ok: boolean; name: string; bytes: number; media?: MediaItem | null }>((resolve, reject) => {
+  ) => new Promise<LibraryUploadResult>((resolve, reject) => {
     const params = new URLSearchParams({ sourceId: String(sourceId), path: folderPath, name: file.name });
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `/api/admin/library/upload?${params.toString()}`);
@@ -451,7 +463,7 @@ export const api = {
     xhr.onload = () => {
       let payload: unknown = undefined;
       try { payload = xhr.responseText ? JSON.parse(xhr.responseText) : undefined; } catch { payload = xhr.responseText; }
-      if (xhr.status >= 200 && xhr.status < 300) return resolve(payload as { ok: boolean; name: string; bytes: number; media?: MediaItem | null });
+      if (xhr.status >= 200 && xhr.status < 300) return resolve(payload as LibraryUploadResult);
       const message = payload && typeof payload === "object" && "message" in payload
         ? String((payload as { message: unknown }).message)
         : `تعذر رفع الملف (${xhr.status})`;

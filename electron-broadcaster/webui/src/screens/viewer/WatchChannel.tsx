@@ -254,6 +254,14 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
       scheduleRestart(5000);
     }
 
+    function handlePlayError(playError: unknown) {
+      if (!(playError instanceof DOMException) || playError.name !== "NotAllowedError") return;
+      clearStartupTimer();
+      setStarted(true);
+      setError("");
+      setStatus("اضغط زر التشغيل لبدء المشاهدة.");
+    }
+
     media.addEventListener("waiting", markBuffering);
     media.addEventListener("stalled", markBuffering);
     media.addEventListener("playing", markPlaying);
@@ -277,11 +285,7 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
         try {
           await media.play();
         } catch (playError) {
-          if (playError instanceof DOMException && playError.name === "NotAllowedError") {
-            clearStartupTimer();
-            setStarted(true);
-            setStatus("");
-          }
+          handlePlayError(playError);
         }
         return;
       }
@@ -336,11 +340,7 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           setError("");
           media.play().catch((playError) => {
-            if (playError instanceof DOMException && playError.name === "NotAllowedError") {
-              clearStartupTimer();
-              setStarted(true);
-              setStatus("");
-            }
+            handlePlayError(playError);
           });
         });
       }
