@@ -45,6 +45,10 @@ test("real PostgreSQL cloud workflows", { skip: !url }, async (t) => {
     const second = await db.upsertProviderSyncRule(input);
     assert.equal(first.id, second.id);
     assert.deepEqual(second.knownEpisodeRefs, input.knownEpisodeRefs);
+    await sql`update wiva_cloud_provider_sync_rules set known_episode_refs=to_jsonb(${JSON.stringify(input.knownEpisodeRefs)}::text) where id=${first.id}`;
+    assert.deepEqual((await db.getProviderSyncRule(providerId, input.seriesRef)).knownEpisodeRefs, input.knownEpisodeRefs, "legacy encoded sync history remains readable");
+    await sql`update wiva_cloud_provider_catalog_cache set payload=to_jsonb(${JSON.stringify(items)}::text) where tenant_id=${tenants[0]} and provider_id=${providerId}`;
+    assert.deepEqual(await db.getProviderCatalogCache(providerId, "series"), items, "legacy encoded catalog caches remain readable");
     await sql`delete from wiva_cloud_provider_sync_rules where id=${first.id}`;
     const metadata = { count: 2, title: "فحص", enabled: true };
     await db.audit("test.json", "provider", providerId, metadata);

@@ -58,6 +58,15 @@ try {
   }
   writeJsonAtomic(destination, { replacement: true });
   assert.deepEqual(JSON.parse(fs.readFileSync(destination, 'utf8')), { replacement: true });
+  const sync = fs.fsyncSync;
+  try {
+    fs.fsyncSync = () => { throw Object.assign(new Error('Disk full while flushing'), { code: 'ENOSPC' }); };
+    assert.throws(() => writeJsonAtomic(destination, { lost: true }), { code: 'ENOSPC' });
+    assert.deepEqual(JSON.parse(fs.readFileSync(destination, 'utf8')), { replacement: true });
+    assert.deepEqual(fs.readdirSync(atomicDir), ['state.json']);
+  } finally {
+    fs.fsyncSync = sync;
+  }
   try {
     attempts = 0;
     fs.renameSync = (...args) => {

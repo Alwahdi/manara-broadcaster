@@ -371,6 +371,14 @@ export async function listProviders(): Promise<ProviderSummary[]> {
   }));
 }
 
+function storedJsonArray(value: unknown): unknown[] | null {
+  // Older local postgres.js writes encoded JSON arrays as JSON strings.
+  if (typeof value === "string") {
+    try { value = JSON.parse(value); } catch { return null; }
+  }
+  return Array.isArray(value) ? value : null;
+}
+
 function syncRuleFromRow(row: Record<string, unknown>): ProviderSyncRule {
   return {
     id: String(row.id), providerId: String(row.provider_id), seriesRef: String(row.series_ref),
@@ -379,7 +387,7 @@ function syncRuleFromRow(row: Record<string, unknown>): ProviderSyncRule {
     lastSuccessAt: row.last_success_at ? new Date(String(row.last_success_at)).toISOString() : null,
     nextRunAt: new Date(String(row.next_run_at)).toISOString(), lastError: String(row.last_error || ""),
     importedCount: Number(row.imported_count || 0),
-    knownEpisodeRefs: Array.isArray(row.known_episode_refs) ? (row.known_episode_refs as unknown[]).map(String).slice(0, 20_000) : [],
+    knownEpisodeRefs: (storedJsonArray(row.known_episode_refs) || []).map(String).slice(0, 20_000),
   };
 }
 
@@ -484,7 +492,7 @@ export async function getProviderCatalogCache(providerId: string, section: Asset
     where tenant_id=${tenantId()} and provider_id=${providerId} and section=${section} and expires_at > now()
     limit 1
   `;
-  return Array.isArray(rows[0]?.payload) ? rows[0].payload as unknown as ProviderCatalogItem[] : null;
+  return storedJsonArray(rows[0]?.payload) as ProviderCatalogItem[] | null;
 }
 
 export async function saveProviderCatalogCache(providerId: string, section: AssetKind, items: ProviderCatalogItem[]) {

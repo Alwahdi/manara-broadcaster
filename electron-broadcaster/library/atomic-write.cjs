@@ -55,7 +55,10 @@ function writeFileAtomic(destPath, data, options = {}) {
     const fd = fs.openSync(tmp, 'w');
     try {
       fs.writeFileSync(fd, data, writeOptions);
-      try { fs.fsyncSync(fd); } catch { /* fsync not supported on some FS */ }
+      try { fs.fsyncSync(fd); } catch (err) {
+        // Some filesystems cannot sync; actual I/O failures must preserve old state.
+        if (!['EINVAL', 'ENOTSUP', 'ENOSYS'].includes(err.code)) throw err;
+      }
     } finally {
       fs.closeSync(fd);
     }
