@@ -6,6 +6,12 @@ const path = require('node:path');
 const { createCompatibility } = require('../library/iptv-compatible.cjs');
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+async function waitForIdle(manager) {
+  const deadline = Date.now() + 12000;
+  while (manager.status().length && Date.now() < deadline) await sleep(50);
+  assert.equal(manager.status().length, 0, 'workers stop after the idle deadline and cleanup timer tick');
+}
+
 async function main() {
   let probes = 0, workers = 0, kills = 0, failProbe = false;
   const children = [];
@@ -47,14 +53,14 @@ async function main() {
     assert.equal(direct, null, 'H.264/AAC HLS keeps the direct path');
     await manager.prepare({ id: 'second', url: channel.url }, 'unsupported', true);
     await assert.rejects(manager.prepare({ id: 'capacity', url: channel.url }, 'unsupported', true), /capacity/);
-    await sleep(5200);
+    await waitForIdle(manager);
     assert.equal(manager.status().length, 0, 'workers stop without viewer demand');
     const remuxChannel = { id: 'remux', url: channel.url };
     const remux = await manager.prepare(remuxChannel, 'remux', false);
     assert.equal(remux.transcoded, false, 'compatible video with unsupported audio is remuxed');
     const upgraded = await manager.prepare(remuxChannel, 'remux', true);
     assert.ok(upgraded.transcoded && remux.disposed, 'browser fallback upgrades a remux worker to video encoding');
-    await sleep(5200);
+    await waitForIdle(manager);
     failProbe = true;
     const failed = { id: 'empty', url: channel.url };
     await assert.rejects(manager.prepare(failed, 'unsupported', false), /no_video/);
