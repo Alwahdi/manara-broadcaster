@@ -2799,7 +2799,7 @@ function createHandler(options = {}) {
           return;
         }
         if (denyIfBlocked(req, res, { targetType: 'iptv', targetId: rawId, targetName: ch.name || rawId })) return;
-        attachRequestAccounting(req, res, { action: 'iptv', targetType: 'iptv', targetId: rawId, targetName: ch.name || rawId });
+        if (!iptv.isInternalRequest(req, u.query)) attachRequestAccounting(req, res, { action: 'iptv', targetType: 'iptv', targetId: rawId, targetName: ch.name || rawId });
         const baseProxyUrl = `http://${req.headers.host}/iptv/${rawId}`;
         const policy = typeof options.getIptvPolicy === 'function' ? options.getIptvPolicy() : {};
         return iptv.handleRequest(ch, sub === 'index.m3u8' || sub === 'index' ? '' : sub, u.query, req, res, baseProxyUrl, policy);

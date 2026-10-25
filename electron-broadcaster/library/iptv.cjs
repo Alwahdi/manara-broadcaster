@@ -17,6 +17,9 @@ const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
 const { URL } = require('url');
+const { createCompatibility } = require('./iptv-compatible.cjs');
+const compatibility = createCompatibility();
+process.once('exit', () => compatibility.close());
 
 const TS_CHANNELS = new Map(); // id -> { clients:Set<res>, upstreamReq, idleTimer, contentType }
 const HLS_IDLE = new Map();    // id -> { lastHit, idleTimer }
@@ -83,6 +86,7 @@ function metrics(id, type = 'unknown') {
       totalViewerSessions: 0,
       totalUpstreamBytes: 0,
       totalDownstreamBytes: 0,
+      internalBridgeBytes: 0,
       upstreamRequests: 0,
       playlistRequests: 0,
       segmentRequests: 0,
@@ -135,6 +139,7 @@ function setViewers(id, count) {
 }
 
 function touchHlsViewer(channel, req) {
+  if (req.wivaInternalBridge) return;
   const m = metrics(channel.id, 'hls');
   const key = `${req.socket.remoteAddress || 'unknown'}|${req.headers['user-agent'] || ''}`;
   if (!m.hlsViewers.has(key)) m.totalViewerSessions += 1;
@@ -162,6 +167,7 @@ function snapshotMetrics(id) {
     upstreamOpen: !!m.upstreamOpen,
     totalUpstreamBytes: m.totalUpstreamBytes,
     totalDownstreamBytes: m.totalDownstreamBytes,
+    internalBridgeBytes: m.internalBridgeBytes,
     upstreamKbps: Math.round((upstreamWindowBytes * 8) / seconds / 1000),
     downstreamKbps: Math.round((downstreamWindowBytes * 8) / seconds / 1000),
     upstreamRequests: m.upstreamRequests,
@@ -223,8 +229,7 @@ function playlistContentIssue(body, targetUrl) {
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const uriLines = lines.filter((line) => !line.startsWith('#'));
   const hasReferencedUri = uriLines.length > 0 || /URI="[^"]+"/i.test(text);
-  const expectsMedia = /#EXTINF|#EXT-X-STREAM-INF|#EXT-X-MEDIA/i.test(text);
-  if (!hasReferencedUri && !expectsMedia) return noContentMessage(targetUrl);
+  if (!hasReferencedUri) return noContentMessage(targetUrl);
   if (!hasReferencedUri && /#EXT-X-ENDLIST/i.test(text)) return noContentMessage(targetUrl);
   return '';
 }
@@ -655,10 +660,10 @@ function serveTs(channel, req, res, policy = {}) {
   }
   const s = tsState(channel.id);
   const m = metrics(channel.id, 'ts');
-  m.totalViewerSessions += 1;
+  if (!req.wivaInternalBridge) m.totalViewerSessions += 1;
   if (s.idleTimer) { clearTimeout(s.idleTimer); s.idleTimer = null; }
   s.clients.add(res);
-  setViewers(channel.id, s.clients.size);
+  setViewers(channel.id, [...s.clients].filter((client) => !client.wivaInternalBridge).length + metrics(channel.id).hlsViewers.size);
   if (s.upstreamRes && !res.headersSent) {
     try { res.writeHead(200, { 'Content-Type': s.contentType, 'Cache-Control': 'no-cache' }); } catch {}
   }
@@ -666,7 +671,7 @@ function serveTs(channel, req, res, policy = {}) {
   const cleanup = () => {
     if (!s.clients.has(res)) return;
     s.clients.delete(res);
-    setViewers(channel.id, s.clients.size);
+    setViewers(channel.id, [...s.clients].filter((client) => !client.wivaInternalBridge).length + metrics(channel.id).hlsViewers.size);
     console.log('[IPTV][TS] client left', channel.id, 'remaining=', s.clients.size);
     if (s.clients.size === 0) {
       s.idleTimer = setTimeout(() => { stopTsUpstream(channel, s); s.idleTimer = null; }, IDLE_MS);
@@ -836,7 +841,7 @@ async function fetchCachedHlsResource(channel, targetUrl, headers, ttlMs, staleM
   })();
   HLS_RESOURCE_CACHE.set(key, {
     expiresAt: now + ttlMs,
-    staleUntil: now + ttlMs + staleMs,
+    staleUntil: staleValue ? existing.staleUntil : now + ttlMs + staleMs,
     promise,
     value: staleValue || undefined,
     channelId: String(channel.id),
@@ -845,11 +850,11 @@ async function fetchCachedHlsResource(channel, targetUrl, headers, ttlMs, staleM
   try {
     const value = await promise;
     if (value.statusCode >= 400) {
-      if (staleValue) {
+      if (staleValue && existing.staleUntil > Date.now()) {
         m.cacheHits += 1;
         HLS_RESOURCE_CACHE.set(key, {
-          expiresAt: Date.now() + Math.min(ttlMs, 1000),
-          staleUntil: Date.now() + staleMs,
+          expiresAt: Math.min(Date.now() + Math.min(ttlMs, 1000), existing.staleUntil),
+          staleUntil: existing.staleUntil,
           value: staleValue,
           channelId: String(channel.id),
           bytes: Buffer.isBuffer(staleValue.body) ? staleValue.body.length : 0,
@@ -860,6 +865,10 @@ async function fetchCachedHlsResource(channel, targetUrl, headers, ttlMs, staleM
       return { ...value, fromCache: false };
     }
     const bytes = Buffer.isBuffer(value.body) ? value.body.length : 0;
+    if (isPlaylistResponse(targetUrl, value.headers?.['content-type'], value.body)) {
+      const issue = playlistContentIssue(value.body.toString('utf8'), targetUrl);
+      if (issue) throw new Error(issue);
+    }
     if (bytes > HLS_CACHEABLE_MAX_BYTES) {
       HLS_RESOURCE_CACHE.delete(key);
       return { ...value, fromCache: false };
@@ -878,11 +887,11 @@ async function fetchCachedHlsResource(channel, targetUrl, headers, ttlMs, staleM
     pruneHlsCache();
     return { ...value, fromCache: false };
   } catch (e) {
-    if (staleValue) {
+    if (staleValue && existing.staleUntil > Date.now()) {
       m.cacheHits += 1;
       HLS_RESOURCE_CACHE.set(key, {
-        expiresAt: Date.now() + Math.min(ttlMs, 1000),
-        staleUntil: Date.now() + staleMs,
+        expiresAt: Math.min(Date.now() + Math.min(ttlMs, 1000), existing.staleUntil),
+        staleUntil: existing.staleUntil,
         value: staleValue,
         channelId: String(channel.id),
         bytes: Buffer.isBuffer(staleValue.body) ? staleValue.body.length : 0,
@@ -910,19 +919,20 @@ function touchHls(id) {
   HLS_IDLE.set(id, s);
 }
 
-function rewritePlaylist(body, playlistUrl, baseProxyUrl, channelId) {
+function rewritePlaylist(body, playlistUrl, baseProxyUrl, channelId, bridge = false) {
+  const suffix = bridge ? `&bridge=${compatibility.bridgeToken}` : "";
   const base = new URL(playlistUrl);
   return body.split(/\r?\n/).map((line) => {
     if (!line || line.startsWith('#')) {
       return line.replace(/URI="([^"]+)"/g, (_m, uri) => {
         const abs = new URL(uri, base).toString();
         const token = registerHlsUri(channelId, abs);
-        return `URI="${baseProxyUrl}/seg?t=${encodeURIComponent(token)}"`;
+        return `URI="${baseProxyUrl}/seg?t=${encodeURIComponent(token)}${suffix}"`;
       });
     }
     const abs = new URL(line.trim(), base).toString();
     const token = registerHlsUri(channelId, abs);
-    return `${baseProxyUrl}/seg?t=${encodeURIComponent(token)}`;
+    return `${baseProxyUrl}/seg?t=${encodeURIComponent(token)}${suffix}`;
   }).join('\n');
 }
 
@@ -1008,7 +1018,7 @@ async function serveHlsPlaylist(channel, playlistUrl, baseProxyUrl, req, res, po
       sendIptvError(res, 503, issue);
       return;
     }
-    const rewritten = rewritePlaylist(body, playlistUrl, baseProxyUrl, channel.id);
+    const rewritten = rewritePlaylist(body, playlistUrl, baseProxyUrl, channel.id, req.wivaInternalBridge);
     addBytes(channel.id, up.fromCache ? 0 : Buffer.byteLength(body), Buffer.byteLength(rewritten));
     const blockedNow = limitExceeded(channel, policy);
     if (blockedNow) {
@@ -1077,7 +1087,7 @@ async function serveHlsSegment(channel, segUrl, baseProxyUrl, req, res, policy =
         sendIptvError(res, 503, issue);
         return;
       }
-      const rewritten = rewritePlaylist(bodyText, segUrl, baseProxyUrl, channel.id);
+      const rewritten = rewritePlaylist(bodyText, segUrl, baseProxyUrl, channel.id, req.wivaInternalBridge);
       addBytes(channel.id, up.fromCache ? 0 : body.length, Buffer.byteLength(rewritten));
       const blockedNow = limitExceeded(channel, policy);
       if (blockedNow) {
@@ -1129,7 +1139,36 @@ async function serveHlsSegment(channel, segUrl, baseProxyUrl, req, res, policy =
 }
 
 // ---- Public entry called from media-server ----
+function isInternalRequest(req, query) {
+  return ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)
+    && query.bridge === compatibility.bridgeToken;
+}
+
 async function handleRequest(channel, subPath, query, req, res, baseProxyUrl, policy = {}) {
+  if (isInternalRequest(req, query)) {
+    req.wivaInternalBridge = true;
+    res.wivaInternalBridge = true;
+    // Existing proxy meters provider traffic. Remove only the trusted loopback
+    // decoder's bytes from LAN totals, retaining a separate internal counter.
+    const write = res.write.bind(res), end = res.end.bind(res);
+    const count = (chunk, encoding) => {
+      if (!chunk || res.statusCode >= 400 || (typeof chunk !== "string" && !Buffer.isBuffer(chunk))) return;
+      const bytes = Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk, typeof encoding === 'string' ? encoding : undefined);
+      metrics(channel.id).internalBridgeBytes += bytes;
+      addBytes(channel.id, 0, -bytes);
+    };
+    res.write = (chunk, encoding, cb) => { count(chunk, encoding); return write(chunk, encoding, cb); };
+    res.end = (chunk, encoding, cb) => { count(chunk, encoding); return end(chunk, encoding, cb); };
+  }
+  if (subPath === 'playback.m3u8' || subPath.startsWith('compat/')) {
+    const blocked = limitExceeded(channel, policy);
+    if (blocked) return sendIptvError(res, 429, blocked.message);
+    return compatibility.serve(channel, subPath, query, req, res, baseProxyUrl, {
+      direct: () => serveHlsPlaylist(channel, channel.url, baseProxyUrl, req, res, policy),
+      touch: () => { touchHls(channel.id); touchHlsViewer(channel, req); },
+      write: async (body) => { addBytes(channel.id, 0, body.length); await writeBufferToClient(channel, res, body); },
+    });
+  }
   if (isHls(channel.url)) {
     if (subPath === 'seg') {
       const segUrl = resolveHlsUri(channel.id, query.t);
@@ -1150,7 +1189,7 @@ function status() {
   const out = {};
   for (const [id, s] of TS_CHANNELS) {
     const snap = snapshotMetrics(id);
-    out[id] = { ...snap, viewers: s.clients.size, upstreamOpen: !!s.upstreamReq };
+    out[id] = { ...snap, viewers: [...s.clients].filter((client) => !client.wivaInternalBridge).length + metrics(id).hlsViewers.size, upstreamOpen: !!s.upstreamReq };
   }
   for (const [id, s] of HLS_IDLE) {
     const snap = snapshotMetrics(id);
@@ -1194,4 +1233,4 @@ async function probe(channelUrl, headers = {}) {
   }
 }
 
-module.exports = { handleRequest, status, probe, isHls };
+module.exports = { handleRequest, status, probe, isHls, isInternalRequest, closeCompatibility: () => compatibility.close() };

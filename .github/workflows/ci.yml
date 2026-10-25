@@ -39,7 +39,7 @@ jobs:
         run: npm run build:webui
 
       - name: Smoke test
-        run: npm test
+        run: npm test && npm run test:iptv:player
 
       - name: Browser workflow regression checks
         run: |

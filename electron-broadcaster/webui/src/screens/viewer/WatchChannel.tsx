@@ -52,6 +52,7 @@ export function WatchChannel() {
               <div className="player-stage-glow" aria-hidden />
               {isIptv ? (
                 <HlsPlayer
+                  key={src}
                   src={src}
                   settings={qualityOptions.length > 1 ? (
                     <QualityOptions
@@ -157,8 +158,10 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
   const [error, setError] = useState("");
   const [started, setStarted] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
+  const recoveryRef = useRef({ src, force: false, attempts: 0 });
 
   useEffect(() => {
+    if (recoveryRef.current.src !== src) recoveryRef.current = { src, force: false, attempts: 0 };
     const video = videoRef.current;
     if (!video) return undefined;
     const media = video;
@@ -168,6 +171,13 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
     let stallRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
     let startupTimer: ReturnType<typeof setTimeout> | null = null;
     let hasPlayed = false;
+    let watchdog: ReturnType<typeof setInterval> | null = null;
+    let lastProgressAt = Date.now();
+    let lastTime = 0;
+    const connectedAt = Date.now();
+    let frameSeen = false;
+    let lastFrameAt = Date.now();
+    let frameRequest: number | null = null;
 
     function clearBufferingTimer() {
       if (bufferingTimer) clearTimeout(bufferingTimer);
@@ -186,15 +196,35 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
 
     function scheduleRestart(delay = 3500) {
       if (closed || recoveryTimer) return;
+      const attempt = ++recoveryRef.current.attempts;
+      if (attempt > 6) {
+        setStatus("");
+        setError("تعذر استعادة البث بعد عدة محاولات. أعد المحاولة أو اختر قناة أخرى.");
+        return;
+      }
+      setError("");
+      setStatus("انقطع الاتصال مؤقتًا، نحاول إعادة التشغيل...");
       recoveryTimer = setTimeout(() => {
         recoveryTimer = null;
         if (!closed) setRetryKey((value) => value + 1);
-      }, delay);
+      }, Math.min(30000, Math.max(delay, 1000 * 2 ** (attempt - 1))));
+    }
+
+    function requestCompatibleVideo() {
+      if (closed || recoveryRef.current.force) return false;
+      recoveryRef.current.force = true;
+      setStatus("جاري تجهيز صورة متوافقة مع جهازك...");
+      scheduleRestart(500);
+      return true;
     }
 
     function cleanup() {
       if (recoveryTimer) clearTimeout(recoveryTimer);
       recoveryTimer = null;
+      if (watchdog) clearInterval(watchdog);
+      watchdog = null;
+      if (frameRequest !== null) media.cancelVideoFrameCallback?.(frameRequest);
+      frameRequest = null;
       clearBufferingTimer();
       clearStallRecoveryTimer();
       clearStartupTimer();
@@ -234,7 +264,15 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
     }
 
     function markPlaying() {
+      if (closed) return;
+      if (!media.videoWidth || !media.videoHeight || (typeof media.requestVideoFrameCallback === "function" && !frameSeen)) {
+        setStatus("جاري انتظار صورة البث...");
+        return;
+      }
+      // Audio playback alone must never dismiss the loading overlay.
       hasPlayed = true;
+      recoveryRef.current.attempts = 0;
+      lastProgressAt = Date.now();
       if (recoveryTimer) clearTimeout(recoveryTimer);
       recoveryTimer = null;
       setStarted(true);
@@ -249,12 +287,11 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
 
     function markVideoError() {
       if (closed) return;
-      setStatus("");
-      setError("تعذر تشغيل البث الآن. جرّب مرة أخرى.");
-      scheduleRestart(5000);
+      if (!requestCompatibleVideo()) scheduleRestart(5000);
     }
 
     function handlePlayError(playError: unknown) {
+      if (closed) return;
       if (!(playError instanceof DOMException) || playError.name !== "NotAllowedError") return;
       clearStartupTimer();
       setStarted(true);
@@ -268,20 +305,52 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
     media.addEventListener("canplay", markPlaying);
     media.addEventListener("canplaythrough", markPlaying);
     media.addEventListener("error", markVideoError);
+    media.addEventListener("resize", markPlaying);
+    media.addEventListener("timeupdate", checkVideoProgress);
+    const onVisibility = () => { lastFrameAt = Date.now(); lastProgressAt = Date.now(); };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    function checkVideoProgress() {
+      if (closed || media.paused || document.visibilityState === "hidden") return;
+      if (media.currentTime > lastTime + 0.05) {
+        lastTime = media.currentTime;
+        lastProgressAt = Date.now();
+        if (!hasPlayed && media.videoWidth > 0) markPlaying();
+      }
+      if ((!media.videoWidth || (typeof media.requestVideoFrameCallback === "function" && !frameSeen)) && media.currentTime > 1 && Date.now() - connectedAt > 10000) requestCompatibleVideo();
+      if (frameSeen && Date.now() - lastFrameAt > 20000) scheduleRestart();
+      if (hasPlayed && Date.now() - lastProgressAt > 20000) scheduleRestart();
+    }
 
     async function start() {
       cleanup();
       setStarted(false);
       setError("");
-      setStatus("جاري تشغيل البث...");
+      setStatus("جاري تجهيز الصوت والصورة...");
+      watchdog = setInterval(checkVideoProgress, 1000);
+      const observeFrame = () => {
+        if (closed) return;
+        const firstFrame = !frameSeen;
+        frameSeen = true;
+        lastFrameAt = Date.now();
+        if (firstFrame) markPlaying();
+        frameRequest = media.requestVideoFrameCallback(observeFrame);
+      };
+      if (typeof media.requestVideoFrameCallback === "function") frameRequest = media.requestVideoFrameCallback(observeFrame);
+      const playbackUrl = new URL(src, window.location.href);
+      if (playbackUrl.origin === window.location.origin && playbackUrl.pathname.startsWith("/iptv/")) {
+        playbackUrl.pathname = playbackUrl.pathname.replace(/\/(?:index\.m3u8)?$/, "/playback.m3u8");
+        if (recoveryRef.current.force) playbackUrl.searchParams.set("compat", "1");
+      }
+      const playbackSrc = playbackUrl.toString();
       startupTimer = setTimeout(() => {
         startupTimer = null;
         if (closed || hasPlayed) return;
-        setStatus("");
-        setError("استغرق تشغيل البث وقتًا أطول من المعتاد. جرّب مرة أخرى.");
-      }, 15_000);
+        setStatus("استغرق تشغيل البث وقتًا أطول من المعتاد، نحاول مجددًا...");
+        if (!requestCompatibleVideo()) scheduleRestart();
+      }, 45_000);
       if (media.canPlayType("application/vnd.apple.mpegurl")) {
-        media.src = src;
+        media.src = playbackSrc;
         try {
           await media.play();
         } catch (playError) {
@@ -320,7 +389,7 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
         nudgeMaxRetry: 5,
         liveSyncDurationCount: 4,
         liveMaxLatencyDurationCount: 12,
-        manifestLoadingTimeOut: 12000,
+        manifestLoadingTimeOut: 45000,
         manifestLoadingMaxRetry: 3,
         manifestLoadingRetryDelay: 600,
         manifestLoadingMaxRetryTimeout: 4000,
@@ -334,10 +403,11 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
         fragLoadingMaxRetryTimeout: 8000,
       });
       hlsRef.current = hls;
-      hls.loadSource(src);
+      hls.loadSource(playbackSrc);
       hls.attachMedia(media);
       if (Hls.Events.MANIFEST_PARSED) {
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          if (closed || hlsRef.current !== hls) return;
           setError("");
           media.play().catch((playError) => {
             handlePlayError(playError);
@@ -345,7 +415,7 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
         });
       }
       hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (!data?.fatal) return;
+        if (closed || hlsRef.current !== hls || !data?.fatal) return;
         if (data.type === Hls.ErrorTypes?.NETWORK_ERROR) {
           setStatus("انقطع الاتصال مؤقتًا، نحاول إعادة التشغيل...");
           try { hls.startLoad?.(); } catch {}
@@ -354,12 +424,11 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
         }
         if (data.type === Hls.ErrorTypes?.MEDIA_ERROR) {
           setStatus("نعالج مشكلة في تشغيل الفيديو...");
+          if (requestCompatibleVideo()) return;
           try { hls.recoverMediaError?.(); } catch {}
           scheduleRestart(7000);
           return;
         }
-        setStatus("");
-        setError("تعذر تشغيل هذا البث الآن. جرّب جودة أخرى أو أعد المحاولة.");
         scheduleRestart(8000);
       });
     }
@@ -378,6 +447,9 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
       media.removeEventListener("canplay", markPlaying);
       media.removeEventListener("canplaythrough", markPlaying);
       media.removeEventListener("error", markVideoError);
+      media.removeEventListener("resize", markPlaying);
+      media.removeEventListener("timeupdate", checkVideoProgress);
+      document.removeEventListener("visibilitychange", onVisibility);
       cleanup();
     };
   }, [src, retryKey]);
@@ -390,7 +462,7 @@ function HlsPlayer({ src, settings }: { src: string; settings?: ReactNode }) {
       error={error}
       started={started}
       settings={settings}
-      onRetry={() => setRetryKey((value) => value + 1)}
+      onRetry={() => { recoveryRef.current.attempts = 0; setRetryKey((value) => value + 1); }}
       videoProps={{ autoPlay: true }}
     />
   );

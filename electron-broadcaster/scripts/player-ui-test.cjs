@@ -143,7 +143,7 @@ assert.match(live, /maxBufferLength:\s*45/, 'IPTV keeps enough forward buffer to
 assert.match(live, /maxBufferHole:\s*0\.75/, 'small IPTV timestamp gaps do not stall playback');
 assert.match(live, /startLoad\?\.\(-1\)/, 'IPTV playback restarts loading after a sustained stall');
 assert.match(live, /hlsScriptPromise\s*=\s*null[\s\S]*?throw error/, 'HLS player asset can recover after an initial load failure');
-assert.match(live, /manifestLoadingTimeOut:\s*12000/, 'IPTV manifest loading fails clearly instead of waiting indefinitely');
+assert.match(live, /manifestLoadingTimeOut:\s*45000/, 'IPTV allows a bounded window for codec inspection and conversion startup');
 assert.match(live, /fragLoadingMaxRetry:\s*6/, 'IPTV segment retries remain bounded but tolerate brief provider loss');
 assert.match(media, /position\s*-\s*10/, 'resume starts ten seconds before the saved position');
 assert.match(media, /kind="subtitles"/, 'media player renders external subtitle tracks');

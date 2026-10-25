@@ -14,6 +14,15 @@ Packaged apps check for updates on startup and every 6 hours. The WIVA Agent
 window also includes a manual update check and install button when an update is
 ready.
 
+## v2.6.68
+
+- Automatically inspect IPTV codecs and share bounded H.264/AAC compatibility workers across viewers.
+- Require a rendered video frame before declaring playback ready, recover audio-only streams, and cancel stale channel callbacks.
+- Retry transient failures with bounded exponential backoff and discard expired/empty live playlists without renewing stale data indefinitely.
+- Stop inactive workers, retain transfer limits, and separate decoder loopback bytes from LAN distribution metrics.
+- Add regression coverage for conversion lifecycle, source changes, decoded-frame readiness, stale cache deadlines, and recovery.
+- Refresh compatible dependency lockfiles to clear production audit findings before release.
+
 ## v2.6.66
 
 - Matches the WIVA Cloud phone catalog with a compact vertical shell, flat header, and fixed five-destination bottom navigation.
